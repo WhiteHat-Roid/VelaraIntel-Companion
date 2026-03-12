@@ -1,0 +1,222 @@
+{
+  "mapId": 2769,
+  "dungeon": "Windrunner Spire",
+  "version": "1.0.0",
+  "_notes": [
+    "NPC IDs marked PLACEHOLDER must be replaced with real M+ captured IDs.",
+    "Centroids and region bounds are rough estimates — Cowork to calibrate from map images.",
+    "routeStage is approximate. Adjust after first real M+ run confirms pull order.",
+    "uniqueNpcIds should contain NPC IDs that appear in ONLY this pack across the dungeon.",
+    "adjacentPackIds lists packs the route typically passes through next."
+  ],
+  "floors": {
+    "f1": {
+      "floorName": "The Promenade",
+      "uiMapId": 15808,
+      "packs": [
+        {
+          "packId": "wrs_f1_p1",
+          "packName": "Entrance Ranger Patrol",
+          "npcIds": [999001, 999002],
+          "uniqueNpcIds": [999001],
+          "_npcNote": "PLACEHOLDER — replace 999001, 999002 with real creature IDs from M+ run",
+          "centroid": { "x": 48.0, "y": 72.0 },
+          "_centroidNote": "ESTIMATE — Cowork to calibrate",
+          "regionId": "wrs_f1_entrance",
+          "routeStage": 1,
+          "adjacentPackIds": ["wrs_f1_p2"],
+          "isBossPack": false,
+          "dangerTags": []
+        },
+        {
+          "packId": "wrs_f1_p2",
+          "packName": "Promenade Guard Squad",
+          "npcIds": [999003, 999004, 999005],
+          "uniqueNpcIds": [999003],
+          "_npcNote": "PLACEHOLDER — replace with real creature IDs",
+          "centroid": { "x": 50.0, "y": 60.0 },
+          "_centroidNote": "ESTIMATE — Cowork to calibrate",
+          "regionId": "wrs_f1_promenade",
+          "routeStage": 2,
+          "adjacentPackIds": ["wrs_f1_p1", "wrs_f1_p3"],
+          "isBossPack": false,
+          "dangerTags": []
+        },
+        {
+          "packId": "wrs_f1_p3",
+          "packName": "Hall Sentinels",
+          "npcIds": [999006, 999007],
+          "uniqueNpcIds": [999006],
+          "_npcNote": "PLACEHOLDER — replace with real creature IDs",
+          "centroid": { "x": 52.0, "y": 48.0 },
+          "_centroidNote": "ESTIMATE — Cowork to calibrate",
+          "regionId": "wrs_f1_promenade",
+          "routeStage": 3,
+          "adjacentPackIds": ["wrs_f1_p2", "wrs_f1_boss1"],
+          "isBossPack": false,
+          "dangerTags": []
+        },
+        {
+          "packId": "wrs_f1_boss1",
+          "packName": "First Boss",
+          "npcIds": [999008],
+          "uniqueNpcIds": [999008],
+          "_npcNote": "PLACEHOLDER — replace with real boss creature ID",
+          "centroid": { "x": 50.0, "y": 35.0 },
+          "_centroidNote": "ESTIMATE — Cowork to calibrate",
+          "regionId": "wrs_f1_boss_chamber",
+          "routeStage": 4,
+          "adjacentPackIds": ["wrs_f1_p3"],
+          "isBossPack": true,
+          "dangerTags": ["boss"]
+        }
+      ],
+      "regions": [
+        {
+          "regionId": "wrs_f1_entrance",
+          "name": "Entrance Hall",
+          "centroid": { "x": 48.0, "y": 74.0 },
+          "bounds": { "xMin": 38, "xMax": 62, "yMin": 65, "yMax": 85 }
+        },
+        {
+          "regionId": "wrs_f1_promenade",
+          "name": "The Promenade",
+          "centroid": { "x": 50.0, "y": 52.0 },
+          "bounds": { "xMin": 35, "xMax": 65, "yMin": 40, "yMax": 65 }
+        },
+        {
+          "regionId": "wrs_f1_boss_chamber",
+          "name": "Boss Chamber",
+          "centroid": { "x": 50.0, "y": 34.0 },
+          "bounds": { "xMin": 38, "xMax": 62, "yMin": 25, "yMax": 42 }
+        }
+      ]
+    },
+    "f2": {
+      "floorName": "The Spire Interior",
+      "uiMapId": 15809,
+      "_floorNote": "PLACEHOLDER floor — NPC IDs and all spatial data need real M+ verification",
+      "packs": [
+        {
+          "packId": "wrs_f2_p1",
+          "packName": "Spire Patrol Alpha",
+          "npcIds": [999009, 999010],
+          "uniqueNpcIds": [999009],
+          "_npcNote": "PLACEHOLDER",
+          "centroid": { "x": 50.0, "y": 78.0 },
+          "_centroidNote": "ESTIMATE",
+          "regionId": "wrs_f2_lower",
+          "routeStage": 5,
+          "adjacentPackIds": ["wrs_f2_p2"],
+          "isBossPack": false,
+          "dangerTags": []
+        },
+        {
+          "packId": "wrs_f2_p2",
+          "packName": "Spire Guard Pack",
+          "npcIds": [999011, 999012, 999013],
+          "uniqueNpcIds": [999011],
+          "_npcNote": "PLACEHOLDER",
+          "centroid": { "x": 50.0, "y": 55.0 },
+          "_centroidNote": "ESTIMATE",
+          "regionId": "wrs_f2_lower",
+          "routeStage": 6,
+          "adjacentPackIds": ["wrs_f2_p1", "wrs_f2_boss2"],
+          "isBossPack": false,
+          "dangerTags": []
+        },
+        {
+          "packId": "wrs_f2_boss2",
+          "packName": "Second Boss",
+          "npcIds": [999014],
+          "uniqueNpcIds": [999014],
+          "_npcNote": "PLACEHOLDER — replace with real boss creature ID",
+          "centroid": { "x": 50.0, "y": 35.0 },
+          "_centroidNote": "ESTIMATE",
+          "regionId": "wrs_f2_boss_chamber",
+          "routeStage": 7,
+          "adjacentPackIds": ["wrs_f2_p2"],
+          "isBossPack": true,
+          "dangerTags": ["boss"]
+        }
+      ],
+      "regions": [
+        {
+          "regionId": "wrs_f2_lower",
+          "name": "Lower Spire",
+          "centroid": { "x": 50.0, "y": 65.0 },
+          "bounds": { "xMin": 35, "xMax": 65, "yMin": 45, "yMax": 85 }
+        },
+        {
+          "regionId": "wrs_f2_boss_chamber",
+          "name": "Second Boss Chamber",
+          "centroid": { "x": 50.0, "y": 34.0 },
+          "bounds": { "xMin": 38, "xMax": 62, "yMin": 25, "yMax": 44 }
+        }
+      ]
+    },
+    "f3": {
+      "floorName": "The Upper Spire",
+      "uiMapId": 15810,
+      "_floorNote": "PLACEHOLDER floor — all data needs real M+ verification",
+      "packs": [
+        {
+          "packId": "wrs_f3_p1",
+          "packName": "Upper Spire Sentinels",
+          "npcIds": [999015, 999016],
+          "uniqueNpcIds": [999015],
+          "_npcNote": "PLACEHOLDER",
+          "centroid": { "x": 50.0, "y": 75.0 },
+          "_centroidNote": "ESTIMATE",
+          "regionId": "wrs_f3_upper",
+          "routeStage": 8,
+          "adjacentPackIds": ["wrs_f3_p2"],
+          "isBossPack": false,
+          "dangerTags": []
+        },
+        {
+          "packId": "wrs_f3_p2",
+          "packName": "Final Approach Pack",
+          "npcIds": [999017, 999018, 999019],
+          "uniqueNpcIds": [999017],
+          "_npcNote": "PLACEHOLDER",
+          "centroid": { "x": 50.0, "y": 52.0 },
+          "_centroidNote": "ESTIMATE",
+          "regionId": "wrs_f3_upper",
+          "routeStage": 9,
+          "adjacentPackIds": ["wrs_f3_p1", "wrs_f3_boss_final"],
+          "isBossPack": false,
+          "dangerTags": []
+        },
+        {
+          "packId": "wrs_f3_boss_final",
+          "packName": "Final Boss",
+          "npcIds": [999020],
+          "uniqueNpcIds": [999020],
+          "_npcNote": "PLACEHOLDER — replace with real final boss creature ID",
+          "centroid": { "x": 50.0, "y": 30.0 },
+          "_centroidNote": "ESTIMATE",
+          "regionId": "wrs_f3_pinnacle",
+          "routeStage": 10,
+          "adjacentPackIds": ["wrs_f3_p2"],
+          "isBossPack": true,
+          "dangerTags": ["boss", "enrage"]
+        }
+      ],
+      "regions": [
+        {
+          "regionId": "wrs_f3_upper",
+          "name": "Upper Spire",
+          "centroid": { "x": 50.0, "y": 62.0 },
+          "bounds": { "xMin": 35, "xMax": 65, "yMin": 45, "yMax": 82 }
+        },
+        {
+          "regionId": "wrs_f3_pinnacle",
+          "name": "The Pinnacle",
+          "centroid": { "x": 50.0, "y": 30.0 },
+          "bounds": { "xMin": 38, "xMax": 62, "yMin": 20, "yMax": 42 }
+        }
+      ]
+    }
+  }
+}
