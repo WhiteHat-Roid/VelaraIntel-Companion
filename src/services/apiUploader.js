@@ -6,7 +6,7 @@ const https = require("https");
 class ApiUploader {
   constructor(apiKey) {
     this.apiKey = apiKey;
-    this.uploadedKeys = new Set(); // dedup by run key
+    this.uploadedKeys = new Set();
   }
 
   setApiKey(key) {
@@ -18,14 +18,13 @@ class ApiUploader {
       return { ok: false, error: "No API key configured" };
     }
 
-    // Dedup check
+    // Dedup check — use V1.2 field names (runId is unique per run)
     const run = payload.run;
-    if (run) {
-      const runKey = `${run.mapID}-${run.keyLevel}-${run.startedAt}`;
-      if (this.uploadedKeys.has(runKey)) {
+    if (run && run.runId) {
+      if (this.uploadedKeys.has(run.runId)) {
         return { ok: true, skipped: true, message: "Already uploaded" };
       }
-      this.uploadedKeys.add(runKey);
+      this.uploadedKeys.add(run.runId);
     }
 
     const body = JSON.stringify(payload);
@@ -58,14 +57,8 @@ class ApiUploader {
         }
       );
 
-      req.on("error", (err) => {
-        resolve({ ok: false, error: err.message });
-      });
-
-      req.on("timeout", () => {
-        req.destroy();
-        resolve({ ok: false, error: "Request timed out (10s)" });
-      });
+      req.on("error", (err) => resolve({ ok: false, error: err.message }));
+      req.on("timeout", () => { req.destroy(); resolve({ ok: false, error: "Request timed out (10s)" }); });
 
       req.write(body);
       req.end();
