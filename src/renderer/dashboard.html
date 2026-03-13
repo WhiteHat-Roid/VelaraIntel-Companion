@@ -1,0 +1,622 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Velara Companion</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: #080A0C;
+      font-family: 'Segoe UI', sans-serif;
+      color: #C8D4DC;
+      overflow: hidden;
+    }
+
+    /* Title bar */
+    .titlebar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 16px;
+      background: #0A0E13;
+      border-bottom: 1px solid #2A3A4A;
+      -webkit-app-region: drag;
+    }
+    .titlebar-left {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .titlebar-logo {
+      height: 32px;
+      width: auto;
+      -webkit-app-region: no-drag;
+    }
+    .titlebar-title {
+      display: flex;
+      flex-direction: column;
+      line-height: 1.1;
+    }
+    .titlebar-title .brand {
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: #C8D4DC;
+    }
+    .titlebar-title .sub {
+      font-size: 9px;
+      font-weight: 600;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: #5BA3D9;
+    }
+    .titlebar-btns {
+      display: flex;
+      gap: 8px;
+      -webkit-app-region: no-drag;
+    }
+    .titlebar-btn {
+      width: 28px;
+      height: 28px;
+      background: rgba(200,212,220,0.04);
+      border: 1px solid #2A3A4A;
+      border-radius: 2px;
+      color: #556677;
+      font-size: 14px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .titlebar-btn:hover { color: #C8D4DC; background: rgba(200,212,220,0.08); }
+    .titlebar-btn.close:hover { color: #C0392B; border-color: rgba(192,57,43,0.4); }
+
+    /* Tabs */
+    .tabs { display: flex; border-bottom: 1px solid #2A3A4A; }
+    .tab {
+      flex: 1;
+      padding: 10px;
+      text-align: center;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: #556677;
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      transition: all 0.15s;
+    }
+    .tab.active {
+      color: #E8A030;
+      border-bottom-color: #E8A030;
+      background: rgba(232,160,48,0.06);
+    }
+
+    /* Content */
+    .page { display: none; padding: 16px; overflow-y: auto; height: calc(100vh - 100px); }
+    .page.active { display: block; }
+
+    /* Status cards */
+    .status-card {
+      background: #0D1117;
+      border: 1px solid #2A3A4A;
+      border-radius: 4px;
+      padding: 14px;
+      margin-bottom: 12px;
+    }
+    .status-label {
+      font-size: 9px;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      color: #556677;
+      margin-bottom: 6px;
+    }
+    .status-value { font-size: 16px; font-weight: 700; }
+    .status-value.ok  { color: #27AE60; }
+    .status-value.warn { color: #E8A030; }
+    .status-value.err  { color: #C0392B; }
+
+    /* Run history card */
+    .run-history-card {
+      background: #0D1117;
+      border: 1px solid #2A3A4A;
+      border-radius: 4px;
+      padding: 14px;
+      margin-bottom: 12px;
+      position: relative;
+    }
+    .run-history-label {
+      font-size: 9px;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      color: #556677;
+      margin-bottom: 8px;
+    }
+
+    /* Custom dropdown */
+    .custom-select { position: relative; width: 100%; }
+    .custom-select-trigger {
+      width: 100%;
+      background: #080A0C;
+      border: 1px solid #2A3A4A;
+      border-radius: 2px;
+      color: #C8D4DC;
+      font-family: 'Segoe UI', sans-serif;
+      font-size: 12px;
+      padding: 8px 28px 8px 10px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      user-select: none;
+      transition: border-color 0.15s;
+    }
+    .custom-select-trigger:hover,
+    .custom-select-trigger.open { border-color: #E8A030; }
+    .custom-select-arrow {
+      font-size: 9px;
+      color: #556677;
+      margin-left: 8px;
+      flex-shrink: 0;
+      transition: transform 0.15s;
+    }
+    .custom-select-trigger.open .custom-select-arrow { transform: rotate(180deg); }
+    .custom-select-dropdown {
+      display: none;
+      position: absolute;
+      top: 100%;
+      left: 0;
+      right: 0;
+      background: #0D1117;
+      border: 1px solid #E8A030;
+      border-top: none;
+      border-radius: 0 0 2px 2px;
+      z-index: 999;
+      max-height: 180px;
+      overflow-y: auto;
+    }
+    .custom-select-dropdown.open { display: block; }
+    .custom-select-option {
+      padding: 8px 10px;
+      font-size: 12px;
+      color: #C8D4DC;
+      cursor: pointer;
+      border-bottom: 1px solid rgba(42,58,74,0.5);
+    }
+    .custom-select-option:last-child { border-bottom: none; }
+    .custom-select-option:hover { background: rgba(232,160,48,0.1); color: #E8A030; }
+    .custom-select-option.selected { background: rgba(232,160,48,0.08); color: #E8A030; }
+    .custom-select-option.empty { color: #556677; cursor: default; }
+    .custom-select-option.empty:hover { background: none; color: #556677; }
+
+    /* Run detail card */
+    .run-card {
+      background: #0D1117;
+      border: 1px solid #2A3A4A;
+      border-left: 3px solid #E8A030;
+      border-radius: 4px;
+      padding: 14px;
+      margin-bottom: 12px;
+    }
+    .run-dungeon {
+      font-size: 14px;
+      font-weight: 700;
+      text-transform: uppercase;
+      color: #EEF2F5;
+    }
+    .run-key { color: #E8A030; margin-left: 6px; }
+    .run-stats { display: flex; gap: 16px; margin-top: 8px; }
+    .run-stat-label { font-size: 8px; letter-spacing: 0.12em; text-transform: uppercase; color: #556677; }
+    .run-stat-val { font-size: 16px; font-weight: 700; }
+
+    /* Settings page */
+    .field { margin-bottom: 16px; }
+    .field-label {
+      font-size: 9px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: #556677;
+      margin-bottom: 6px;
+    }
+    .field-input {
+      width: 100%;
+      background: #0D1117;
+      border: 1px solid #2A3A4A;
+      border-radius: 2px;
+      color: #C8D4DC;
+      font-family: 'Segoe UI', sans-serif;
+      font-size: 12px;
+      padding: 8px 10px;
+      outline: none;
+    }
+    .field-input:focus { border-color: #E8A030; }
+    .field-row { display: flex; gap: 8px; align-items: flex-end; }
+    .field-row .field-input { flex: 1; }
+    .browse-btn {
+      padding: 8px 14px;
+      background: rgba(200,212,220,0.04);
+      border: 1px solid #2A3A4A;
+      color: #C8D4DC;
+      font-size: 11px;
+      cursor: pointer;
+      border-radius: 2px;
+      white-space: nowrap;
+    }
+    .browse-btn:hover { background: rgba(200,212,220,0.08); }
+    select.field-input { appearance: none; -webkit-appearance: none; cursor: pointer; }
+
+    .toggle-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 0;
+      border-bottom: 1px solid rgba(42,58,74,0.4);
+    }
+    .toggle-label { font-size: 12px; color: #C8D4DC; }
+    .toggle {
+      width: 36px; height: 20px;
+      background: #2A3A4A;
+      border-radius: 10px;
+      cursor: pointer;
+      position: relative;
+      transition: background 0.2s;
+    }
+    .toggle.on { background: #27AE60; }
+    .toggle::after {
+      content: '';
+      position: absolute;
+      width: 16px; height: 16px;
+      background: #C8D4DC;
+      border-radius: 50%;
+      top: 2px; left: 2px;
+      transition: left 0.2s;
+    }
+    .toggle.on::after { left: 18px; }
+
+    .btn {
+      width: 100%;
+      padding: 10px;
+      border: 1px solid #E8A030;
+      background: rgba(232,160,48,0.1);
+      color: #E8A030;
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      cursor: pointer;
+      border-radius: 2px;
+      transition: all 0.15s;
+      margin-top: 8px;
+    }
+    .btn:hover { background: rgba(232,160,48,0.2); }
+
+    .save-status {
+      font-size: 10px;
+      letter-spacing: 0.08em;
+      text-align: center;
+      color: #27AE60;
+      margin-top: 8px;
+      opacity: 0;
+      transition: opacity 0.3s;
+    }
+    .save-status.show { opacity: 1; }
+  </style>
+</head>
+<body>
+
+  <!-- Title Bar -->
+  <div class="titlebar">
+    <div class="titlebar-left">
+      <img class="titlebar-logo" src="../../assets/velara_logo.png" alt="Velara">
+      <div class="titlebar-title">
+        <span class="brand">Velara</span>
+        <span class="sub">Companion</span>
+      </div>
+    </div>
+    <div class="titlebar-btns">
+      <div class="titlebar-btn" id="btnMin" title="Minimize">—</div>
+      <div class="titlebar-btn close" id="btnClose" title="Close to tray">✕</div>
+    </div>
+  </div>
+
+  <!-- Tabs -->
+  <div class="tabs">
+    <div class="tab active" data-tab="dashboard">Dashboard</div>
+    <div class="tab" data-tab="settings">Settings</div>
+  </div>
+
+  <!-- Dashboard Page -->
+  <div class="page active" id="page-dashboard">
+
+    <div class="status-card">
+      <div class="status-label">Connection</div>
+      <div class="status-value" id="connStatus">Initializing...</div>
+    </div>
+
+    <div class="status-card">
+      <div class="status-label">File Watcher</div>
+      <div class="status-value" id="watchStatus">—</div>
+    </div>
+
+    <!-- Run History Custom Dropdown -->
+    <div class="run-history-card">
+      <div class="run-history-label">Session Runs</div>
+      <div class="custom-select" id="customSelect">
+        <div class="custom-select-trigger" id="selectTrigger">
+          <span id="selectLabel">No runs detected yet</span>
+          <span class="custom-select-arrow">▼</span>
+        </div>
+        <div class="custom-select-dropdown" id="selectDropdown">
+          <div class="custom-select-option empty">No runs detected yet</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Selected Run Detail -->
+    <div id="runDetail"></div>
+
+  </div>
+
+  <!-- Settings Page -->
+  <div class="page" id="page-settings">
+    <div class="field">
+      <div class="field-label">WoW Install Path</div>
+      <div class="field-row">
+        <input class="field-input" id="wowPath" readonly placeholder="Not set">
+        <button class="browse-btn" id="btnBrowse">Browse</button>
+        <button class="browse-btn" id="btnDetect">Auto</button>
+      </div>
+    </div>
+
+    <div class="field">
+      <div class="field-label">Account</div>
+      <select class="field-input" id="accountName">
+        <option value="">Select account...</option>
+      </select>
+    </div>
+
+    <div class="field">
+      <div class="field-label">API Key</div>
+      <input class="field-input" id="apiKey" type="password" placeholder="Enter your Velara API key">
+    </div>
+
+    <div class="field">
+      <div class="field-label">Overlay Hotkey</div>
+      <input class="field-input" id="hotkey" placeholder="CommandOrControl+Shift+V">
+    </div>
+
+    <div class="toggle-row">
+      <span class="toggle-label">Auto-upload runs</span>
+      <div class="toggle on" id="toggleAutoUpload"></div>
+    </div>
+
+    <div class="toggle-row">
+      <span class="toggle-label">Start minimized to tray</span>
+      <div class="toggle" id="toggleStartMin"></div>
+    </div>
+
+    <button class="btn" id="btnSave">Save Settings</button>
+    <div class="save-status" id="saveStatus">Settings saved ✓</div>
+  </div>
+
+  <script>
+    // ── Session run history (max 15, newest first) ────────────────────────────
+    const sessionRuns = [];
+    const MAX_RUNS = 15;
+    let selectedIndex = 0;
+    let dropdownOpen = false;
+
+    function formatRunTime() {
+      const now = new Date();
+      return now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    }
+
+    function addRunToHistory(run) {
+      const runId = run.runId || `${run.dungeonName}-${run.keyLevel}-${Date.now()}`;
+      const exists = sessionRuns.find(r => r.runId === runId);
+      if (exists) return;
+      sessionRuns.unshift({ ...run, runId, detectedAt: formatRunTime() });
+      if (sessionRuns.length > MAX_RUNS) sessionRuns.pop();
+      selectedIndex = 0;
+      rebuildDropdown();
+      renderRunDetail(sessionRuns[0]);
+    }
+
+    function rebuildDropdown() {
+      const dropdown = document.getElementById('selectDropdown');
+      const label = document.getElementById('selectLabel');
+      dropdown.innerHTML = '';
+
+      if (sessionRuns.length === 0) {
+        label.textContent = 'No runs detected yet';
+        const opt = document.createElement('div');
+        opt.className = 'custom-select-option empty';
+        opt.textContent = 'No runs detected yet';
+        dropdown.appendChild(opt);
+        return;
+      }
+
+      const selected = sessionRuns[selectedIndex];
+      label.textContent = `${selected.dungeonName || 'Unknown'} +${selected.keyLevel || '?'}  ·  ${selected.detectedAt}`;
+
+      sessionRuns.forEach((run, idx) => {
+        const opt = document.createElement('div');
+        opt.className = 'custom-select-option' + (idx === selectedIndex ? ' selected' : '');
+        opt.textContent = `${run.dungeonName || 'Unknown'} +${run.keyLevel || '?'}  ·  ${run.detectedAt}`;
+        opt.addEventListener('click', () => {
+          selectedIndex = idx;
+          closeDropdown();
+          rebuildDropdown();
+          renderRunDetail(sessionRuns[idx]);
+        });
+        dropdown.appendChild(opt);
+      });
+    }
+
+    function openDropdown() {
+      dropdownOpen = true;
+      document.getElementById('selectTrigger').classList.add('open');
+      document.getElementById('selectDropdown').classList.add('open');
+    }
+
+    function closeDropdown() {
+      dropdownOpen = false;
+      document.getElementById('selectTrigger').classList.remove('open');
+      document.getElementById('selectDropdown').classList.remove('open');
+    }
+
+    document.getElementById('selectTrigger').addEventListener('click', () => {
+      if (sessionRuns.length === 0) return;
+      dropdownOpen ? closeDropdown() : openDropdown();
+    });
+
+    // Close dropdown when clicking outside
+    document.addEventListener('click', (e) => {
+      if (!document.getElementById('customSelect').contains(e.target)) closeDropdown();
+    });
+
+    function renderRunDetail(run) {
+      const el = document.getElementById('runDetail');
+      if (!run) { el.innerHTML = ''; return; }
+      el.innerHTML = `
+        <div class="run-card">
+          <span class="run-dungeon">${run.dungeonName || 'Unknown'}</span>
+          <span class="run-key">+${run.keyLevel || '?'}</span>
+          <div class="run-stats">
+            <div>
+              <div class="run-stat-label">Deaths</div>
+              <div class="run-stat-val" style="color:#C0392B">${run.totalDeaths || 0}</div>
+            </div>
+            <div>
+              <div class="run-stat-label">Pulls</div>
+              <div class="run-stat-val">${run.totalPulls || 0}</div>
+            </div>
+            <div>
+              <div class="run-stat-label">Wipes</div>
+              <div class="run-stat-val" style="color:#E8A030">${run.wipes ? run.wipes.length : 0}</div>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    // ── Tab switching ─────────────────────────────────────────────────────────
+    document.querySelectorAll('.tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+        document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+        tab.classList.add('active');
+        document.getElementById('page-' + tab.dataset.tab).classList.add('active');
+      });
+    });
+
+    document.getElementById('btnClose').addEventListener('click', () => window.velara.closeDashboard());
+    document.getElementById('btnMin').addEventListener('click', () => window.velara.minimizeDashboard());
+
+    document.querySelectorAll('.toggle').forEach(toggle => {
+      toggle.addEventListener('click', () => toggle.classList.toggle('on'));
+    });
+
+    // ── Load settings ─────────────────────────────────────────────────────────
+    async function loadSettings() {
+      const s = await window.velara.getSettings();
+      document.getElementById('wowPath').value = s.wowPath || '';
+      document.getElementById('apiKey').value = s.apiKey || '';
+      document.getElementById('hotkey').value = s.hotkey || 'CommandOrControl+Shift+V';
+
+      if (s.autoUpload) document.getElementById('toggleAutoUpload').classList.add('on');
+      else document.getElementById('toggleAutoUpload').classList.remove('on');
+
+      if (s.startMinimized) document.getElementById('toggleStartMin').classList.add('on');
+      else document.getElementById('toggleStartMin').classList.remove('on');
+
+      if (s.wowPath) {
+        const { accounts } = await window.velara.getAccounts(s.wowPath);
+        const select = document.getElementById('accountName');
+        select.innerHTML = '<option value="">Select account...</option>';
+        accounts.forEach(a => {
+          const opt = document.createElement('option');
+          opt.value = a; opt.textContent = a;
+          if (a === s.accountName) opt.selected = true;
+          select.appendChild(opt);
+        });
+      }
+
+      document.getElementById('watchStatus').textContent = s.wowPath ? 'Watching' : 'No WoW path set';
+      document.getElementById('watchStatus').className = 'status-value ' + (s.wowPath ? 'ok' : 'warn');
+      document.getElementById('connStatus').textContent = s.apiKey ? 'API key set' : 'No API key';
+      document.getElementById('connStatus').className = 'status-value ' + (s.apiKey ? 'ok' : 'warn');
+    }
+
+    document.getElementById('btnBrowse').addEventListener('click', async () => {
+      const { path } = await window.velara.browseWowPath();
+      if (path) {
+        document.getElementById('wowPath').value = path;
+        const { accounts } = await window.velara.getAccounts(path);
+        const select = document.getElementById('accountName');
+        select.innerHTML = '<option value="">Select account...</option>';
+        accounts.forEach(a => {
+          const opt = document.createElement('option');
+          opt.value = a; opt.textContent = a;
+          select.appendChild(opt);
+        });
+      }
+    });
+
+    document.getElementById('btnDetect').addEventListener('click', async () => {
+      const { path } = await window.velara.detectWowPath();
+      if (path) {
+        document.getElementById('wowPath').value = path;
+        const { accounts } = await window.velara.getAccounts(path);
+        const select = document.getElementById('accountName');
+        select.innerHTML = '<option value="">Select account...</option>';
+        accounts.forEach(a => {
+          const opt = document.createElement('option');
+          opt.value = a; opt.textContent = a;
+          select.appendChild(opt);
+        });
+      } else {
+        document.getElementById('wowPath').value = '';
+        document.getElementById('wowPath').placeholder = 'Not found — use Browse';
+      }
+    });
+
+    document.getElementById('btnSave').addEventListener('click', async () => {
+      const settings = {
+        wowPath: document.getElementById('wowPath').value,
+        accountName: document.getElementById('accountName').value,
+        apiKey: document.getElementById('apiKey').value,
+        hotkey: document.getElementById('hotkey').value,
+        autoUpload: document.getElementById('toggleAutoUpload').classList.contains('on'),
+        startMinimized: document.getElementById('toggleStartMin').classList.contains('on'),
+      };
+      await window.velara.saveSettings(settings);
+      const status = document.getElementById('saveStatus');
+      status.classList.add('show');
+      setTimeout(() => status.classList.remove('show'), 2000);
+      loadSettings();
+    });
+
+    // ── Run updates ───────────────────────────────────────────────────────────
+    window.velara.onRunUpdate((run) => {
+      addRunToHistory(run);
+      document.getElementById('connStatus').textContent = 'Run detected';
+      document.getElementById('connStatus').className = 'status-value ok';
+    });
+
+    window.velara.onUploadResult((result) => {
+      const connEl = document.getElementById('connStatus');
+      if (result.ok) {
+        connEl.textContent = result.skipped ? 'Already uploaded' : 'Upload success ✓';
+        connEl.className = 'status-value ok';
+      } else {
+        connEl.textContent = 'Upload failed: ' + (result.error || result.status);
+        connEl.className = 'status-value err';
+      }
+    });
+
+    loadSettings();
+  </script>
+</body>
+</html>

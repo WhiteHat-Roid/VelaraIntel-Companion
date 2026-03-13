@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Velara Overlay</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: transparent;
+      font-family: 'Segoe UI', sans-serif;
+      overflow: hidden;
+      user-select: none;
+    }
+    #overlay {
+      background: rgba(8, 10, 12, 0.85);
+      border: 1px solid #2A3A4A;
+      border-radius: 4px;
+      padding: 12px 16px;
+      color: #C8D4DC;
+      -webkit-app-region: drag;
+      min-width: 280px;
+    }
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 10px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid #2A3A4A;
+    }
+    .title {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: #E8A030;
+    }
+    .status {
+      font-size: 9px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      padding: 2px 8px;
+      border-radius: 2px;
+    }
+    .status.watching {
+      color: #00C8FF;
+      border: 1px solid rgba(0, 200, 255, 0.3);
+      background: rgba(0, 200, 255, 0.08);
+    }
+    .status.active {
+      color: #27AE60;
+      border: 1px solid rgba(39, 174, 96, 0.3);
+      background: rgba(39, 174, 96, 0.08);
+    }
+    .status.idle {
+      color: #556677;
+      border: 1px solid #2A3A4A;
+    }
+    .dungeon-info {
+      margin-bottom: 8px;
+    }
+    .dungeon-name {
+      font-size: 14px;
+      font-weight: 700;
+      color: #EEF2F5;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .key-level {
+      font-size: 12px;
+      font-weight: 700;
+      color: #E8A030;
+      margin-left: 6px;
+    }
+    .affixes {
+      font-size: 9px;
+      color: #556677;
+      letter-spacing: 0.06em;
+      margin-top: 2px;
+    }
+    .stats-row {
+      display: flex;
+      gap: 16px;
+      margin-bottom: 8px;
+    }
+    .stat {
+      display: flex;
+      flex-direction: column;
+    }
+    .stat-label {
+      font-size: 8px;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      color: #556677;
+      margin-bottom: 2px;
+    }
+    .stat-value {
+      font-size: 18px;
+      font-weight: 700;
+      line-height: 1;
+    }
+    .stat-value.deaths { color: #C0392B; }
+    .stat-value.pulls { color: #C8D4DC; }
+    .stat-value.wipes { color: #E8A030; }
+    .last-death {
+      font-size: 9px;
+      color: #556677;
+      border-top: 1px solid #2A3A4A;
+      padding-top: 6px;
+      margin-top: 4px;
+    }
+    .last-death .role { color: #C0392B; font-weight: 600; }
+    .waiting {
+      font-size: 11px;
+      color: #556677;
+      letter-spacing: 0.06em;
+      text-align: center;
+      padding: 20px 0;
+    }
+  </style>
+</head>
+<body>
+  <div id="overlay">
+    <div class="header">
+      <span class="title">Velara Intel</span>
+      <span class="status idle" id="status">Waiting</span>
+    </div>
+    <div id="content">
+      <div class="waiting">Waiting for run data...</div>
+    </div>
+  </div>
+
+  <script>
+    const statusEl = document.getElementById("status");
+    const contentEl = document.getElementById("content");
+
+    function updateRun(run) {
+      if (!run) {
+        contentEl.innerHTML = '<div class="waiting">Waiting for run data...</div>';
+        statusEl.textContent = "Waiting";
+        statusEl.className = "status idle";
+        return;
+      }
+
+      statusEl.textContent = "Active";
+      statusEl.className = "status active";
+
+      const affixes = (run.affixes || []).join(" · ");
+      const lastDeath = run.wipes && run.wipes.length > 0
+        ? run.wipes[run.wipes.length - 1]
+        : null;
+      const lastDeathInfo = lastDeath && lastDeath.deaths && lastDeath.deaths.length > 0
+        ? lastDeath.deaths[lastDeath.deaths.length - 1]
+        : null;
+
+      contentEl.innerHTML = `
+        <div class="dungeon-info">
+          <span class="dungeon-name">${run.dungeonName || "Unknown"}</span>
+          <span class="key-level">+${run.keyLevel || "?"}</span>
+          ${affixes ? `<div class="affixes">${affixes}</div>` : ""}
+        </div>
+        <div class="stats-row">
+          <div class="stat">
+            <span class="stat-label">Deaths</span>
+            <span class="stat-value deaths">${run.totalDeaths || 0}</span>
+          </div>
+          <div class="stat">
+            <span class="stat-label">Pulls</span>
+            <span class="stat-value pulls">${run.totalPulls || 0}</span>
+          </div>
+          <div class="stat">
+            <span class="stat-label">Wipes</span>
+            <span class="stat-value wipes">${run.wipes ? run.wipes.length : 0}</span>
+          </div>
+        </div>
+        ${lastDeathInfo ? `
+          <div class="last-death">
+            Last death: <span class="role">${lastDeathInfo.role || "?"}</span> at ${formatTime(lastDeathInfo.t)}
+          </div>
+        ` : ""}
+      `;
+    }
+
+    function formatTime(seconds) {
+      if (!seconds) return "?:??";
+      const m = Math.floor(seconds / 60);
+      const s = Math.floor(seconds % 60);
+      return m + ":" + String(s).padStart(2, "0");
+    }
+
+    // Listen for run updates from main process
+    if (window.velara && window.velara.onRunUpdate) {
+      window.velara.onRunUpdate((data) => updateRun(data));
+    }
+  </script>
+</body>
+</html>

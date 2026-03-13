@@ -781,4 +781,40 @@ function stripInternalFields(payload) {
   }
 }
 
-module.exports = { assembleRunPayload };
+// ─── RunAssembler class wrapper (used by Electron main.js) ──────────────────
+class RunAssembler {
+  constructor({ onReady } = {}) {
+    this.onReady      = onReady || (() => {});
+    this.isOpen       = false;
+    this.currentRunID = null;
+    this._addonRun    = null;
+    this._pulls       = [];
+  }
+  openRun(addonRun) {
+    this._addonRun    = addonRun;
+    this._pulls       = [];
+    this.isOpen       = true;
+    this.currentRunID = addonRun?.runId || null;
+  }
+  addPull(pull) {
+    if (!this.isOpen) return;
+    this._pulls.push(pull);
+  }
+  closeRun() {
+    if (!this.isOpen) return;
+    this.isOpen = false;
+    const result = assembleRunPayload({
+      addonRun: this._addonRun,
+      parsedCombatEvidence: { enrichedSegments: this._pulls },
+      resolvedPulls: [],
+      options: { dev: false },
+    });
+    this._addonRun    = null;
+    this._pulls       = [];
+    this.currentRunID = null;
+    if (result.ok) this.onReady(result.payload);
+    else console.error("[RunAssembler] Assembly failed:", result.errors);
+  }
+}
+
+module.exports = { assembleRunPayload, RunAssembler };
