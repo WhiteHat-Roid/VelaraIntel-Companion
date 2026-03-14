@@ -23,7 +23,7 @@ const store = new Store({
     hotkey       : "CommandOrControl+Shift+V",
     autoUpload   : true,
     startMinimized: false,
-    overlayBounds: { x: 100, y: 100, width: 320, height: 220 },
+    overlayBounds: { x: 100, y: 100, width: 100, height: 100 },
   },
 });
 
@@ -154,7 +154,7 @@ function createOverlay() {
       contextIsolation: true, nodeIntegration: false,
     },
   });
-  overlayWindow.loadFile(path.join(__dirname, "..", "renderer", "overlay.html"));
+  overlayWindow.loadFile(path.join(__dirname, "..", "renderer", "overlay_v2.html"));
   overlayWindow.setIgnoreMouseEvents(false);
   overlayWindow.on("moved",   () => store.set("overlayBounds", overlayWindow.getBounds()));
   overlayWindow.on("resized", () => store.set("overlayBounds", overlayWindow.getBounds()));

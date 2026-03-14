@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Velara Overlay</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: transparent;
+      overflow: hidden;
+      user-select: none;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 100vw;
+      height: 100vh;
+    }
+
+    #badge {
+      -webkit-app-region: drag;
+      width: 88px;
+      height: 88px;
+      border-radius: 50%;
+      background: rgba(8, 10, 12, 0.75);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      border: 2px solid #2A3A4A;
+      transition: border-color 0.6s ease, box-shadow 0.6s ease;
+    }
+
+    #badge .shield {
+      width: 56px;
+      height: 56px;
+      object-fit: contain;
+      pointer-events: none;
+      filter: brightness(0.5);
+      transition: filter 0.6s ease;
+    }
+
+    /* ── Idle (default) ── */
+    #badge.state-idle {
+      border-color: #2A3A4A;
+      box-shadow: none;
+    }
+    #badge.state-idle .shield {
+      filter: brightness(0.5);
+    }
+
+    /* ── Active (green) ── */
+    #badge.state-active {
+      border-color: #27AE60;
+      box-shadow:
+        0 0 12px rgba(39, 174, 96, 0.4),
+        0 0 28px rgba(39, 174, 96, 0.15),
+        inset 0 0 10px rgba(39, 174, 96, 0.08);
+      animation: pulse-active 3s ease-in-out infinite;
+    }
+    #badge.state-active .shield {
+      filter: brightness(1) drop-shadow(0 0 6px rgba(39, 174, 96, 0.5));
+    }
+    @keyframes pulse-active {
+      0%, 100% {
+        box-shadow:
+          0 0 12px rgba(39, 174, 96, 0.4),
+          0 0 28px rgba(39, 174, 96, 0.15),
+          inset 0 0 10px rgba(39, 174, 96, 0.08);
+      }
+      50% {
+        box-shadow:
+          0 0 18px rgba(39, 174, 96, 0.55),
+          0 0 40px rgba(39, 174, 96, 0.25),
+          inset 0 0 14px rgba(39, 174, 96, 0.12);
+      }
+    }
+
+    /* ── Watching (amber) ── */
+    #badge.state-watching {
+      border-color: #E8A030;
+      box-shadow:
+        0 0 12px rgba(232, 160, 48, 0.4),
+        0 0 28px rgba(232, 160, 48, 0.15),
+        inset 0 0 10px rgba(232, 160, 48, 0.08);
+      animation: pulse-watching 3s ease-in-out infinite;
+    }
+    #badge.state-watching .shield {
+      filter: brightness(1) drop-shadow(0 0 6px rgba(232, 160, 48, 0.5));
+    }
+    @keyframes pulse-watching {
+      0%, 100% {
+        box-shadow:
+          0 0 12px rgba(232, 160, 48, 0.4),
+          0 0 28px rgba(232, 160, 48, 0.15),
+          inset 0 0 10px rgba(232, 160, 48, 0.08);
+      }
+      50% {
+        box-shadow:
+          0 0 18px rgba(232, 160, 48, 0.55),
+          0 0 40px rgba(232, 160, 48, 0.25),
+          inset 0 0 14px rgba(232, 160, 48, 0.12);
+      }
+    }
+
+    /* ── Error (red) ── */
+    #badge.state-error {
+      border-color: #C0392B;
+      box-shadow:
+        0 0 12px rgba(192, 57, 43, 0.4),
+        0 0 28px rgba(192, 57, 43, 0.15),
+        inset 0 0 10px rgba(192, 57, 43, 0.08);
+      animation: pulse-error 3s ease-in-out infinite;
+    }
+    #badge.state-error .shield {
+      filter: brightness(1) drop-shadow(0 0 6px rgba(192, 57, 43, 0.5));
+    }
+    @keyframes pulse-error {
+      0%, 100% {
+        box-shadow:
+          0 0 12px rgba(192, 57, 43, 0.4),
+          0 0 28px rgba(192, 57, 43, 0.15),
+          inset 0 0 10px rgba(192, 57, 43, 0.08);
+      }
+      50% {
+        box-shadow:
+          0 0 18px rgba(192, 57, 43, 0.55),
+          0 0 40px rgba(192, 57, 43, 0.25),
+          inset 0 0 14px rgba(192, 57, 43, 0.12);
+      }
+    }
+  </style>
+</head>
+<body>
+  <div id="badge" class="state-idle">
+    <img class="shield" id="shieldImg" src="" alt="">
+  </div>
+
+  <script>
+    const badge = document.getElementById("badge");
+
+    // Logo sits in same folder as this HTML file — simple relative path
+    const shieldImg = document.getElementById("shieldImg");
+    shieldImg.src = "icon.png";
+
+    function updateRun(run) {
+      if (!run) {
+        badge.className = "state-watching";
+        return;
+      }
+
+      if (run.error) {
+        badge.className = "state-error";
+        return;
+      }
+
+      if (run.dungeonName || run.keyLevel) {
+        badge.className = "state-active";
+        return;
+      }
+
+      badge.className = "state-idle";
+    }
+
+    // Listen for run updates from main process
+    if (window.velara && window.velara.onRunUpdate) {
+      window.velara.onRunUpdate((data) => updateRun(data));
+    }
+  </script>
+</body>
+</html>
