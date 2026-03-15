@@ -3,7 +3,7 @@
 
 const {
   app, BrowserWindow, Tray, Menu, globalShortcut,
-  ipcMain, dialog, nativeImage,
+  ipcMain, dialog, nativeImage, shell,
 } = require("electron");
 const path = require("path");
 const Store = require("electron-store");
@@ -186,6 +186,19 @@ function broadcast(channel, data) {
   if (overlayWindow   && !overlayWindow.isDestroyed())   overlayWindow.webContents.send(channel, data);
 }
 
+// ── Open run in browser via public token ──────────────────────────────────────
+function openRunInBrowser(uploadResult) {
+  if (!uploadResult || !uploadResult.ok) return;
+  const body = uploadResult.body;
+  if (!body) return;
+  const token = body.runToken;
+  if (token && typeof token === "string" && token.startsWith("vr_")) {
+    shell.openExternal(`https://velaraintel.com/run/${token}`);
+  } else {
+    console.warn("[Uploader] Ingest succeeded but runToken missing or malformed:", token);
+  }
+}
+
 // ── Pipeline: SavedVariables watcher ─────────────────────────────────────────
 function startSVWatcher() {
   if (svWatcher) svWatcher.stop();
@@ -242,6 +255,7 @@ function startSVWatcher() {
             apiUploader.upload(payload).then((result) => {
               console.log("[Uploader] Result:", JSON.stringify(result));
               broadcast("upload-result", result);
+              openRunInBrowser(result);
             });
           } else {
             console.log("[SV] Auto-upload disabled or no API key — skipping");
@@ -294,6 +308,7 @@ function setupUploader() {
       const result = await apiUploader.upload(payload);
       console.log("[Uploader] Result:", JSON.stringify(result));
       broadcast("upload-result", result);
+      openRunInBrowser(result);
     },
   });
 }
