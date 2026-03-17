@@ -1,33 +1,36 @@
-// combatLogParser.js — V1.2
+// combatLogParser.js — V1.3
 // Velara Intelligence — Combat Log Evidence Extractor
 //
-// Responsibilities (V1.2):
+// V1.3 changes (ChatGPT architecture approved 2026-03-17):
+//   1. GUID mapping — primary from addon partyMembers (now includes guid field)
+//      Spell-based detection is FALLBACK ONLY, not primary
+//   2. Healing received — effective healing + overhealing tracked separately
+//   3. Spike detection — hybrid threshold (80k absolute OR 30% estimated HP)
+//   4. Data quality / confidence output
+//   5. Targeting info preserved on spikes (targetGuid, targetRole)
+//   6. Source NPC tagging clean on all damage/spike objects
+//
+// Responsibilities:
 //   1. Normalize combat log wall-clock timestamps using one global clock offset
 //   2. Assign events to addon combat segments by time range + nearest-boundary fallback
 //   3. Extract death evidence with pre-death hit windows
 //   4. Extract cooldown events (allowlist-filtered)
 //   5. Extract interrupt events (allowlist-filtered)
 //   6. Extract enemy cast events
-//   7. Build 1-second damage buckets per segment
-//   8. Detect death chains per segment
-//   9. Return one structured ParsedCombatEvidence object
+//   7. Build 1-second damage buckets per segment (with healing + overhealing)
+//   8. Detect spikes (hybrid threshold)
+//   9. Detect death chains per segment
+//   10. Return structured ParsedCombatEvidence with dataQuality
 //
 // What this file does NOT do:
 //   - Decide final pull truth (runAssembler owns that)
 //   - Classify death causes
 //   - Compute defensive availability (backend product)
 //   - Do any frontend shaping
-//
-// Log line format (Midnight 12.x):
-//   MM/DD HH:MM:SS.mmm  EVENT_NAME,field1,field2,...
-//
-// All output timestamps are epoch ms (Ts suffix per V1.2 contract).
 
 "use strict";
 
 // ─── Spell allowlists ─────────────────────────────────────────────────────────
-// Parser filters to these lists. Do not track all player casts.
-// Expand per class/season as needed.
 
 const DEFENSIVE_CD_SPELLS = new Set([
   // Death Knight
@@ -69,43 +72,36 @@ const DEFENSIVE_CD_SPELLS = new Set([
 ]);
 
 const INTERRUPT_SPELLS = new Set([
-  // Death Knight
-  47528,  // Mind Freeze
-  // Demon Hunter
-  183752, // Consume Magic
-  // Druid
-  78675,  // Solar Beam
-  106839, // Skull Bash
-  // Evoker
-  351338, // Quell
-  // Hunter
-  147362, // Counter Shot
-  187707, // Muzzle
-  // Mage
-  2139,   // Counterspell
-  // Monk
-  116705, // Spear Hand Strike
-  // Paladin
-  96231,  // Rebuke
-  // Priest
-  15487,  // Silence
-  // Rogue
-  1766,   // Kick
-  // Shaman
-  57994,  // Wind Shear
-  // Warrior
-  6552,   // Pummel
-  // Warlock
-  119910, // Spell Lock (Felhunter)
+  47528,  // Mind Freeze (DK)
+  183752, // Consume Magic (DH)
+  78675,  // Solar Beam (Druid)
+  106839, // Skull Bash (Druid)
+  351338, // Quell (Evoker)
+  147362, // Counter Shot (Hunter)
+  187707, // Muzzle (Hunter)
+  2139,   // Counterspell (Mage)
+  116705, // Spear Hand Strike (Monk)
+  96231,  // Rebuke (Paladin)
+  15487,  // Silence (Priest)
+  1766,   // Kick (Rogue)
+  57994,  // Wind Shear (Shaman)
+  6552,   // Pummel (Warrior)
+  119910, // Spell Lock (Warlock Felhunter)
 ]);
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const SEGMENT_TOLERANCE_MS    = 1500;  // max ms outside segment boundary to still match
-const PRE_DEATH_WINDOW_MS     = 8000;  // look back 8s before death for pre-death hits
-const PRE_DEATH_HIT_BUFFER_MS = 10000; // rolling buffer retention per target
-const PRE_DEATH_HIT_MAX       = 5;    // max pre-death hits to capture
-const DAMAGE_BUCKET_MS        = 1000; // 1-second buckets per V1.2 contract
+const SEGMENT_TOLERANCE_MS    = 1500;
+const PRE_DEATH_WINDOW_MS     = 8000;
+const PRE_DEATH_HIT_BUFFER_MS = 10000;
+const PRE_DEATH_HIT_MAX       = 5;
+const DAMAGE_BUCKET_MS        = 1000;
+
+// Spike thresholds (ChatGPT approved: hybrid)
+const SPIKE_THRESHOLD_ABSOLUTE = 80000;
+const SPIKE_THRESHOLD_PCT      = 0.30;
+const ESTIMATED_PLAYER_HP      = 800000; // conservative Season 1 baseline
+const SPIKE_THRESHOLD_RELATIVE = Math.floor(SPIKE_THRESHOLD_PCT * ESTIMATED_PLAYER_HP); // 240,000
 
 // ─── GUID helpers ─────────────────────────────────────────────────────────────
 
@@ -117,7 +113,6 @@ function isCreatureGuid(guid) {
   return typeof guid === "string" && guid.startsWith("Creature-");
 }
 
-// Extract NPC ID from Creature GUID: "Creature-0-XXXX-YYYY-ZZ-NPCID-XXXXXXXX"
 function npcIdFromGuid(guid) {
   if (!isCreatureGuid(guid)) return null;
   const parts = guid.split("-");
@@ -126,6 +121,39 @@ function npcIdFromGuid(guid) {
     return isNaN(id) ? null : id;
   }
   return null;
+}
+
+// ─── GUID → Class/Role/Spec Map Builder ───────────────────────────────────────
+// PRIMARY: Addon provides guid on player + partyMembers
+// FALLBACK: Spell-based detection (last resort only per ChatGPT ruling)
+
+function buildGuidMap(run) {
+  const guidToClass = new Map();
+  const guidToRole  = new Map();
+  const guidToSpec  = new Map();
+
+  // Seed from recording player
+  if (run.player) {
+    const pg = run.player.guid;
+    if (pg) {
+      guidToClass.set(pg, run.player.class || "UNKNOWN");
+      guidToRole.set(pg,  run.player.role  || "unknown");
+      guidToSpec.set(pg,  run.player.spec  || "");
+    }
+  }
+
+  // Seed from party members (V1.3: now includes guid field from addon)
+  if (Array.isArray(run.partyMembers)) {
+    for (const m of run.partyMembers) {
+      if (m.guid) {
+        guidToClass.set(m.guid, m.class || "UNKNOWN");
+        guidToRole.set(m.guid,  m.role  || "unknown");
+        guidToSpec.set(m.guid,  m.spec  || "");
+      }
+    }
+  }
+
+  return { guidToClass, guidToRole, guidToSpec };
 }
 
 // ─── Log line parsing ─────────────────────────────────────────────────────────
@@ -149,7 +177,6 @@ function splitLogLine(line) {
   return fields;
 }
 
-// Parse combat log wall-clock "MM/DD HH:MM:SS.mmm" → raw epoch ms (current year assumed)
 function parseLogTimestamp(ts) {
   try {
     const year = new Date().getFullYear();
@@ -168,78 +195,52 @@ function parseLogTimestamp(ts) {
 function assignToSegment(normalizedTs, segments) {
   if (!segments || segments.length === 0) return null;
 
-  // Stage 1: range match within tolerance
   for (const seg of segments) {
     const start = seg.startTs  - SEGMENT_TOLERANCE_MS;
-    const end   = seg.finishTs + SEGMENT_TOLERANCE_MS;
-    if (normalizedTs >= start && normalizedTs <= end) {
+    const end_  = seg.finishTs + SEGMENT_TOLERANCE_MS;
+    if (normalizedTs >= start && normalizedTs <= end_) {
       const distance = Math.max(0,
         normalizedTs < seg.startTs  ? seg.startTs  - normalizedTs :
         normalizedTs > seg.finishTs ? normalizedTs - seg.finishTs : 0
       );
-      return {
-        segmentId : seg.segmentId,
-        matchType : distance === 0 ? "exact" : "tolerance",
-        distanceMs: distance,
-      };
+      return { segmentId: seg.segmentId, matchType: distance === 0 ? "exact" : "tolerance", distanceMs: distance };
     }
   }
 
-  // Stage 2: nearest boundary fallback
-  let nearest = null;
-  let minDist = Infinity;
+  let nearest = null, minDist = Infinity;
   for (const seg of segments) {
-    const dist = Math.min(
-      Math.abs(normalizedTs - seg.startTs),
-      Math.abs(normalizedTs - seg.finishTs)
-    );
+    const dist = Math.min(Math.abs(normalizedTs - seg.startTs), Math.abs(normalizedTs - seg.finishTs));
     if (dist < minDist) { minDist = dist; nearest = seg; }
   }
-  if (nearest) {
-    return { segmentId: nearest.segmentId, matchType: "nearest", distanceMs: minDist };
-  }
-
+  if (nearest) return { segmentId: nearest.segmentId, matchType: "nearest", distanceMs: minDist };
   return { segmentId: null, matchType: "none", distanceMs: Infinity };
 }
 
 // ─── Main parser ──────────────────────────────────────────────────────────────
 
-/**
- * parseCombatLog({ run, combatLogLines, partyGuids })
- *
- * @param {object}   run             - Addon run object (V1.2 schema)
- * @param {string[]} combatLogLines  - Raw lines from WoWCombatLog.txt
- * @param {string[]} partyGuids      - Optional: known player GUIDs
- *
- * @returns {ParsedCombatEvidence}
- *   {
- *     clockOffsetMs, clockSyncConfidence,
- *     enrichedSegments[],
- *     capabilityFlags,
- *     parserDiagnostics
- *   }
- */
 function parseCombatLog({ run, combatLogLines, partyGuids = [] }) {
   const segments = run.combatSegments || [];
 
+  // ── Build GUID map (PRIMARY: addon-provided GUIDs) ──────────────────────────
+  const { guidToClass, guidToRole, guidToSpec } = buildGuidMap(run);
+  let playerGuid = run.player?.guid || null;
+
   // ── Diagnostics ──────────────────────────────────────────────────────────────
   const diag = {
-    totalLinesRead          : 0,
-    relevantEventsRead      : 0,
-    clockOffsetMs           : null,
-    clockSyncConfidence     : "unknown",
-    unmatchedEventCount     : 0,
-    eventsMatchedExactly    : 0,
-    eventsMatchedByTolerance: 0,
-    eventsMatchedByNearest  : 0,
+    totalLinesRead           : 0,
+    relevantEventsRead       : 0,
+    clockOffsetMs            : null,
+    clockSyncConfidence      : "unknown",
+    unmatchedEventCount      : 0,
+    eventsMatchedExactly     : 0,
+    eventsMatchedByTolerance : 0,
+    eventsMatchedByNearest   : 0,
   };
 
   // ── Clock sync ───────────────────────────────────────────────────────────────
-  // Addon startTs is already in ms (companion multiplied by 1000 from Lua seconds).
   const addonStartTs = run.startTs || 0;
   let clockOffsetMs  = 0;
 
-  // Find first relevant log line to compute global offset
   for (const rawLine of combatLogLines) {
     const spaceIdx = rawLine.indexOf("  ");
     if (spaceIdx < 0) continue;
@@ -249,10 +250,9 @@ function parseCombatLog({ run, combatLogLines, partyGuids = [] }) {
       break;
     }
   }
-
   diag.clockOffsetMs = clockOffsetMs;
 
-  // Confidence check: test first 20 events against first 2 segments
+  // Clock sync confidence check
   if (segments.length >= 1 && addonStartTs > 0) {
     let tested = 0, goodFit = 0;
     const testSegs = segments.slice(0, 2);
@@ -267,15 +267,13 @@ function parseCombatLog({ run, combatLogLines, partyGuids = [] }) {
       tested++;
     }
     const fitRate = tested > 0 ? goodFit / tested : 0;
-    diag.clockSyncConfidence =
-      fitRate >= 0.6 ? "high"   :
-      fitRate >= 0.3 ? "medium" : "low";
+    diag.clockSyncConfidence = fitRate >= 0.6 ? "high" : fitRate >= 0.3 ? "medium" : "low";
   } else {
     diag.clockSyncConfidence = addonStartTs === 0 ? "failed" : "medium";
   }
 
-  // ── Per-player rolling damage buffer (for pre-death hit windows) ─────────────
-  const damageBuffers = new Map(); // playerGuid → hit[]
+  // ── Per-player rolling damage buffer ─────────────────────────────────────────
+  const damageBuffers = new Map();
 
   function getDamageBuffer(guid) {
     if (!damageBuffers.has(guid)) damageBuffers.set(guid, []);
@@ -283,7 +281,7 @@ function parseCombatLog({ run, combatLogLines, partyGuids = [] }) {
   }
 
   function pushToDamageBuffer(guid, hit) {
-    const buf    = getDamageBuffer(guid);
+    const buf = getDamageBuffer(guid);
     buf.push(hit);
     const cutoff = hit.normalizedTs - PRE_DEATH_HIT_BUFFER_MS;
     while (buf.length > 0 && buf[0].normalizedTs < cutoff) buf.shift();
@@ -295,15 +293,17 @@ function parseCombatLog({ run, combatLogLines, partyGuids = [] }) {
   function getSegData(segmentId) {
     if (!segmentData.has(segmentId)) {
       segmentData.set(segmentId, {
-        deaths        : [],
-        cooldownEvents: [],
-        interrupts    : [],
-        enemyCasts    : [],
-        buckets       : new Map(), // bucketIdx → accumulator
-        deathCounter  : 0,
-        cdCounter     : 0,
-        intCounter    : 0,
-        ecCounter     : 0,
+        deaths         : [],
+        cooldownEvents : [],
+        interrupts     : [],
+        enemyCasts     : [],
+        spikes         : [],
+        buckets        : new Map(),
+        deathCounter   : 0,
+        cdCounter      : 0,
+        intCounter     : 0,
+        ecCounter      : 0,
+        spikeCounter   : 0,
       });
     }
     return segmentData.get(segmentId);
@@ -319,31 +319,49 @@ function parseCombatLog({ run, combatLogLines, partyGuids = [] }) {
       segData.buckets.set(bucketIdx, {
         bucketIdx,
         bucketStartTs,
-        bucketEndTs          : bucketStartTs + DAMAGE_BUCKET_MS,
-        durationMs           : DAMAGE_BUCKET_MS,
-        partyDamageTaken     : 0,
-        tankDamageTaken      : 0,
-        healerDamageTaken    : 0,
-        dpsDamageTaken       : 0,
-        partyHealingReceived : 0,
-        tankHealingReceived  : 0,
-        deathCountInBucket   : 0,
+        bucketEndTs            : bucketStartTs + DAMAGE_BUCKET_MS,
+        durationMs             : DAMAGE_BUCKET_MS,
+        partyDamageTaken       : 0,
+        tankDamageTaken        : 0,
+        healerDamageTaken      : 0,
+        dpsDamageTaken         : 0,
+        partyHealingReceived   : 0,
+        tankHealingReceived    : 0,
+        partyOverhealing       : 0,
+        tankOverhealing        : 0,
+        deathCountInBucket     : 0,
       });
     }
     return segData.buckets.get(bucketIdx);
   }
 
-  // ── GUID → class/role maps (populated as we see casts) ──────────────────────
-  const guidToClass = new Map();
-  const guidToRole  = new Map();
+  // ── Fallback GUID detection (spell-based — LAST RESORT ONLY) ─────────────────
+  // Only used if addon didn't provide guid on a party member
 
-  // Seed from player
-  // Player GUID will be detected from their first SPELL_CAST_SUCCESS in the log
-  if (run.player?.class && run.player?.role) {
-    // We'll seed the player GUID once detected below
+  function tryDetectPlayerFromCast(sourceGuid, spellId) {
+    if (!isPlayerGuid(sourceGuid)) return;
+    if (guidToClass.has(sourceGuid)) return; // already known
+
+    // Detect recording player's GUID on first player cast
+    if (!playerGuid) {
+      playerGuid = sourceGuid;
+      if (run.player?.class) guidToClass.set(sourceGuid, run.player.class);
+      if (run.player?.role)  guidToRole.set(sourceGuid,  run.player.role);
+      if (run.player?.spec)  guidToSpec.set(sourceGuid,  run.player.spec);
+      return;
+    }
+
+    // For unknown party GUIDs: try to match against unmatched partyMembers by class
+    // This is fallback — we try to infer from defensive/interrupt spells
+    if (DEFENSIVE_CD_SPELLS.has(spellId) || INTERRUPT_SPELLS.has(spellId)) {
+      // We know this GUID is a player but we don't know their class
+      // Mark as detected but unresolved — will attempt match after parse
+      if (!guidToClass.has(sourceGuid)) {
+        guidToClass.set(sourceGuid, "DETECTED");
+        guidToRole.set(sourceGuid, "unknown");
+      }
+    }
   }
-
-  let playerGuid = null;
 
   // ── Event processors ─────────────────────────────────────────────────────────
 
@@ -356,52 +374,50 @@ function parseCombatLog({ run, combatLogLines, partyGuids = [] }) {
     segData.deathCounter++;
     const deathId = `${run.runId || "unk"}-${segmentId}-d${segData.deathCounter}`;
 
-    // Extract pre-death hit window
     const buf        = getDamageBuffer(destGuid);
     const cutoff     = normalizedTs - PRE_DEATH_WINDOW_MS;
     const windowHits = buf.filter(h => h.normalizedTs >= cutoff);
     const preDeathHits = windowHits.slice(-PRE_DEATH_HIT_MAX).map(h => ({
-      normalizedTs : h.normalizedTs,
-      offsetMs     : seg ? h.normalizedTs - seg.startTs : 0,
-      spellId      : h.spellId,
-      spellName    : h.spellName,
-      amount       : h.amount,
-      overkill     : h.overkill,
-      school       : h.school,
-      sourceNpcId  : h.sourceNpcId,
-      sourceNpcName: h.sourceNpcName,
+      normalizedTs  : h.normalizedTs,
+      offsetMs      : seg ? h.normalizedTs - seg.startTs : 0,
+      spellId       : h.spellId,
+      spellName     : h.spellName,
+      amount        : h.amount,
+      overkill      : h.overkill,
+      school        : h.school,
+      sourceNpcId   : h.sourceNpcId,
+      sourceNpcName : h.sourceNpcName,
     }));
 
-    // Killing blow: last hit with overkill > 0, else last hit
     const kbHit = [...windowHits].reverse().find(h => h.overkill > 0)
                || windowHits[windowHits.length - 1]
                || null;
 
     const killingBlow = kbHit ? {
-      spellId      : kbHit.spellId,
-      spellName    : kbHit.spellName,
-      amount       : kbHit.amount,
-      overkill     : kbHit.overkill,
-      school       : kbHit.school,
-      sourceNpcId  : kbHit.sourceNpcId,
-      sourceNpcName: kbHit.sourceNpcName,
+      spellId       : kbHit.spellId,
+      spellName     : kbHit.spellName,
+      amount        : kbHit.amount,
+      overkill      : kbHit.overkill,
+      school        : kbHit.school,
+      sourceNpcId   : kbHit.sourceNpcId,
+      sourceNpcName : kbHit.sourceNpcName,
     } : null;
 
     segData.deaths.push({
       deathId,
       segmentId,
-      deathTs             : normalizedTs,
-      offsetMs            : seg ? normalizedTs - seg.startTs : 0,
-      playerGuid          : destGuid,
-      class               : guidToClass.get(destGuid) || "UNKNOWN",
-      role                : guidToRole.get(destGuid)  || "unknown",
-      firstDeathInPull    : false, // set during assembly
+      deathTs              : normalizedTs,
+      offsetMs             : seg ? normalizedTs - seg.startTs : 0,
+      playerGuid           : destGuid,
+      class                : guidToClass.get(destGuid) || "UNKNOWN",
+      role                 : guidToRole.get(destGuid)  || "unknown",
+      spec                 : guidToSpec.get(destGuid)  || "",
+      firstDeathInPull     : false,
       killingBlow,
       preDeathHits,
-      defensiveCastHistory: [], // enriched by runAssembler from cooldownEvents
+      defensiveCastHistory : [],
     });
 
-    // Increment death in bucket
     if (seg) {
       const bIdx   = Math.floor((normalizedTs - seg.startTs) / DAMAGE_BUCKET_MS);
       const bucket = ensureBucket(segData, seg, bIdx);
@@ -422,7 +438,6 @@ function parseCombatLog({ run, combatLogLines, partyGuids = [] }) {
       overkill = parseInt(fields[10], 10) || 0;
       school   = fields[11] || "1";
     } else {
-      // SPELL_DAMAGE / SPELL_PERIODIC_DAMAGE
       spellId   = parseInt(fields[9],  10) || 0;
       spellName = (fields[10] || "").replace(/"/g, "");
       school    = fields[11] || "0";
@@ -447,14 +462,63 @@ function parseCombatLog({ run, combatLogLines, partyGuids = [] }) {
       const role    = guidToRole.get(destGuid) || "unknown";
       bucket.partyDamageTaken += amount;
       if (role === "tank")   bucket.tankDamageTaken   += amount;
-      if (role === "healer") bucket.healerDamageTaken += amount;
-      if (role === "dps")    bucket.dpsDamageTaken    += amount;
+      if (role === "healer") bucket.healerDamageTaken  += amount;
+      if (role === "dps")    bucket.dpsDamageTaken     += amount;
+    }
+
+    // ── Spike detection (hybrid threshold — ChatGPT approved) ──────────────────
+    if (amount >= SPIKE_THRESHOLD_ABSOLUTE || amount >= SPIKE_THRESHOLD_RELATIVE) {
+      const seg2    = getSegment(segmentId);
+      const segData = getSegData(segmentId);
+      segData.spikeCounter++;
+      segData.spikes.push({
+        spikeId       : `${run.runId || "unk"}-${segmentId}-sp${segData.spikeCounter}`,
+        segmentId,
+        spikeTs       : normalizedTs,
+        offsetMs      : seg2 ? normalizedTs - seg2.startTs : 0,
+        damage        : amount,
+        targetGuid    : destGuid,
+        targetRole    : guidToRole.get(destGuid) || "unknown",
+        spellId,
+        spellName,
+        school,
+        sourceNpcId,
+        sourceNpcName,
+      });
+    }
+  }
+
+  // ── Healing received (V1.3 — effective healing + overhealing) ─────────────────
+
+  function processIncomingHealing(fields, normalizedTs, segmentId) {
+    const destGuid = fields[5] || "";
+    if (!isPlayerGuid(destGuid)) return;
+
+    const spellId     = parseInt(fields[9],  10) || 0;
+    const spellName   = (fields[10] || "").replace(/"/g, "");
+    const amount      = parseInt(fields[12], 10) || 0;
+    const overhealing = parseInt(fields[13], 10) || 0;
+    const effective   = Math.max(0, amount - overhealing);
+
+    const seg = getSegment(segmentId);
+    if (seg && (effective > 0 || overhealing > 0)) {
+      const segData = getSegData(segmentId);
+      const bIdx    = Math.floor((normalizedTs - seg.startTs) / DAMAGE_BUCKET_MS);
+      const bucket  = ensureBucket(segData, seg, bIdx);
+      const role    = guidToRole.get(destGuid) || "unknown";
+
+      bucket.partyHealingReceived += effective;
+      bucket.partyOverhealing     += overhealing;
+
+      if (role === "tank") {
+        bucket.tankHealingReceived += effective;
+        bucket.tankOverhealing     += overhealing;
+      }
     }
   }
 
   function processPlayerCast(fields, normalizedTs, segmentId) {
     const sourceGuid = fields[1] || "";
-    const sourceName = (fields[2] || "").replace(/"/g, "");
     const destGuid   = fields[5] || "";
     const destName   = (fields[6] || "").replace(/"/g, "");
     const spellId    = parseInt(fields[9],  10) || 0;
@@ -462,12 +526,8 @@ function parseCombatLog({ run, combatLogLines, partyGuids = [] }) {
 
     if (!isPlayerGuid(sourceGuid)) return;
 
-    // Detect recording player's GUID on first cast
-    if (!playerGuid) {
-      playerGuid = sourceGuid;
-      if (run.player?.class) guidToClass.set(sourceGuid, run.player.class);
-      if (run.player?.role)  guidToRole.set(sourceGuid,  run.player.role);
-    }
+    // Fallback GUID detection (last resort — only if addon didn't provide guid)
+    tryDetectPlayerFromCast(sourceGuid, spellId);
 
     const seg     = getSegment(segmentId);
     const segData = getSegData(segmentId);
@@ -476,15 +536,16 @@ function parseCombatLog({ run, combatLogLines, partyGuids = [] }) {
     if (DEFENSIVE_CD_SPELLS.has(spellId)) {
       segData.cdCounter++;
       segData.cooldownEvents.push({
-        cooldownEventId: `${run.runId || "unk"}-${segmentId}-cd${segData.cdCounter}`,
+        cooldownEventId : `${run.runId || "unk"}-${segmentId}-cd${segData.cdCounter}`,
         segmentId,
-        castTs  : normalizedTs,
-        offsetMs: seg ? normalizedTs - seg.startTs : 0,
+        castTs   : normalizedTs,
+        offsetMs : seg ? normalizedTs - seg.startTs : 0,
         spellId,
         spellName,
         sourceGuid,
-        class   : guidToClass.get(sourceGuid) || "UNKNOWN",
-        role    : guidToRole.get(sourceGuid)  || "unknown",
+        class    : guidToClass.get(sourceGuid) || "UNKNOWN",
+        role     : guidToRole.get(sourceGuid)  || "unknown",
+        spec     : guidToSpec.get(sourceGuid)  || "",
       });
     }
 
@@ -492,19 +553,19 @@ function parseCombatLog({ run, combatLogLines, partyGuids = [] }) {
     if (INTERRUPT_SPELLS.has(spellId)) {
       segData.intCounter++;
       segData.interrupts.push({
-        interruptId   : `${run.runId || "unk"}-${segmentId}-int${segData.intCounter}`,
+        interruptId    : `${run.runId || "unk"}-${segmentId}-int${segData.intCounter}`,
         segmentId,
-        interruptTs   : normalizedTs,
-        offsetMs      : seg ? normalizedTs - seg.startTs : 0,
+        interruptTs    : normalizedTs,
+        offsetMs       : seg ? normalizedTs - seg.startTs : 0,
         sourceGuid,
-        sourceClass   : guidToClass.get(sourceGuid) || "UNKNOWN",
-        sourceRole    : guidToRole.get(sourceGuid)  || "unknown",
-        targetGuid    : destGuid,
-        targetNpcId   : npcIdFromGuid(destGuid),
-        targetNpcName : destName || null,
+        sourceClass    : guidToClass.get(sourceGuid) || "UNKNOWN",
+        sourceRole     : guidToRole.get(sourceGuid)  || "unknown",
+        targetGuid     : destGuid,
+        targetNpcId    : npcIdFromGuid(destGuid),
+        targetNpcName  : destName || null,
         spellId,
         spellName,
-        result        : "success",
+        result         : "success",
       });
     }
   }
@@ -522,17 +583,17 @@ function parseCombatLog({ run, combatLogLines, partyGuids = [] }) {
     const segData = getSegData(segmentId);
     segData.ecCounter++;
     segData.enemyCasts.push({
-      enemyCastId       : `${run.runId || "unk"}-${segmentId}-ec${segData.ecCounter}`,
+      enemyCastId        : `${run.runId || "unk"}-${segmentId}-ec${segData.ecCounter}`,
       segmentId,
-      castStartTs       : normalizedTs,
-      castStartOffsetMs : seg ? normalizedTs - seg.startTs : 0,
-      enemyGuid         : sourceGuid,
-      npcId             : npcIdFromGuid(sourceGuid),
-      npcName           : sourceName || null,
+      castStartTs        : normalizedTs,
+      castStartOffsetMs  : seg ? normalizedTs - seg.startTs : 0,
+      enemyGuid          : sourceGuid,
+      npcId              : npcIdFromGuid(sourceGuid),
+      npcName            : sourceName || null,
       spellId,
       spellName,
-      castOutcome       : event === "SPELL_CAST_SUCCESS" ? "success" : "casting",
-      interruptAttempted: false, // runAssembler sets this by cross-referencing interrupts
+      castOutcome        : event === "SPELL_CAST_SUCCESS" ? "success" : "casting",
+      interruptAttempted : false,
     });
   }
 
@@ -545,6 +606,8 @@ function parseCombatLog({ run, combatLogLines, partyGuids = [] }) {
     "SPELL_PERIODIC_DAMAGE",
     "SPELL_CAST_SUCCESS",
     "SPELL_CAST_START",
+    "SPELL_HEAL",
+    "SPELL_PERIODIC_HEAL",
   ]);
 
   for (const rawLine of combatLogLines) {
@@ -595,6 +658,10 @@ function parseCombatLog({ run, combatLogLines, partyGuids = [] }) {
       case "SPELL_CAST_START":
         processEnemyCast(fields, normalizedTs, segmentId, event);
         break;
+      case "SPELL_HEAL":
+      case "SPELL_PERIODIC_HEAL":
+        processIncomingHealing(fields, normalizedTs, segmentId);
+        break;
     }
   }
 
@@ -605,15 +672,16 @@ function parseCombatLog({ run, combatLogLines, partyGuids = [] }) {
     const sorted   = [...deaths].sort((a, b) => a.deathTs - b.deathTs);
     const timeSpan = sorted[sorted.length - 1].deathTs - sorted[0].deathTs;
     return {
-      totalDeaths: deaths.length,
-      isWipe     : deaths.length >= 5,
-      timeSpanMs : timeSpan,
-      sequence   : sorted.map(d => ({
-        deathId         : d.deathId,
-        offsetMs        : d.offsetMs,
-        role            : d.role,
-        class           : d.class,
-        killingSpellName: d.killingBlow?.spellName || null,
+      totalDeaths : deaths.length,
+      isWipe      : deaths.length >= 5,
+      timeSpanMs  : timeSpan,
+      sequence    : sorted.map(d => ({
+        deathId          : d.deathId,
+        offsetMs         : d.offsetMs,
+        role             : d.role,
+        class            : d.class,
+        spec             : d.spec,
+        killingSpellName : d.killingBlow?.spellName || null,
       })),
     };
   }
@@ -627,46 +695,82 @@ function parseCombatLog({ run, combatLogLines, partyGuids = [] }) {
 
     if (!data) {
       enrichedSegments.push({
-        segmentId     : seg.segmentId,
-        deaths        : [],
-        cooldownEvents: [],
-        interrupts    : [],
-        enemyCasts    : [],
-        damageBuckets : [],
-        deathChain    : null,
+        segmentId      : seg.segmentId,
+        deaths         : [],
+        cooldownEvents : [],
+        interrupts     : [],
+        enemyCasts     : [],
+        spikes         : [],
+        damageBuckets  : [],
+        deathChain     : null,
       });
       continue;
     }
 
-    // Sort deaths chronologically and mark first
     data.deaths.sort((a, b) => a.deathTs - b.deathTs);
     if (data.deaths.length > 0) data.deaths[0].firstDeathInPull = true;
 
     const damageBuckets = [...data.buckets.values()]
       .sort((a, b) => a.bucketIdx - b.bucketIdx)
       .map(b => ({
-        segmentId            : seg.segmentId,
-        bucketStartTs        : b.bucketStartTs,
-        bucketEndTs          : b.bucketEndTs,
-        durationMs           : b.durationMs,
-        partyDamageTaken     : b.partyDamageTaken,
-        tankDamageTaken      : b.tankDamageTaken,
-        healerDamageTaken    : b.healerDamageTaken,
-        dpsDamageTaken       : b.dpsDamageTaken,
-        partyHealingReceived : b.partyHealingReceived,
-        tankHealingReceived  : b.tankHealingReceived,
-        deathCountInBucket   : b.deathCountInBucket,
+        segmentId              : seg.segmentId,
+        bucketStartTs          : b.bucketStartTs,
+        bucketEndTs            : b.bucketEndTs,
+        durationMs             : b.durationMs,
+        partyDamageTaken       : b.partyDamageTaken,
+        tankDamageTaken        : b.tankDamageTaken,
+        healerDamageTaken      : b.healerDamageTaken,
+        dpsDamageTaken         : b.dpsDamageTaken,
+        partyHealingReceived   : b.partyHealingReceived,
+        tankHealingReceived    : b.tankHealingReceived,
+        partyOverhealing       : b.partyOverhealing,
+        tankOverhealing        : b.tankOverhealing,
+        deathCountInBucket     : b.deathCountInBucket,
       }));
 
     enrichedSegments.push({
-      segmentId     : seg.segmentId,
-      deaths        : data.deaths,
-      cooldownEvents: data.cooldownEvents,
-      interrupts    : data.interrupts,
-      enemyCasts    : data.enemyCasts,
+      segmentId      : seg.segmentId,
+      deaths         : data.deaths,
+      cooldownEvents : data.cooldownEvents,
+      interrupts     : data.interrupts,
+      enemyCasts     : data.enemyCasts,
+      spikes         : data.spikes,
       damageBuckets,
-      deathChain    : buildDeathChain(data.deaths),
+      deathChain     : buildDeathChain(data.deaths),
     });
+  }
+
+  // ── Data quality output (ChatGPT required) ──────────────────────────────────
+
+  const allPlayerGuidsDetected = new Set();
+  for (const [guid] of guidToClass) {
+    if (isPlayerGuid(guid)) allPlayerGuidsDetected.add(guid);
+  }
+  const guidsWithRole = [...allPlayerGuidsDetected].filter(g => {
+    const r = guidToRole.get(g);
+    return r && r !== "unknown";
+  });
+  const guidsWithClass = [...allPlayerGuidsDetected].filter(g => {
+    const c = guidToClass.get(g);
+    return c && c !== "UNKNOWN" && c !== "DETECTED";
+  });
+
+  const totalRelevant = diag.relevantEventsRead || 1;
+  const matchedPct = (diag.eventsMatchedExactly + diag.eventsMatchedByTolerance) / totalRelevant;
+
+  const dataQuality = {
+    eventCoverage              : matchedPct >= 0.7 ? "high" : matchedPct >= 0.4 ? "medium" : "low",
+    guidCompleteness           : guidsWithClass.length,
+    totalPlayerGuidsDetected   : allPlayerGuidsDetected.size,
+    totalPlayerGuidsWithRole   : guidsWithRole.length,
+    totalPlayerGuidsWithClass  : guidsWithClass.length,
+    missingFields              : [],
+  };
+
+  if (guidsWithClass.length < 5) dataQuality.missingFields.push("incomplete_guid_class_mapping");
+  if (guidsWithRole.length < 5)  dataQuality.missingFields.push("incomplete_guid_role_mapping");
+  if (diag.clockSyncConfidence === "low" || diag.clockSyncConfidence === "failed") {
+    dataQuality.missingFields.push("clock_sync_unreliable");
   }
 
   // ── Capability flags ─────────────────────────────────────────────────────────
@@ -675,23 +779,25 @@ function parseCombatLog({ run, combatLogLines, partyGuids = [] }) {
   const allBuckets = enrichedSegments.flatMap(s => s.damageBuckets);
   const allInts    = enrichedSegments.flatMap(s => s.interrupts);
   const allECasts  = enrichedSegments.flatMap(s => s.enemyCasts);
+  const allSpikes  = enrichedSegments.flatMap(s => s.spikes);
 
   const capabilityFlags = {
-    hasDeathContext : allDeaths.length > 0,
-    hasPreDeathHits : allDeaths.some(d => d.preDeathHits?.length > 0),
-    hasDamageBuckets: allBuckets.length > 0,
-    hasInterrupts   : allInts.length > 0,
-    hasEnemyCasts   : allECasts.length > 0,
+    hasDeathContext  : allDeaths.length > 0,
+    hasPreDeathHits  : allDeaths.some(d => d.preDeathHits?.length > 0),
+    hasDamageBuckets : allBuckets.length > 0,
+    hasHealingData   : allBuckets.some(b => b.partyHealingReceived > 0),
+    hasInterrupts    : allInts.length > 0,
+    hasEnemyCasts    : allECasts.length > 0,
+    hasSpikes        : allSpikes.length > 0,
   };
-
-  diag.clockSyncConfidence = diag.clockSyncConfidence;
 
   return {
     clockOffsetMs,
-    clockSyncConfidence: diag.clockSyncConfidence,
+    clockSyncConfidence : diag.clockSyncConfidence,
     enrichedSegments,
     capabilityFlags,
-    parserDiagnostics: diag,
+    dataQuality,
+    parserDiagnostics   : diag,
   };
 }
 
@@ -701,11 +807,8 @@ const { EventEmitter } = require("events");
 class CombatLogParser extends EventEmitter {
   constructor() {
     super();
-    this._playerName  = null;
-    this._lines       = [];
-    this._segmentOpen = false;
-    this._segStartMs  = 0;
-    this._events      = [];
+    this._playerName = null;
+    this._lines      = [];
   }
 
   setPlayerName(name) {
@@ -714,13 +817,8 @@ class CombatLogParser extends EventEmitter {
 
   parseLine(line) {
     if (!line || typeof line !== "string") return;
-
-    // Detect ENCOUNTER_START / ZONE_CHANGE as pull boundaries
-    // For now: buffer lines and emit pullEnd on ENCOUNTER_END or regen boundary
     this._lines.push(line);
 
-    // Simple regen detection: SPELL_ENERGIZE on player after combat = pull end
-    // This is a best-effort wrapper — real parsing happens in parseCombatLog()
     if (line.includes("ENCOUNTER_END") || line.includes("ZONE_CHANGE")) {
       this._flushPull();
     }
@@ -729,7 +827,6 @@ class CombatLogParser extends EventEmitter {
   _flushPull() {
     if (this._lines.length === 0) return;
     const lines = this._lines.splice(0);
-    // Emit raw lines as a pull object for the assembler
     this.emit("pullEnd", { rawLines: lines, playerName: this._playerName });
   }
 }

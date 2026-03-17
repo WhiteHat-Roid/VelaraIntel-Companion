@@ -19,7 +19,7 @@
       justify-content: space-between;
       padding: 8px 16px;
       background: #0A0E13;
-      border-bottom: 1px solid #2A3A4A;
+      border-bottom: 1px solid #1A1A2E;
       -webkit-app-region: drag;
     }
     .titlebar-left {
@@ -60,7 +60,7 @@
       width: 28px;
       height: 28px;
       background: rgba(200,212,220,0.04);
-      border: 1px solid #2A3A4A;
+      border: 1px solid #1A1A2E;
       border-radius: 2px;
       color: #556677;
       font-size: 14px;
@@ -73,7 +73,7 @@
     .titlebar-btn.close:hover { color: #C0392B; border-color: rgba(192,57,43,0.4); }
 
     /* Tabs */
-    .tabs { display: flex; border-bottom: 1px solid #2A3A4A; }
+    .tabs { display: flex; border-bottom: 1px solid #1A1A2E; }
     .tab {
       flex: 1;
       padding: 10px;
@@ -88,9 +88,9 @@
       transition: all 0.15s;
     }
     .tab.active {
-      color: #E8A030;
-      border-bottom-color: #E8A030;
-      background: rgba(232,160,48,0.06);
+      color: #7B2FBE;
+      border-bottom-color: #7B2FBE;
+      background: rgba(123,47,190,0.06);
     }
 
     /* Content */
@@ -100,7 +100,7 @@
     /* Status cards */
     .status-card {
       background: #0D1117;
-      border: 1px solid #2A3A4A;
+      border: 1px solid #1A1A2E;
       border-radius: 4px;
       padding: 14px;
       margin-bottom: 12px;
@@ -114,13 +114,13 @@
     }
     .status-value { font-size: 16px; font-weight: 700; }
     .status-value.ok  { color: #27AE60; }
-    .status-value.warn { color: #E8A030; }
+    .status-value.warn { color: #C9A84C; }
     .status-value.err  { color: #C0392B; }
 
     /* Run history card */
     .run-history-card {
       background: #0D1117;
-      border: 1px solid #2A3A4A;
+      border: 1px solid #1A1A2E;
       border-radius: 4px;
       padding: 14px;
       margin-bottom: 12px;
@@ -139,7 +139,7 @@
     .custom-select-trigger {
       width: 100%;
       background: #080A0C;
-      border: 1px solid #2A3A4A;
+      border: 1px solid #1A1A2E;
       border-radius: 2px;
       color: #C8D4DC;
       font-family: 'Segoe UI', sans-serif;
@@ -153,7 +153,7 @@
       transition: border-color 0.15s;
     }
     .custom-select-trigger:hover,
-    .custom-select-trigger.open { border-color: #E8A030; }
+    .custom-select-trigger.open { border-color: #7B2FBE; }
     .custom-select-arrow {
       font-size: 9px;
       color: #556677;
@@ -169,7 +169,7 @@
       left: 0;
       right: 0;
       background: #0D1117;
-      border: 1px solid #E8A030;
+      border: 1px solid #7B2FBE;
       border-top: none;
       border-radius: 0 0 2px 2px;
       z-index: 999;
@@ -182,19 +182,19 @@
       font-size: 12px;
       color: #C8D4DC;
       cursor: pointer;
-      border-bottom: 1px solid rgba(42,58,74,0.5);
+      border-bottom: 1px solid rgba(26,26,46,0.5);
     }
     .custom-select-option:last-child { border-bottom: none; }
-    .custom-select-option:hover { background: rgba(232,160,48,0.1); color: #E8A030; }
-    .custom-select-option.selected { background: rgba(232,160,48,0.08); color: #E8A030; }
+    .custom-select-option:hover { background: rgba(123,47,190,0.1); color: #7B2FBE; }
+    .custom-select-option.selected { background: rgba(123,47,190,0.08); color: #7B2FBE; }
     .custom-select-option.empty { color: #556677; cursor: default; }
     .custom-select-option.empty:hover { background: none; color: #556677; }
 
     /* Run detail card */
     .run-card {
       background: #0D1117;
-      border: 1px solid #2A3A4A;
-      border-left: 3px solid #E8A030;
+      border: 1px solid #1A1A2E;
+      border-left: 3px solid #C9A84C;
       border-radius: 4px;
       padding: 14px;
       margin-bottom: 12px;
@@ -205,7 +205,7 @@
       text-transform: uppercase;
       color: #EEF2F5;
     }
-    .run-key { color: #E8A030; margin-left: 6px; }
+    .run-key { color: #C9A84C; margin-left: 6px; }
     .run-stats { display: flex; gap: 16px; margin-top: 8px; }
     .run-stat-label { font-size: 8px; letter-spacing: 0.12em; text-transform: uppercase; color: #556677; }
     .run-stat-val { font-size: 16px; font-weight: 700; }
@@ -222,7 +222,7 @@
     .field-input {
       width: 100%;
       background: #0D1117;
-      border: 1px solid #2A3A4A;
+      border: 1px solid #1A1A2E;
       border-radius: 2px;
       color: #C8D4DC;
       font-family: 'Segoe UI', sans-serif;
@@ -230,13 +230,13 @@
       padding: 8px 10px;
       outline: none;
     }
-    .field-input:focus { border-color: #E8A030; }
+    .field-input:focus { border-color: #7B2FBE; }
     .field-row { display: flex; gap: 8px; align-items: flex-end; }
     .field-row .field-input { flex: 1; }
     .browse-btn {
       padding: 8px 14px;
       background: rgba(200,212,220,0.04);
-      border: 1px solid #2A3A4A;
+      border: 1px solid #1A1A2E;
       color: #C8D4DC;
       font-size: 11px;
       cursor: pointer;
@@ -251,12 +251,12 @@
       align-items: center;
       justify-content: space-between;
       padding: 10px 0;
-      border-bottom: 1px solid rgba(42,58,74,0.4);
+      border-bottom: 1px solid rgba(26,26,46,0.4);
     }
     .toggle-label { font-size: 12px; color: #C8D4DC; }
     .toggle {
       width: 36px; height: 20px;
-      background: #2A3A4A;
+      background: #1A1A2E;
       border-radius: 10px;
       cursor: pointer;
       position: relative;
@@ -277,9 +277,9 @@
     .btn {
       width: 100%;
       padding: 10px;
-      border: 1px solid #E8A030;
-      background: rgba(232,160,48,0.1);
-      color: #E8A030;
+      border: 1px solid #7B2FBE;
+      background: rgba(123,47,190,0.1);
+      color: #7B2FBE;
       font-size: 12px;
       font-weight: 600;
       letter-spacing: 0.08em;
@@ -289,7 +289,7 @@
       transition: all 0.15s;
       margin-top: 8px;
     }
-    .btn:hover { background: rgba(232,160,48,0.2); }
+    .btn:hover { background: rgba(123,47,190,0.2); }
 
     .save-status {
       font-size: 10px;
@@ -494,7 +494,7 @@
             </div>
             <div>
               <div class="run-stat-label">Wipes</div>
-              <div class="run-stat-val" style="color:#E8A030">${run.wipes ? run.wipes.length : 0}</div>
+              <div class="run-stat-val" style="color:#C9A84C">${run.wipes ? run.wipes.length : 0}</div>
             </div>
           </div>
         </div>

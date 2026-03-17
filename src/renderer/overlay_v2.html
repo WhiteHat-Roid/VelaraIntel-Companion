@@ -26,7 +26,7 @@
       align-items: center;
       justify-content: center;
       position: relative;
-      border: 2px solid #2A3A4A;
+      border: 2px solid #1A1A2E;
       transition: border-color 0.6s ease, box-shadow 0.6s ease;
     }
 
@@ -41,7 +41,7 @@
 
     /* ── Idle (default) ── */
     #badge.state-idle {
-      border-color: #2A3A4A;
+      border-color: #1A1A2E;
       box-shadow: none;
     }
     #badge.state-idle .shield {
@@ -77,28 +77,28 @@
 
     /* ── Watching (amber) ── */
     #badge.state-watching {
-      border-color: #E8A030;
+      border-color: #7B2FBE;
       box-shadow:
-        0 0 12px rgba(232, 160, 48, 0.4),
-        0 0 28px rgba(232, 160, 48, 0.15),
-        inset 0 0 10px rgba(232, 160, 48, 0.08);
+        0 0 12px rgba(123, 47, 190, 0.4),
+        0 0 28px rgba(123, 47, 190, 0.15),
+        inset 0 0 10px rgba(123, 47, 190, 0.08);
       animation: pulse-watching 3s ease-in-out infinite;
     }
     #badge.state-watching .shield {
-      filter: brightness(1) drop-shadow(0 0 6px rgba(232, 160, 48, 0.5));
+      filter: brightness(1) drop-shadow(0 0 6px rgba(123, 47, 190, 0.5));
     }
     @keyframes pulse-watching {
       0%, 100% {
         box-shadow:
-          0 0 12px rgba(232, 160, 48, 0.4),
-          0 0 28px rgba(232, 160, 48, 0.15),
-          inset 0 0 10px rgba(232, 160, 48, 0.08);
+          0 0 12px rgba(123, 47, 190, 0.4),
+          0 0 28px rgba(123, 47, 190, 0.15),
+          inset 0 0 10px rgba(123, 47, 190, 0.08);
       }
       50% {
         box-shadow:
-          0 0 18px rgba(232, 160, 48, 0.55),
-          0 0 40px rgba(232, 160, 48, 0.25),
-          inset 0 0 14px rgba(232, 160, 48, 0.12);
+          0 0 18px rgba(123, 47, 190, 0.55),
+          0 0 40px rgba(123, 47, 190, 0.25),
+          inset 0 0 14px rgba(123, 47, 190, 0.12);
       }
     }
 
