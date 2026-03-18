@@ -1,11 +1,15 @@
-// VelaraIntel Companion — Electron Main Process v0.4.3
-// Added mapId > 0 guard — silently skips stale runs with mapId 0.
+// VelaraIntel Companion — Electron Main Process v0.5.0
+// V0.5.0: Removed API key requirement (ingest endpoint is now public).
+//         Added clientId — random UUID generated on first launch, stored locally.
+//         Sent as X-Client-Id header for per-client rate tracking only.
+//         Players never see or configure any credentials.
 
 const {
   app, BrowserWindow, Tray, Menu, globalShortcut,
   ipcMain, dialog, nativeImage, shell,
 } = require("electron");
 const path = require("path");
+const crypto = require("crypto");
 const Store = require("electron-store");
 
 const { FileWatcher }      = require("../services/fileWatcher");
@@ -17,15 +21,27 @@ const { RunAssembler }     = require("../services/runAssembler");
 
 const store = new Store({
   defaults: {
-    wowPath      : "",
-    accountName  : "",
-    apiKey       : "",
-    hotkey       : "CommandOrControl+Shift+V",
-    autoUpload   : true,
+    wowPath       : "",
+    accountName   : "",
+    clientId      : "",   // generated on first launch, never shown to player
+    hotkey        : "CommandOrControl+Shift+V",
+    autoUpload    : true,
     startMinimized: false,
-    overlayBounds: { x: 100, y: 100, width: 100, height: 100 },
+    overlayBounds : { x: 100, y: 100, width: 100, height: 100 },
   },
 });
+
+// ── clientId — generate once on first launch ──────────────────────────────────
+// Random UUID stored locally. Sent as X-Client-Id header.
+// Not a user identifier — just a stable per-install token for rate tracking.
+function ensureClientId() {
+  let id = store.get("clientId");
+  if (!id || typeof id !== "string" || id.length < 8) {
+    id = crypto.randomUUID();
+    store.set("clientId", id);
+  }
+  return id;
+}
 
 let dashboardWindow  = null;
 let overlayWindow    = null;
@@ -88,7 +104,7 @@ function buildV12Payload(latest) {
 
   return {
     addon    : "VelaraIntel",
-    v        : latest.addonVersion || "0.5.3",
+    v        : latest.addonVersion || "0.7.1",
     uploadTs : Date.now(),
     clockOffsetMs       : null,
     clockSyncConfidence : "unknown",
@@ -102,7 +118,8 @@ function buildV12Payload(latest) {
       finishTs      : finishTs,
       durationMs    : finishTs > startTs ? finishTs - startTs : null,
       runType       : latest.runType      || "private",
-      addonVersion  : latest.addonVersion || "0.5.3",
+      runMode       : latest.runMode      || "standard",
+      addonVersion  : latest.addonVersion || "0.7.1",
       exportVersion : latest.exportVersion || "1.0.0",
       telemetryCapabilities: latest.telemetryCapabilities || {
         hasCombatSegments      : false,
@@ -115,7 +132,7 @@ function buildV12Payload(latest) {
         hasEnemyHealthSnapshots: false,
         hasEnemyPositions      : false,
       },
-      player        : latest.player || { class: "UNKNOWN", role: "dps" },
+      player        : latest.player        || { class: "UNKNOWN", role: "dps" },
       partyMembers  : Array.isArray(latest.partyMembers)   ? latest.partyMembers   : [],
       pulls         : [],
       wipes         : [],
@@ -129,7 +146,7 @@ function buildV12Payload(latest) {
 function createDashboard() {
   if (dashboardWindow) { dashboardWindow.show(); dashboardWindow.focus(); return; }
   dashboardWindow = new BrowserWindow({
-    width: 480, height: 600, frame: false, resizable: false,
+    width: 480, height: 560, frame: false, resizable: false,
     backgroundColor: "#080A0C", show: false,
     webPreferences: {
       preload: path.join(__dirname, "preload-dashboard.js"),
@@ -251,14 +268,14 @@ function startSVWatcher() {
           const payload = buildV12Payload(latest);
           broadcast("run-update", latest);
 
-          if (store.get("autoUpload") && store.get("apiKey")) {
+          if (store.get("autoUpload")) {
             apiUploader.upload(payload).then((result) => {
               console.log("[Uploader] Result:", JSON.stringify(result));
               broadcast("upload-result", result);
               openRunInBrowser(result);
             });
           } else {
-            console.log("[SV] Auto-upload disabled or no API key — skipping");
+            console.log("[SV] Auto-upload disabled — skipping");
           }
         }
       }
@@ -297,13 +314,13 @@ function startCombatLogWatcher() {
 }
 
 function setupUploader() {
-  const apiKey = store.get("apiKey");
-  apiUploader  = new ApiUploader(apiKey || "");
-  runAssembler = new RunAssembler({
+  const clientId = ensureClientId();
+  apiUploader    = new ApiUploader(clientId);
+  runAssembler   = new RunAssembler({
     onReady: async (payload) => {
       broadcast("run-assembled", payload.run);
-      if (!store.get("autoUpload") || !store.get("apiKey")) {
-        console.log("[Uploader] Auto-upload disabled or no API key — skipping"); return;
+      if (!store.get("autoUpload")) {
+        console.log("[Uploader] Auto-upload disabled — skipping"); return;
       }
       const result = await apiUploader.upload(payload);
       console.log("[Uploader] Result:", JSON.stringify(result));
@@ -315,18 +332,24 @@ function setupUploader() {
 
 function setupIPC() {
   ipcMain.handle("get-settings", () => ({
-    wowPath      : store.get("wowPath"),
-    accountName  : store.get("accountName"),
-    apiKey       : store.get("apiKey"),
-    hotkey       : store.get("hotkey"),
-    autoUpload   : store.get("autoUpload"),
+    wowPath       : store.get("wowPath"),
+    accountName   : store.get("accountName"),
+    hotkey        : store.get("hotkey"),
+    autoUpload    : store.get("autoUpload"),
     startMinimized: store.get("startMinimized"),
   }));
 
   ipcMain.handle("save-settings", (_, settings) => {
     const needsRestart = settings.wowPath !== store.get("wowPath") || settings.accountName !== store.get("accountName");
-    Object.entries(settings).forEach(([k, v]) => store.set(k, v));
-    if (settings.apiKey && apiUploader) apiUploader.setApiKey(settings.apiKey);
+    // Only persist known settings — never accept apiKey from renderer
+    const safe = {
+      wowPath       : settings.wowPath,
+      accountName   : settings.accountName,
+      hotkey        : settings.hotkey,
+      autoUpload    : settings.autoUpload,
+      startMinimized: settings.startMinimized,
+    };
+    Object.entries(safe).forEach(([k, v]) => store.set(k, v));
     if (settings.hotkey) { globalShortcut.unregisterAll(); globalShortcut.register(settings.hotkey, toggleOverlay); }
     if (needsRestart) { startSVWatcher(); startCombatLogWatcher(); }
     return { ok: true };
@@ -341,11 +364,6 @@ function setupIPC() {
     });
     if (result.canceled || !result.filePaths.length) return { path: "" };
     return { path: result.filePaths[0] };
-  });
-
-  ipcMain.handle("manual-upload", async (_, runData) => {
-    if (!store.get("apiKey")) return { ok: false, error: "No API key set" };
-    return new ApiUploader(store.get("apiKey")).upload(runData);
   });
 
   ipcMain.handle("get-status", () => ({
@@ -370,6 +388,7 @@ app.whenReady().then(() => {
       if (accounts.length === 1) store.set("accountName", accounts[0]);
     }
   }
+  ensureClientId();
   setupIPC();
   setupUploader();
   createTray();
