@@ -12,7 +12,6 @@
       overflow: hidden;
     }
 
-    /* Title bar */
     .titlebar {
       display: flex;
       align-items: center;
@@ -22,167 +21,84 @@
       border-bottom: 1px solid #1A1A2E;
       -webkit-app-region: drag;
     }
-    .titlebar-left {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-    }
-    .titlebar-logo {
-      height: 32px;
-      width: auto;
-      -webkit-app-region: no-drag;
-    }
-    .titlebar-title {
-      display: flex;
-      flex-direction: column;
-      line-height: 1.1;
-    }
+    .titlebar-left { display: flex; align-items: center; gap: 10px; }
+    .titlebar-logo { height: 32px; width: auto; -webkit-app-region: no-drag; }
+    .titlebar-title { display: flex; flex-direction: column; line-height: 1.1; }
     .titlebar-title .brand {
-      font-size: 13px;
-      font-weight: 700;
-      letter-spacing: 0.1em;
-      text-transform: uppercase;
-      color: #C8D4DC;
+      font-size: 13px; font-weight: 700; letter-spacing: 0.1em;
+      text-transform: uppercase; color: #C8D4DC;
     }
     .titlebar-title .sub {
-      font-size: 9px;
-      font-weight: 600;
-      letter-spacing: 0.18em;
-      text-transform: uppercase;
-      color: #7B2FBE;
+      font-size: 9px; font-weight: 600; letter-spacing: 0.18em;
+      text-transform: uppercase; color: #7B2FBE;
     }
-    .titlebar-btns {
-      display: flex;
-      gap: 8px;
-      -webkit-app-region: no-drag;
-    }
+    .titlebar-btns { display: flex; gap: 8px; -webkit-app-region: no-drag; }
     .titlebar-btn {
-      width: 28px;
-      height: 28px;
-      background: rgba(200,212,220,0.04);
-      border: 1px solid #1A1A2E;
-      border-radius: 2px;
-      color: #556677;
-      font-size: 14px;
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      justify-content: center;
+      width: 28px; height: 28px;
+      background: rgba(200,212,220,0.04); border: 1px solid #1A1A2E;
+      border-radius: 2px; color: #556677; font-size: 14px; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
     }
     .titlebar-btn:hover { color: #C8D4DC; background: rgba(200,212,220,0.08); }
     .titlebar-btn.close:hover { color: #C0392B; border-color: rgba(192,57,43,0.4); }
 
-    /* Tabs */
     .tabs { display: flex; border-bottom: 1px solid #1A1A2E; }
     .tab {
-      flex: 1;
-      padding: 10px;
-      text-align: center;
-      font-size: 11px;
-      font-weight: 600;
-      letter-spacing: 0.1em;
-      text-transform: uppercase;
-      color: #556677;
-      cursor: pointer;
-      border-bottom: 2px solid transparent;
-      transition: all 0.15s;
+      flex: 1; padding: 10px; text-align: center; font-size: 11px;
+      font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase;
+      color: #556677; cursor: pointer; border-bottom: 2px solid transparent; transition: all 0.15s;
     }
-    .tab.active {
-      color: #7B2FBE;
-      border-bottom-color: #7B2FBE;
-      background: rgba(123,47,190,0.06);
-    }
+    .tab.active { color: #7B2FBE; border-bottom-color: #7B2FBE; background: rgba(123,47,190,0.06); }
 
-    /* Content */
     .page { display: none; padding: 16px; overflow-y: auto; height: calc(100vh - 100px); }
     .page.active { display: block; }
 
-    /* Status cards */
     .status-card {
-      background: #0D1117;
-      border: 1px solid #1A1A2E;
-      border-radius: 4px;
-      padding: 14px;
-      margin-bottom: 12px;
+      background: #0D1117; border: 1px solid #1A1A2E;
+      border-radius: 4px; padding: 14px; margin-bottom: 12px;
     }
     .status-label {
-      font-size: 9px;
-      letter-spacing: 0.15em;
-      text-transform: uppercase;
-      color: #556677;
-      margin-bottom: 6px;
+      font-size: 9px; letter-spacing: 0.15em; text-transform: uppercase;
+      color: #556677; margin-bottom: 6px;
     }
     .status-value { font-size: 16px; font-weight: 700; }
     .status-value.ok   { color: #27AE60; }
     .status-value.warn { color: #C9A84C; }
     .status-value.err  { color: #C0392B; }
 
-    /* Run history card */
     .run-history-card {
-      background: #0D1117;
-      border: 1px solid #1A1A2E;
-      border-radius: 4px;
-      padding: 14px;
-      margin-bottom: 12px;
-      position: relative;
+      background: #0D1117; border: 1px solid #1A1A2E;
+      border-radius: 4px; padding: 14px; margin-bottom: 12px; position: relative;
     }
     .run-history-label {
-      font-size: 9px;
-      letter-spacing: 0.15em;
-      text-transform: uppercase;
-      color: #556677;
-      margin-bottom: 8px;
+      font-size: 9px; letter-spacing: 0.15em; text-transform: uppercase;
+      color: #556677; margin-bottom: 8px;
     }
 
-    /* Custom dropdown */
     .custom-select { position: relative; width: 100%; }
     .custom-select-trigger {
-      width: 100%;
-      background: #080A0C;
-      border: 1px solid #1A1A2E;
-      border-radius: 2px;
-      color: #C8D4DC;
-      font-family: 'Segoe UI', sans-serif;
-      font-size: 12px;
-      padding: 8px 28px 8px 10px;
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      user-select: none;
-      transition: border-color 0.15s;
+      width: 100%; background: #080A0C; border: 1px solid #1A1A2E;
+      border-radius: 2px; color: #C8D4DC; font-family: 'Segoe UI', sans-serif;
+      font-size: 12px; padding: 8px 28px 8px 10px; cursor: pointer;
+      display: flex; align-items: center; justify-content: space-between;
+      user-select: none; transition: border-color 0.15s;
     }
     .custom-select-trigger:hover,
     .custom-select-trigger.open { border-color: #7B2FBE; }
     .custom-select-arrow {
-      font-size: 9px;
-      color: #556677;
-      margin-left: 8px;
-      flex-shrink: 0;
-      transition: transform 0.15s;
+      font-size: 9px; color: #556677; margin-left: 8px;
+      flex-shrink: 0; transition: transform 0.15s;
     }
     .custom-select-trigger.open .custom-select-arrow { transform: rotate(180deg); }
     .custom-select-dropdown {
-      display: none;
-      position: absolute;
-      top: 100%;
-      left: 0;
-      right: 0;
-      background: #0D1117;
-      border: 1px solid #7B2FBE;
-      border-top: none;
-      border-radius: 0 0 2px 2px;
-      z-index: 999;
-      max-height: 180px;
-      overflow-y: auto;
+      display: none; position: absolute; top: 100%; left: 0; right: 0;
+      background: #0D1117; border: 1px solid #7B2FBE; border-top: none;
+      border-radius: 0 0 2px 2px; z-index: 999; max-height: 180px; overflow-y: auto;
     }
     .custom-select-dropdown.open { display: block; }
     .custom-select-option {
-      padding: 8px 10px;
-      font-size: 12px;
-      color: #C8D4DC;
-      cursor: pointer;
-      border-bottom: 1px solid rgba(26,26,46,0.5);
+      padding: 8px 10px; font-size: 12px; color: #C8D4DC;
+      cursor: pointer; border-bottom: 1px solid rgba(26,26,46,0.5);
     }
     .custom-select-option:last-child { border-bottom: none; }
     .custom-select-option:hover { background: rgba(123,47,190,0.1); color: #7B2FBE; }
@@ -190,122 +106,73 @@
     .custom-select-option.empty { color: #556677; cursor: default; }
     .custom-select-option.empty:hover { background: none; color: #556677; }
 
-    /* Run detail card */
     .run-card {
-      background: #0D1117;
-      border: 1px solid #1A1A2E;
-      border-left: 3px solid #C9A84C;
-      border-radius: 4px;
-      padding: 14px;
-      margin-bottom: 12px;
+      background: #0D1117; border: 1px solid #1A1A2E;
+      border-left: 3px solid #C9A84C; border-radius: 4px;
+      padding: 14px; margin-bottom: 12px;
     }
-    .run-dungeon {
-      font-size: 14px;
-      font-weight: 700;
-      text-transform: uppercase;
-      color: #EEF2F5;
-    }
+    .run-dungeon { font-size: 14px; font-weight: 700; text-transform: uppercase; color: #EEF2F5; }
     .run-key { color: #C9A84C; margin-left: 6px; }
     .run-stats { display: flex; gap: 16px; margin-top: 8px; }
     .run-stat-label { font-size: 8px; letter-spacing: 0.12em; text-transform: uppercase; color: #556677; }
     .run-stat-val { font-size: 16px; font-weight: 700; }
 
-    /* Settings page */
     .field { margin-bottom: 16px; }
     .field-label {
-      font-size: 9px;
-      letter-spacing: 0.12em;
-      text-transform: uppercase;
-      color: #556677;
-      margin-bottom: 6px;
+      font-size: 9px; letter-spacing: 0.12em; text-transform: uppercase;
+      color: #556677; margin-bottom: 6px;
     }
     .field-input {
-      width: 100%;
-      background: #0D1117;
-      border: 1px solid #1A1A2E;
-      border-radius: 2px;
-      color: #C8D4DC;
-      font-family: 'Segoe UI', sans-serif;
-      font-size: 12px;
-      padding: 8px 10px;
-      outline: none;
+      width: 100%; background: #0D1117; border: 1px solid #1A1A2E;
+      border-radius: 2px; color: #C8D4DC; font-family: 'Segoe UI', sans-serif;
+      font-size: 12px; padding: 8px 10px; outline: none;
     }
     .field-input:focus { border-color: #7B2FBE; }
     .field-row { display: flex; gap: 8px; align-items: flex-end; }
     .field-row .field-input { flex: 1; }
     .browse-btn {
-      padding: 8px 14px;
-      background: rgba(200,212,220,0.04);
-      border: 1px solid #1A1A2E;
-      color: #C8D4DC;
-      font-size: 11px;
-      cursor: pointer;
-      border-radius: 2px;
-      white-space: nowrap;
+      padding: 8px 14px; background: rgba(200,212,220,0.04);
+      border: 1px solid #1A1A2E; color: #C8D4DC; font-size: 11px;
+      cursor: pointer; border-radius: 2px; white-space: nowrap;
     }
     .browse-btn:hover { background: rgba(200,212,220,0.08); }
     select.field-input { appearance: none; -webkit-appearance: none; cursor: pointer; }
 
     .toggle-row {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 10px 0;
-      border-bottom: 1px solid rgba(26,26,46,0.4);
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 10px 0; border-bottom: 1px solid rgba(26,26,46,0.4);
     }
     .toggle-label { font-size: 12px; color: #C8D4DC; }
+    .toggle-sub { font-size: 10px; color: #556677; margin-top: 2px; }
+    .toggle-text { display: flex; flex-direction: column; }
     .toggle {
-      width: 36px; height: 20px;
-      background: #1A1A2E;
-      border-radius: 10px;
-      cursor: pointer;
-      position: relative;
-      transition: background 0.2s;
+      width: 36px; height: 20px; background: #1A1A2E; border-radius: 10px;
+      cursor: pointer; position: relative; transition: background 0.2s; flex-shrink: 0;
     }
     .toggle.on { background: #27AE60; }
     .toggle::after {
-      content: '';
-      position: absolute;
-      width: 16px; height: 16px;
-      background: #C8D4DC;
-      border-radius: 50%;
-      top: 2px; left: 2px;
-      transition: left 0.2s;
+      content: ''; position: absolute; width: 16px; height: 16px;
+      background: #C8D4DC; border-radius: 50%; top: 2px; left: 2px; transition: left 0.2s;
     }
     .toggle.on::after { left: 18px; }
 
     .btn {
-      width: 100%;
-      padding: 10px;
-      border: 1px solid #7B2FBE;
-      background: rgba(123,47,190,0.1);
-      color: #7B2FBE;
-      font-size: 12px;
-      font-weight: 600;
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
-      cursor: pointer;
-      border-radius: 2px;
-      transition: all 0.15s;
-      margin-top: 8px;
+      width: 100%; padding: 10px; border: 1px solid #7B2FBE;
+      background: rgba(123,47,190,0.1); color: #7B2FBE; font-size: 12px;
+      font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase;
+      cursor: pointer; border-radius: 2px; transition: all 0.15s; margin-top: 8px;
     }
     .btn:hover { background: rgba(123,47,190,0.2); }
 
     .save-status {
-      font-size: 10px;
-      letter-spacing: 0.08em;
-      text-align: center;
-      color: #27AE60;
-      margin-top: 8px;
-      opacity: 0;
-      transition: opacity 0.3s;
+      font-size: 10px; letter-spacing: 0.08em; text-align: center;
+      color: #27AE60; margin-top: 8px; opacity: 0; transition: opacity 0.3s;
     }
     .save-status.show { opacity: 1; }
   </style>
 </head>
 <body>
 
-  <!-- Title Bar -->
   <div class="titlebar">
     <div class="titlebar-left">
       <img class="titlebar-logo" src="../../assets/icon.png" alt="Velara">
@@ -320,13 +187,11 @@
     </div>
   </div>
 
-  <!-- Tabs -->
   <div class="tabs">
     <div class="tab active" data-tab="dashboard">Dashboard</div>
     <div class="tab" data-tab="settings">Settings</div>
   </div>
 
-  <!-- Dashboard Page -->
   <div class="page active" id="page-dashboard">
 
     <div class="status-card">
@@ -339,7 +204,6 @@
       <div class="status-value" id="watchStatus">Initializing...</div>
     </div>
 
-    <!-- Run History Custom Dropdown -->
     <div class="run-history-card">
       <div class="run-history-label">Session Runs</div>
       <div class="custom-select" id="customSelect">
@@ -353,12 +217,10 @@
       </div>
     </div>
 
-    <!-- Selected Run Detail -->
     <div id="runDetail"></div>
 
   </div>
 
-  <!-- Settings Page -->
   <div class="page" id="page-settings">
 
     <div class="field">
@@ -388,7 +250,10 @@
     </div>
 
     <div class="toggle-row">
-      <span class="toggle-label">Start minimized to tray</span>
+      <div class="toggle-text">
+        <span class="toggle-label">Start with Windows</span>
+        <span class="toggle-sub">Runs in tray automatically on login</span>
+      </div>
       <div class="toggle" id="toggleStartMin"></div>
     </div>
 
@@ -398,11 +263,10 @@
   </div>
 
   <script>
-    // ── Session run history ───────────────────────────────────────────────────
     const sessionRuns = [];
     const MAX_RUNS = 15;
     let selectedIndex = 0;
-    let dropdownOpen = false;
+    let dropdownOpen  = false;
 
     function formatRunTime() {
       const now = new Date();
@@ -411,8 +275,7 @@
 
     function addRunToHistory(run) {
       const runId = run.runId || `${run.dungeonName}-${run.keyLevel}-${Date.now()}`;
-      const exists = sessionRuns.find(r => r.runId === runId);
-      if (exists) return;
+      if (sessionRuns.find(r => r.runId === runId)) return;
       sessionRuns.unshift({ ...run, runId, detectedAt: formatRunTime() });
       if (sessionRuns.length > MAX_RUNS) sessionRuns.pop();
       selectedIndex = 0;
@@ -424,28 +287,23 @@
       const dropdown = document.getElementById('selectDropdown');
       const label    = document.getElementById('selectLabel');
       dropdown.innerHTML = '';
-
       if (sessionRuns.length === 0) {
         label.textContent = 'No runs detected yet';
         const opt = document.createElement('div');
-        opt.className   = 'custom-select-option empty';
+        opt.className = 'custom-select-option empty';
         opt.textContent = 'No runs detected yet';
         dropdown.appendChild(opt);
         return;
       }
-
-      const selected = sessionRuns[selectedIndex];
-      label.textContent = `${selected.dungeonName || 'Unknown'} +${selected.keyLevel || '?'}  \u00b7  ${selected.detectedAt}`;
-
+      const sel = sessionRuns[selectedIndex];
+      label.textContent = `${sel.dungeonName || 'Unknown'} +${sel.keyLevel || '?'}  \u00b7  ${sel.detectedAt}`;
       sessionRuns.forEach((run, idx) => {
         const opt = document.createElement('div');
-        opt.className   = 'custom-select-option' + (idx === selectedIndex ? ' selected' : '');
+        opt.className = 'custom-select-option' + (idx === selectedIndex ? ' selected' : '');
         opt.textContent = `${run.dungeonName || 'Unknown'} +${run.keyLevel || '?'}  \u00b7  ${run.detectedAt}`;
         opt.addEventListener('click', () => {
           selectedIndex = idx;
-          closeDropdown();
-          rebuildDropdown();
-          renderRunDetail(sessionRuns[idx]);
+          closeDropdown(); rebuildDropdown(); renderRunDetail(sessionRuns[idx]);
         });
         dropdown.appendChild(opt);
       });
@@ -466,7 +324,6 @@
       if (sessionRuns.length === 0) return;
       dropdownOpen ? closeDropdown() : openDropdown();
     });
-
     document.addEventListener('click', (e) => {
       if (!document.getElementById('customSelect').contains(e.target)) closeDropdown();
     });
@@ -496,7 +353,6 @@
       `;
     }
 
-    // ── Tab switching ─────────────────────────────────────────────────────────
     document.querySelectorAll('.tab').forEach(tab => {
       tab.addEventListener('click', () => {
         document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
@@ -513,17 +369,17 @@
       toggle.addEventListener('click', () => toggle.classList.toggle('on'));
     });
 
-    // ── Load settings ─────────────────────────────────────────────────────────
     async function loadSettings() {
       const s = await window.velara.getSettings();
       document.getElementById('wowPath').value = s.wowPath || '';
       document.getElementById('hotkey').value  = s.hotkey  || 'CommandOrControl+Shift+V';
 
-      if (s.autoUpload)     document.getElementById('toggleAutoUpload').classList.add('on');
-      else                  document.getElementById('toggleAutoUpload').classList.remove('on');
+      if (s.autoUpload) document.getElementById('toggleAutoUpload').classList.add('on');
+      else              document.getElementById('toggleAutoUpload').classList.remove('on');
 
-      if (s.startMinimized) document.getElementById('toggleStartMin').classList.add('on');
-      else                  document.getElementById('toggleStartMin').classList.remove('on');
+      // Use actual Windows login item state as source of truth
+      if (s.autoStartOnBoot) document.getElementById('toggleStartMin').classList.add('on');
+      else                   document.getElementById('toggleStartMin').classList.remove('on');
 
       if (s.wowPath) {
         const { accounts } = await window.velara.getAccounts(s.wowPath);
@@ -538,8 +394,8 @@
       }
 
       const watchEl = document.getElementById('watchStatus');
-      watchEl.textContent  = s.wowPath ? 'Watching' : 'No WoW path set';
-      watchEl.className    = 'status-value ' + (s.wowPath ? 'ok' : 'warn');
+      watchEl.textContent = s.wowPath ? 'Watching' : 'No WoW path set';
+      watchEl.className   = 'status-value ' + (s.wowPath ? 'ok' : 'warn');
     }
 
     document.getElementById('btnBrowse').addEventListener('click', async () => {
@@ -576,12 +432,13 @@
     });
 
     document.getElementById('btnSave').addEventListener('click', async () => {
+      const startWithWindows = document.getElementById('toggleStartMin').classList.contains('on');
       const settings = {
-        wowPath       : document.getElementById('wowPath').value,
-        accountName   : document.getElementById('accountName').value,
-        hotkey        : document.getElementById('hotkey').value,
-        autoUpload    : document.getElementById('toggleAutoUpload').classList.contains('on'),
-        startMinimized: document.getElementById('toggleStartMin').classList.contains('on'),
+        wowPath        : document.getElementById('wowPath').value,
+        accountName    : document.getElementById('accountName').value,
+        hotkey         : document.getElementById('hotkey').value,
+        autoUpload     : document.getElementById('toggleAutoUpload').classList.contains('on'),
+        startMinimized : startWithWindows,
       };
       await window.velara.saveSettings(settings);
       const status = document.getElementById('saveStatus');
@@ -590,10 +447,9 @@
       loadSettings();
     });
 
-    // ── Run + upload events ───────────────────────────────────────────────────
     window.velara.onRunUpdate((run) => {
       addRunToHistory(run);
-      document.getElementById('connStatus').textContent = 'Run detected — uploading...';
+      document.getElementById('connStatus').textContent = 'Run detected \u2014 uploading...';
       document.getElementById('connStatus').className   = 'status-value warn';
     });
 

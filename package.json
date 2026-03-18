@@ -1,17 +1,59 @@
 {
   "name": "velara-companion",
-  "version": "0.2.0",
-  "description": "Velara Intelligence Companion — Desktop overlay for WoW Mythic+ pull intelligence",
+  "version": "0.5.1",
+  "description": "Velara Intelligence Companion — Auto-uploads WoW Mythic+ runs to velaraintel.com",
   "main": "src/main/main.js",
   "scripts": {
     "start": "electron .",
-    "dev": "electron . --dev"
+    "dev": "electron . --dev",
+    "build": "electron-builder --win --x64",
+    "build:dir": "electron-builder --win --x64 --dir"
+  },
+  "build": {
+    "appId": "com.velaraintel.companion",
+    "productName": "Velara Intelligence Companion",
+    "copyright": "Copyright 2026 Velara Intelligence",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "src/**/*",
+      "assets/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "assets",
+        "to": "assets"
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        }
+      ],
+      "icon": "assets/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": false,
+      "installerIcon": "assets/icon.ico",
+      "uninstallerIcon": "assets/icon.ico",
+      "installerHeaderIcon": "assets/icon.ico",
+      "createDesktopShortcut": false,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Velara Intelligence Companion",
+      "runAfterFinish": true
+    }
   },
   "dependencies": {
     "electron-store": "^8.1.0"
   },
   "devDependencies": {
-    "electron": "^28.0.0"
+    "electron": "^28.0.0",
+    "electron-builder": "^24.0.0"
   },
   "author": "Brian",
   "license": "UNLICENSED",

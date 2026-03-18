@@ -1,16 +1,16 @@
-// VelaraIntel Companion — Electron Main Process v0.5.0
-// V0.5.0: Removed API key requirement (ingest endpoint is now public).
-//         Added clientId — random UUID generated on first launch, stored locally.
-//         Sent as X-Client-Id header for per-client rate tracking only.
-//         Players never see or configure any credentials.
+// VelaraIntel Companion — Electron Main Process v0.5.1
+// V0.5.1: Auto-start with Windows wired to startMinimized toggle in settings.
+//         Turning on "Start minimized to tray" also registers Windows startup entry.
+//         Turning it off removes it. Player controls it — no forced behavior.
+// V0.5.0: Removed API key requirement. Added clientId UUID for rate tracking.
 
 const {
   app, BrowserWindow, Tray, Menu, globalShortcut,
   ipcMain, dialog, nativeImage, shell,
 } = require("electron");
-const path = require("path");
+const path   = require("path");
 const crypto = require("crypto");
-const Store = require("electron-store");
+const Store  = require("electron-store");
 
 const { FileWatcher }      = require("../services/fileWatcher");
 const { LuaParser }        = require("../services/luaParser");
@@ -21,19 +21,17 @@ const { RunAssembler }     = require("../services/runAssembler");
 
 const store = new Store({
   defaults: {
-    wowPath       : "",
-    accountName   : "",
-    clientId      : "",   // generated on first launch, never shown to player
-    hotkey        : "CommandOrControl+Shift+V",
-    autoUpload    : true,
-    startMinimized: false,
-    overlayBounds : { x: 100, y: 100, width: 100, height: 100 },
+    wowPath        : "",
+    accountName    : "",
+    clientId       : "",
+    hotkey         : "CommandOrControl+Shift+V",
+    autoUpload     : true,
+    startMinimized : false,
+    overlayBounds  : { x: 100, y: 100, width: 100, height: 100 },
   },
 });
 
 // ── clientId — generate once on first launch ──────────────────────────────────
-// Random UUID stored locally. Sent as X-Client-Id header.
-// Not a user identifier — just a stable per-install token for rate tracking.
 function ensureClientId() {
   let id = store.get("clientId");
   if (!id || typeof id !== "string" || id.length < 8) {
@@ -41,6 +39,30 @@ function ensureClientId() {
     store.set("clientId", id);
   }
   return id;
+}
+
+// ── Auto-start with Windows ───────────────────────────────────────────────────
+// Uses Electron's built-in login item API — no external packages needed.
+// openAsHidden = true means it starts in tray without showing the window.
+function setAutoStart(enabled) {
+  try {
+    app.setLoginItemSettings({
+      openAtLogin : enabled,
+      openAsHidden: true,
+      name        : "Velara Intelligence Companion",
+    });
+  } catch (err) {
+    console.warn("[AutoStart] setLoginItemSettings failed:", err.message);
+  }
+}
+
+function getAutoStart() {
+  try {
+    const settings = app.getLoginItemSettings();
+    return settings.openAtLogin;
+  } catch {
+    return false;
+  }
 }
 
 let dashboardWindow  = null;
@@ -104,22 +126,22 @@ function buildV12Payload(latest) {
 
   return {
     addon    : "VelaraIntel",
-    v        : latest.addonVersion || "0.7.1",
+    v        : latest.addonVersion || "0.7.2",
     uploadTs : Date.now(),
     clockOffsetMs       : null,
     clockSyncConfidence : "unknown",
     run: {
       runId         : latest.runId,
-      mapId         : latest.mapId       || 0,
-      dungeonName   : latest.dungeonName || "Unknown",
-      keyLevel      : latest.keyLevel    || 0,
-      affixes       : affixes,
-      startTs       : startTs,
-      finishTs      : finishTs,
+      mapId         : latest.mapId        || 0,
+      dungeonName   : latest.dungeonName  || "Unknown",
+      keyLevel      : latest.keyLevel     || 0,
+      affixes,
+      startTs,
+      finishTs,
       durationMs    : finishTs > startTs ? finishTs - startTs : null,
       runType       : latest.runType      || "private",
       runMode       : latest.runMode      || "standard",
-      addonVersion  : latest.addonVersion || "0.7.1",
+      addonVersion  : latest.addonVersion || "0.7.2",
       exportVersion : latest.exportVersion || "1.0.0",
       telemetryCapabilities: latest.telemetryCapabilities || {
         hasCombatSegments      : false,
@@ -132,12 +154,12 @@ function buildV12Payload(latest) {
         hasEnemyHealthSnapshots: false,
         hasEnemyPositions      : false,
       },
-      player        : latest.player        || { class: "UNKNOWN", role: "dps" },
-      partyMembers  : Array.isArray(latest.partyMembers)   ? latest.partyMembers   : [],
+      player       : latest.player       || { class: "UNKNOWN", role: "dps" },
+      partyMembers : Array.isArray(latest.partyMembers) ? latest.partyMembers : [],
       pulls         : [],
       wipes         : [],
       damageBuckets : [],
-      enemyRegistry : enemyRegistry,
+      enemyRegistry,
       combatSegments: Array.isArray(latest.combatSegments) ? latest.combatSegments : [],
     },
   };
@@ -154,7 +176,9 @@ function createDashboard() {
     },
   });
   dashboardWindow.loadFile(path.join(__dirname, "..", "renderer", "dashboard.html"));
-  dashboardWindow.once("ready-to-show", () => { if (!store.get("startMinimized")) dashboardWindow.show(); });
+  dashboardWindow.once("ready-to-show", () => {
+    if (!store.get("startMinimized")) dashboardWindow.show();
+  });
   dashboardWindow.on("close",  (e) => { e.preventDefault(); dashboardWindow.hide(); });
   dashboardWindow.on("closed", ()  => { dashboardWindow = null; });
 }
@@ -186,12 +210,14 @@ function toggleOverlay() {
 function createTray() {
   const iconPath = path.join(__dirname, "..", "..", "assets", "icon.png");
   const fs = require("fs");
-  const icon = fs.existsSync(iconPath) ? nativeImage.createFromPath(iconPath) : nativeImage.createEmpty();
+  const icon = fs.existsSync(iconPath)
+    ? nativeImage.createFromPath(iconPath)
+    : nativeImage.createEmpty();
   tray = new Tray(icon);
   tray.setToolTip("Velara Intelligence Companion");
   tray.setContextMenu(Menu.buildFromTemplate([
-    { label: "Show Dashboard", click: () => createDashboard() },
-    { label: "Toggle Overlay", click: () => toggleOverlay()   },
+    { label: "Show Dashboard", click: () => createDashboard()  },
+    { label: "Toggle Overlay", click: () => toggleOverlay()    },
     { type: "separator" },
     { label: "Quit", click: () => { app.isQuitting = true; app.quit(); } },
   ]));
@@ -231,7 +257,6 @@ function startSVWatcher() {
       if (!parsed || !parsed.VelaraIntelDB) return;
       const db = parsed.VelaraIntelDB;
 
-      // ── Detect run open ───────────────────────────────────────────────────
       if (db._activeRun && db._activeRun.runId) {
         const ar = db._activeRun;
         if (ar.runId !== lastActiveRunId) {
@@ -244,24 +269,17 @@ function startSVWatcher() {
         }
       }
 
-      // ── Detect run close ──────────────────────────────────────────────────
       const runs = db.runs || [];
       if (runs.length > 0) {
         const latest = runs[0];
-
-        if (
-          latest.runId &&
-          latest.finishSec > 0 &&
-          latest.runId !== lastKnownRunId
-        ) {
+        if (latest.runId && latest.finishSec > 0 && latest.runId !== lastKnownRunId) {
           lastKnownRunId  = latest.runId;
           lastActiveRunId = null;
 
           console.log(`[SV] Run detected: ${latest.dungeonName} +${latest.keyLevel} (${latest.runId})`);
 
-          // Guard: skip stale runs with mapId 0 (pre-fix data)
           if (!latest.mapId || latest.mapId === 0) {
-            console.log(`[SV] Skipping run ${latest.runId} — mapId is 0 (stale data)`);
+            console.log(`[SV] Skipping run ${latest.runId} — mapId is 0`);
             return;
           }
 
@@ -292,7 +310,7 @@ function startSVWatcher() {
 function startCombatLogWatcher() {
   if (combatLogWatcher) combatLogWatcher.stop();
   const wowPath = store.get("wowPath");
-  if (!wowPath) { console.warn("[CombatLog] No WoW path configured — skipping"); return; }
+  if (!wowPath) { console.warn("[CombatLog] No WoW path — skipping"); return; }
 
   combatLogWatcher = new CombatLogWatcher(wowPath, 2000);
   combatLogParser  = new CombatLogParser();
@@ -304,7 +322,7 @@ function startCombatLogWatcher() {
     }
   });
 
-  combatLogWatcher.on("line", (line) => {
+  combatLogWatcher.on("line",  (line) => {
     try { combatLogParser.parseLine(line); }
     catch (err) { console.error("[CombatLog] Parse error:", err.message); }
   });
@@ -332,16 +350,20 @@ function setupUploader() {
 
 function setupIPC() {
   ipcMain.handle("get-settings", () => ({
-    wowPath       : store.get("wowPath"),
-    accountName   : store.get("accountName"),
-    hotkey        : store.get("hotkey"),
-    autoUpload    : store.get("autoUpload"),
-    startMinimized: store.get("startMinimized"),
+    wowPath        : store.get("wowPath"),
+    accountName    : store.get("accountName"),
+    hotkey         : store.get("hotkey"),
+    autoUpload     : store.get("autoUpload"),
+    startMinimized : store.get("startMinimized"),
+    autoStartOnBoot: getAutoStart(),
   }));
 
   ipcMain.handle("save-settings", (_, settings) => {
-    const needsRestart = settings.wowPath !== store.get("wowPath") || settings.accountName !== store.get("accountName");
-    // Only persist known settings — never accept apiKey from renderer
+    const needsRestart =
+      settings.wowPath !== store.get("wowPath") ||
+      settings.accountName !== store.get("accountName");
+
+    // Only persist known safe settings — never accept apiKey from renderer
     const safe = {
       wowPath       : settings.wowPath,
       accountName   : settings.accountName,
@@ -350,7 +372,17 @@ function setupIPC() {
       startMinimized: settings.startMinimized,
     };
     Object.entries(safe).forEach(([k, v]) => store.set(k, v));
-    if (settings.hotkey) { globalShortcut.unregisterAll(); globalShortcut.register(settings.hotkey, toggleOverlay); }
+
+    // Wire startMinimized toggle to Windows auto-start
+    // When player turns on "Start minimized to tray" — also auto-starts with Windows
+    if (typeof settings.startMinimized === "boolean") {
+      setAutoStart(settings.startMinimized);
+    }
+
+    if (settings.hotkey) {
+      globalShortcut.unregisterAll();
+      globalShortcut.register(settings.hotkey, toggleOverlay);
+    }
     if (needsRestart) { startSVWatcher(); startCombatLogWatcher(); }
     return { ok: true };
   });
@@ -360,7 +392,8 @@ function setupIPC() {
 
   ipcMain.handle("browse-wow-path", async () => {
     const result = await dialog.showOpenDialog(dashboardWindow, {
-      properties: ["openDirectory"], title: "Select your World of Warcraft _retail_ folder",
+      properties: ["openDirectory"],
+      title: "Select your World of Warcraft _retail_ folder",
     });
     if (result.canceled || !result.filePaths.length) return { path: "" };
     return { path: result.filePaths[0] };
