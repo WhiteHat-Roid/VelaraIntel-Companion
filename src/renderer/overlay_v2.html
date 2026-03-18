@@ -75,7 +75,7 @@
       }
     }
 
-    /* ── Watching (amber) ── */
+    /* ── Watching (purple) ── */
     #badge.state-watching {
       border-color: #7B2FBE;
       box-shadow:
@@ -138,9 +138,9 @@
   <script>
     const badge = document.getElementById("badge");
 
-    // Logo sits in same folder as this HTML file — simple relative path
+    // Path relative to src/renderer/ — assets folder is two levels up
     const shieldImg = document.getElementById("shieldImg");
-    shieldImg.src = "icon.png";
+    shieldImg.src = "../../assets/icon.png";
 
     function updateRun(run) {
       if (!run) {
