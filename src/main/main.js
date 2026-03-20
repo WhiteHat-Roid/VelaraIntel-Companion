@@ -117,6 +117,17 @@ function getCombatLogPath() {
   return path.join(wowPath, "Logs", "WoWCombatLog.txt");
 }
 
+// ── Privacy — strip forbidden fields before upload ────────────────────────────
+const FORBIDDEN_FIELDS = new Set(["guid", "playerName", "characterName", "realmName", "battleTag"]);
+function stripPrivacy(obj) {
+  if (!obj || typeof obj !== "object") return obj;
+  const clean = {};
+  for (const [k, v] of Object.entries(obj)) {
+    if (!FORBIDDEN_FIELDS.has(k)) clean[k] = v;
+  }
+  return clean;
+}
+
 // ── V1.2 payload builder ──────────────────────────────────────────────────────
 function buildV12Payload(latest) {
   const startTs       = (latest.startSec  || 0) * 1000;
@@ -126,7 +137,7 @@ function buildV12Payload(latest) {
 
   return {
     addon    : "VelaraIntel",
-    v        : latest.addonVersion || "0.7.2",
+    v        : latest.addonVersion || "0.7.3",
     uploadTs : Date.now(),
     clockOffsetMs       : null,
     clockSyncConfidence : "unknown",
@@ -141,7 +152,7 @@ function buildV12Payload(latest) {
       durationMs    : finishTs > startTs ? finishTs - startTs : null,
       runType       : latest.runType      || "private",
       runMode       : latest.runMode      || "standard",
-      addonVersion  : latest.addonVersion || "0.7.2",
+      addonVersion  : latest.addonVersion || "0.7.3",
       exportVersion : latest.exportVersion || "1.0.0",
       telemetryCapabilities: latest.telemetryCapabilities || {
         hasCombatSegments      : false,
@@ -154,8 +165,8 @@ function buildV12Payload(latest) {
         hasEnemyHealthSnapshots: false,
         hasEnemyPositions      : false,
       },
-      player       : latest.player       || { class: "UNKNOWN", role: "dps" },
-      partyMembers : Array.isArray(latest.partyMembers) ? latest.partyMembers : [],
+      player       : stripPrivacy(latest.player || { class: "UNKNOWN", role: "dps" }),
+      partyMembers : (Array.isArray(latest.partyMembers) ? latest.partyMembers : []).map(stripPrivacy),
       pulls         : [],
       wipes         : [],
       damageBuckets : [],
@@ -208,8 +219,11 @@ function toggleOverlay() {
 }
 
 function createTray() {
-  const iconPath = path.join(__dirname, "..", "..", "assets", "icon.png");
+  // Use .ico on Windows for proper multi-size tray icon rendering
   const fs = require("fs");
+  const icoPath = path.join(__dirname, "..", "..", "assets", "icon.ico");
+  const pngPath = path.join(__dirname, "..", "..", "assets", "icon.png");
+  const iconPath = (process.platform === "win32" && fs.existsSync(icoPath)) ? icoPath : pngPath;
   const icon = fs.existsSync(iconPath)
     ? nativeImage.createFromPath(iconPath)
     : nativeImage.createEmpty();
@@ -374,7 +388,6 @@ function setupIPC() {
     Object.entries(safe).forEach(([k, v]) => store.set(k, v));
 
     // Wire startMinimized toggle to Windows auto-start
-    // When player turns on "Start minimized to tray" — also auto-starts with Windows
     if (typeof settings.startMinimized === "boolean") {
       setAutoStart(settings.startMinimized);
     }
