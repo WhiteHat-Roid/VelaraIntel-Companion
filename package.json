@@ -55,7 +55,7 @@
     "electron": "^28.0.0",
     "electron-builder": "^24.0.0"
   },
-  "author": "Brian",
+  "author": "Velara Intelligence",
   "license": "UNLICENSED",
   "private": true
 }
