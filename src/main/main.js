@@ -152,6 +152,7 @@ function buildV12Payload(latest) {
       durationMs    : finishTs > startTs ? finishTs - startTs : null,
       runType       : latest.runType      || "private",
       runMode       : latest.runMode      || "standard",
+      privacyMode  : latest.privacyMode  || "shareable",
       addonVersion  : latest.addonVersion || "0.7.3",
       exportVersion : latest.exportVersion || "1.0.0",
       telemetryCapabilities: latest.telemetryCapabilities || {

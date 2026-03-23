@@ -135,6 +135,8 @@ function assembleRunPayload({ addonRun, parsedCombatEvidence, resolvedPulls, opt
       affixes: Array.isArray(run.affixes) ? [...run.affixes] : [],
       startTs, finishTs, durationMs,
       runType: run.runType || "private",
+      runMode: run.runMode || "standard",
+      privacyMode: run.privacyMode || "shareable",
       addonVersion: run.addonVersion || "unknown",
       exportVersion: run.exportVersion || "1.0.0",
       telemetryCapabilities: {
