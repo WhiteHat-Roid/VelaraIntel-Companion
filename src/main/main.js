@@ -1,7 +1,7 @@
-// VelaraIntel Companion — Electron Main Process v0.5.1
+// VelaraIntel Companion — Electron Main Process v0.5.2
+// V0.5.2: Fixed "Start with Windows" — uses Windows Registry instead of
+//         Electron's broken setLoginItemSettings (fails with NSIS installers).
 // V0.5.1: Auto-start with Windows wired to startMinimized toggle in settings.
-//         Turning on "Start minimized to tray" also registers Windows startup entry.
-//         Turning it off removes it. Player controls it — no forced behavior.
 // V0.5.0: Removed API key requirement. Added clientId UUID for rate tracking.
 
 const {
@@ -11,6 +11,7 @@ const {
 const path   = require("path");
 const crypto = require("crypto");
 const Store  = require("electron-store");
+const { execSync } = require("child_process");
 
 const { FileWatcher }      = require("../services/fileWatcher");
 const { LuaParser }        = require("../services/luaParser");
@@ -41,25 +42,41 @@ function ensureClientId() {
   return id;
 }
 
-// ── Auto-start with Windows ───────────────────────────────────────────────────
-// Uses Electron's built-in login item API — no external packages needed.
-// openAsHidden = true means it starts in tray without showing the window.
+// ── Auto-start with Windows (Registry approach) ──────────────────────────────
+// Electron's app.setLoginItemSettings() is broken with NSIS installers on Windows.
+// Instead, we directly write/remove a registry key in HKCU\...\Run.
+// This is the same mechanism Windows itself uses for startup programs.
+
+const REG_KEY = "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run";
+const REG_NAME = "VelaraIntelCompanion";
+
 function setAutoStart(enabled) {
   try {
-    app.setLoginItemSettings({
-      openAtLogin : enabled,
-      openAsHidden: true,
-      name        : "Velara Intelligence Companion",
-    });
+    if (enabled) {
+      // Get the path to the installed .exe
+      const exePath = app.getPath("exe");
+      // Add registry entry — runs minimized to tray on login
+      execSync(`reg add "${REG_KEY}" /v "${REG_NAME}" /t REG_SZ /d "\\"${exePath}\\"" /f`, { windowsHide: true });
+      console.log("[AutoStart] Registry entry added:", exePath);
+    } else {
+      // Remove registry entry
+      execSync(`reg delete "${REG_KEY}" /v "${REG_NAME}" /f`, { windowsHide: true });
+      console.log("[AutoStart] Registry entry removed");
+    }
   } catch (err) {
-    console.warn("[AutoStart] setLoginItemSettings failed:", err.message);
+    // reg delete throws if the key doesn't exist — that's fine
+    if (enabled) {
+      console.warn("[AutoStart] Failed to set registry entry:", err.message);
+    } else {
+      console.log("[AutoStart] Registry entry already absent");
+    }
   }
 }
 
 function getAutoStart() {
   try {
-    const settings = app.getLoginItemSettings();
-    return settings.openAtLogin;
+    const output = execSync(`reg query "${REG_KEY}" /v "${REG_NAME}"`, { windowsHide: true, encoding: "utf-8" });
+    return output.includes(REG_NAME);
   } catch {
     return false;
   }
@@ -173,6 +190,17 @@ function buildV12Payload(latest) {
       damageBuckets : [],
       enemyRegistry,
       combatSegments: Array.isArray(latest.combatSegments) ? latest.combatSegments : [],
+      bossEncounters: Array.isArray(latest.bossEncounters) ? latest.bossEncounters.map(b => ({
+        encounterID:   b.encounterID   || 0,
+        encounterName: b.encounterName || "Unknown",
+        startTs:       (b.startSec || 0) * 1000,
+        endTs:         (b.endSec   || 0) * 1000,
+        success:       b.success ?? 0,
+        difficultyID:  b.difficultyID || 0,
+        groupSize:     b.groupSize    || 5,
+        segmentId:     b.segmentId    || null,
+        pullIndex:     b.pullIndex    || null,
+      })) : [],
     },
   };
 }
@@ -220,7 +248,6 @@ function toggleOverlay() {
 }
 
 function createTray() {
-  // Use .ico on Windows for proper multi-size tray icon rendering
   const fs = require("fs");
   const icoPath = path.join(__dirname, "..", "..", "assets", "icon.ico");
   const pngPath = path.join(__dirname, "..", "..", "assets", "icon.png");
@@ -378,7 +405,6 @@ function setupIPC() {
       settings.wowPath !== store.get("wowPath") ||
       settings.accountName !== store.get("accountName");
 
-    // Only persist known safe settings — never accept apiKey from renderer
     const safe = {
       wowPath       : settings.wowPath,
       accountName   : settings.accountName,
@@ -388,7 +414,7 @@ function setupIPC() {
     };
     Object.entries(safe).forEach(([k, v]) => store.set(k, v));
 
-    // Wire startMinimized toggle to Windows auto-start
+    // Wire startMinimized toggle to Windows auto-start via Registry
     if (typeof settings.startMinimized === "boolean") {
       setAutoStart(settings.startMinimized);
     }
