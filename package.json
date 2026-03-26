@@ -1,6 +1,6 @@
 {
   "name": "velara-companion",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "description": "Velara Intelligence Companion — Auto-uploads WoW Mythic+ runs to velaraintel.com",
   "main": "src/main/main.js",
   "scripts": {
