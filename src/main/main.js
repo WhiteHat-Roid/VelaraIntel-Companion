@@ -134,7 +134,25 @@ function getSavedVarsPath() {
 function getCombatLogPath() {
   const wowPath = store.get("wowPath");
   if (!wowPath) return null;
-  return path.join(wowPath, "Logs", "WoWCombatLog.txt");
+
+  // Check multiple possible locations
+  const candidates = [
+    path.join(wowPath, "Logs", "WoWCombatLog.txt"),
+    path.join(path.resolve(wowPath, ".."), "Logs", "WoWCombatLog.txt"),
+    path.join(wowPath, "..", "Logs", "WoWCombatLog.txt"),
+  ];
+
+  for (const p of candidates) {
+    if (fs.existsSync(p)) return p;
+  }
+
+  // Check if Logs directory exists (file created on first combat)
+  const logsDir = path.join(wowPath, "Logs");
+  if (fs.existsSync(logsDir)) return path.join(logsDir, "WoWCombatLog.txt");
+  const parentLogs = path.join(path.resolve(wowPath, ".."), "Logs");
+  if (fs.existsSync(parentLogs)) return path.join(parentLogs, "WoWCombatLog.txt");
+
+  return candidates[0]; // default
 }
 
 // ── Privacy — strip forbidden fields before upload ────────────────────────────
@@ -546,7 +564,11 @@ function startCombatLogWatcher() {
   const wowPath = store.get("wowPath");
   if (!wowPath) { console.warn("[CombatLog] No WoW path — skipping"); return; }
 
+  // Use resolved combat log path for the watcher
+  const resolvedLogPath = getCombatLogPath();
+  console.log(`[CombatLog] Resolved path: ${resolvedLogPath}`);
   combatLogWatcher = new CombatLogWatcher(wowPath, 2000);
+  if (resolvedLogPath) combatLogWatcher.logPath = resolvedLogPath;
   combatLogParser  = new CombatLogParser();
 
   combatLogParser.on("pullEnd", (pull) => {
