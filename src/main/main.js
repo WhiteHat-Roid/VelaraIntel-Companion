@@ -19,8 +19,9 @@ const { FileWatcher }      = require("../services/fileWatcher");
 const { LuaParser }        = require("../services/luaParser");
 const { ApiUploader }      = require("../services/apiUploader");
 const { CombatLogWatcher } = require("../services/combatLogWatcher");
-const { CombatLogParser }  = require("../services/combatLogParser");
+const { CombatLogParser, parseCombatLog } = require("../services/combatLogParser");
 const { RunAssembler }     = require("../services/runAssembler");
+const fs = require("fs");
 
 const store = new Store({
   defaults: {
@@ -207,6 +208,119 @@ function buildV12Payload(latest) {
   };
 }
 
+// ── Combat log enrichment — parse WoWCombatLog.txt and attach evidence ───────
+function enrichPayloadWithCombatLog(payload, latest) {
+  const logPath = getCombatLogPath();
+  if (!logPath) {
+    console.log("[Enrich] No combat log path configured — uploading thin data");
+    return payload;
+  }
+
+  if (!fs.existsSync(logPath)) {
+    console.log("[Enrich] WoWCombatLog.txt not found — uploading thin data");
+    broadcast("combat-log-missing", { message: "Enable Advanced Combat Logging in WoW for rich telemetry" });
+    return payload;
+  }
+
+  try {
+    console.log(`[Enrich] Reading combat log: ${logPath}`);
+    const logContent = fs.readFileSync(logPath, "utf8");
+    const combatLogLines = logContent.split("\n").filter(l => l.trim().length > 0);
+    console.log(`[Enrich] Combat log: ${combatLogLines.length} lines`);
+
+    // Build a run object with ms timestamps for the parser
+    const run = {
+      runId: latest.runId,
+      startTs: (latest.startSec || 0) * 1000,
+      finishTs: (latest.finishSec || 0) * 1000,
+      mapId: latest.mapId,
+      keyLevel: latest.keyLevel,
+      player: latest.player,
+      partyMembers: latest.partyMembers,
+      combatSegments: (latest.combatSegments || []).map(seg => ({
+        segmentId: seg.segmentId,
+        startTs: (seg.startSec || 0) * 1000,
+        finishTs: (seg.finishSec || 0) * 1000,
+        rawOutcome: seg.rawOutcome,
+      })),
+    };
+
+    // Filter log lines to the run's time window (rough filter before full parse)
+    // The parser does its own clock sync, but we can pre-filter by keeping only
+    // lines from a few minutes before run start to a few minutes after run end
+    const result = parseCombatLog({ run, combatLogLines });
+
+    console.log(`[Enrich] Parse complete: ${result.enrichedSegments.length} segments enriched`);
+    console.log(`[Enrich] Clock sync: ${result.clockSyncConfidence}, offset: ${result.clockOffsetMs}ms`);
+    console.log(`[Enrich] Data quality: ${JSON.stringify(result.dataQuality)}`);
+    console.log(`[Enrich] Capabilities: ${JSON.stringify(result.capabilityFlags)}`);
+
+    // Attach enriched data to each combatSegment in the payload
+    const evidenceMap = new Map();
+    for (const eseg of result.enrichedSegments) {
+      evidenceMap.set(eseg.segmentId, eseg);
+    }
+
+    const runObj = payload.run;
+    for (const seg of (runObj.combatSegments || [])) {
+      const evidence = evidenceMap.get(seg.segmentId);
+      if (evidence) {
+        // Attach evidence arrays to the segment
+        seg.damageBuckets = evidence.damageBuckets || [];
+        seg.interrupts = evidence.interrupts || [];
+        seg.defensives = evidence.cooldownEvents || [];
+        seg.enemyCasts = evidence.enemyCasts || [];
+        seg.spikes = evidence.spikes || [];
+        seg.healthMinBuckets = (evidence.damageBuckets || []).map(b => {
+          // Derive a rough health pressure metric from damage vs healing
+          const netDamage = (b.partyDamageTaken || 0) - (b.partyHealingReceived || 0);
+          return Math.max(0, Math.min(100, Math.round(100 - (netDamage / 10000))));
+        });
+        // Enrich deaths with pre-death evidence
+        if (evidence.deaths && evidence.deaths.length > 0) {
+          seg.deathsEvidence = evidence.deaths;
+        }
+      }
+    }
+
+    // Update capability flags on the payload
+    const caps = runObj.telemetryCapabilities;
+    if (result.capabilityFlags.hasDamageBuckets) caps.hasDamageBuckets = true;
+    if (result.capabilityFlags.hasInterrupts)    caps.hasInterrupts = true;
+    if (result.capabilityFlags.hasEnemyCasts)    caps.hasEnemyCasts = true;
+    if (result.capabilityFlags.hasDeathContext)   caps.hasDeathContext = true;
+    caps.hasDefensives = result.enrichedSegments.some(s => s.cooldownEvents && s.cooldownEvents.length > 0);
+    caps.hasEnemyHealthSnapshots = false; // Not derived from combat log yet
+
+    // Attach parse metadata
+    payload.clockOffsetMs = result.clockOffsetMs;
+    payload.clockSyncConfidence = result.clockSyncConfidence;
+
+    const totalInterrupts = result.enrichedSegments.reduce((s, seg) => s + (seg.interrupts?.length || 0), 0);
+    const totalDefensives = result.enrichedSegments.reduce((s, seg) => s + (seg.cooldownEvents?.length || 0), 0);
+    const totalEnemyCasts = result.enrichedSegments.reduce((s, seg) => s + (seg.enemyCasts?.length || 0), 0);
+    const totalDeaths = result.enrichedSegments.reduce((s, seg) => s + (seg.deaths?.length || 0), 0);
+    const totalBuckets = result.enrichedSegments.reduce((s, seg) => s + (seg.damageBuckets?.length || 0), 0);
+
+    console.log(`[Enrich] Totals: interrupts=${totalInterrupts} defensives=${totalDefensives} enemyCasts=${totalEnemyCasts} deaths=${totalDeaths} damageBuckets=${totalBuckets}`);
+    broadcast("enrichment-complete", {
+      interrupts: totalInterrupts,
+      defensives: totalDefensives,
+      enemyCasts: totalEnemyCasts,
+      deaths: totalDeaths,
+      damageBuckets: totalBuckets,
+      clockSync: result.clockSyncConfidence,
+    });
+
+    return payload;
+  } catch (err) {
+    console.error("[Enrich] Combat log parsing failed:", err.message);
+    console.error("[Enrich] Stack:", err.stack);
+    broadcast("enrichment-failed", { error: err.message });
+    return payload; // Upload thin data as fallback
+  }
+}
+
 function createDashboard() {
   if (dashboardWindow) { dashboardWindow.show(); dashboardWindow.focus(); return; }
   dashboardWindow = new BrowserWindow({
@@ -327,7 +441,8 @@ function startSVWatcher() {
             return;
           }
 
-          const payload = buildV12Payload(latest);
+          let payload = buildV12Payload(latest);
+          payload = enrichPayloadWithCombatLog(payload, latest);
           broadcast("run-update", latest);
 
           if (store.get("autoUpload")) {
@@ -396,7 +511,8 @@ function onKeyEndDetected() {
               return;
             }
 
-            const payload = buildV12Payload(latest);
+            let payload = buildV12Payload(latest);
+            payload = enrichPayloadWithCombatLog(payload, latest);
             broadcast("run-update", latest);
 
             if (store.get("autoUpload")) {
