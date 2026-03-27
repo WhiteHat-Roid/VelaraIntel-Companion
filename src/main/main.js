@@ -348,6 +348,80 @@ function startSVWatcher() {
   svWatcher.start();
 }
 
+// ── Key-end detection via combat log → trigger SV re-read ────────────────────
+// WoW writes CHALLENGE_MODE_COMPLETED to the combat log in real time.
+// When we see it, we wait for SV to flush, then re-read and upload.
+
+let keyEndPollTimer = null;
+
+function onKeyEndDetected() {
+  console.log("[KeyEnd] CHALLENGE_MODE_COMPLETED detected in combat log — waiting for SV flush...");
+  broadcast("key-end-detected", { message: "Key completed — uploading..." });
+
+  // Wait 5 seconds for WoW to flush SavedVariables, then poll
+  if (keyEndPollTimer) clearInterval(keyEndPollTimer);
+  let attempts = 0;
+  const maxAttempts = 10; // 10 attempts × 3s = 30 seconds total
+
+  setTimeout(() => {
+    keyEndPollTimer = setInterval(() => {
+      attempts++;
+      console.log(`[KeyEnd] SV poll attempt ${attempts}/${maxAttempts}`);
+
+      const svPath = getSavedVarsPath();
+      if (!svPath) { clearInterval(keyEndPollTimer); return; }
+
+      try {
+        const fs = require("fs");
+        const content = fs.readFileSync(svPath, "utf8");
+        const parser = new LuaParser();
+        const parsed = parser.parse(content);
+        if (!parsed || !parsed.VelaraIntelDB) return;
+
+        const db = parsed.VelaraIntelDB;
+        const runs = db.runs || [];
+        if (runs.length > 0) {
+          const latest = runs[0];
+          if (latest.runId && latest.finishSec > 0 && latest.runId !== lastKnownRunId) {
+            lastKnownRunId = latest.runId;
+            lastActiveRunId = null;
+            clearInterval(keyEndPollTimer);
+
+            console.log(`[KeyEnd] New run found: ${latest.dungeonName} +${latest.keyLevel} (${latest.runId})`);
+
+            if (!latest.mapId || latest.mapId === 0) {
+              console.log(`[KeyEnd] Skipping run ${latest.runId} — mapId is 0`);
+              return;
+            }
+
+            const payload = buildV12Payload(latest);
+            broadcast("run-update", latest);
+
+            if (store.get("autoUpload")) {
+              apiUploader.upload(payload).then((result) => {
+                console.log("[KeyEnd] Upload result:", JSON.stringify(result));
+                broadcast("upload-result", result);
+                openRunInBrowser(result);
+              });
+            }
+            return;
+          }
+        }
+
+        if (attempts >= maxAttempts) {
+          clearInterval(keyEndPollTimer);
+          console.log("[KeyEnd] SV not updated after 30s — waiting for /reload as fallback");
+          broadcast("key-end-timeout", { message: "Waiting for /reload — SV not flushed yet" });
+        }
+      } catch (err) {
+        if (err.code !== "EBUSY") {
+          console.error("[KeyEnd] SV read error:", err.message);
+        }
+      }
+    }, 3000);
+  }, 5000);
+}
+
 // ── Pipeline: Combat log watcher ──────────────────────────────────────────────
 function startCombatLogWatcher() {
   if (combatLogWatcher) combatLogWatcher.stop();
@@ -365,12 +439,28 @@ function startCombatLogWatcher() {
   });
 
   combatLogWatcher.on("line",  (line) => {
-    try { combatLogParser.parseLine(line); }
-    catch (err) { console.error("[CombatLog] Parse error:", err.message); }
+    try {
+      combatLogParser.parseLine(line);
+    } catch (err) {
+      console.error("[CombatLog] Parse error:", err.message);
+    }
+
+    // Detect key completion from combat log lines
+    if (line.includes("CHALLENGE_MODE_COMPLETED") || line.includes("CHALLENGE_MODE_END")) {
+      onKeyEndDetected();
+    }
   });
 
   combatLogWatcher.on("error", (err) => console.error("[CombatLog] Error:", err.message));
   combatLogWatcher.start();
+
+  // Check if the combat log file exists
+  const fs = require("fs");
+  const logPath = getCombatLogPath();
+  if (logPath && !fs.existsSync(logPath)) {
+    console.warn("[CombatLog] WoWCombatLog.txt not found — enable Advanced Combat Logging in WoW");
+    broadcast("combat-log-missing", { message: "Enable Advanced Combat Logging in WoW settings for automatic uploads" });
+  }
 }
 
 function setupUploader() {
