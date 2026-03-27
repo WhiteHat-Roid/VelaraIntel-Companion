@@ -425,7 +425,7 @@ function startSVWatcher() {
   if (!svPath) { console.warn("[SV] No SavedVariables path configured — skipping"); return; }
 
   const parser = new LuaParser();
-  svWatcher    = new FileWatcher(svPath, 3000);
+  svWatcher    = new FileWatcher(svPath, 10000);
 
   svWatcher.on("change", (content) => {
     try {
@@ -594,10 +594,12 @@ function startCombatLogWatcher() {
   combatLogWatcher.on("error", (err) => console.error("[CombatLog] Error:", err.message));
   combatLogWatcher.start();
 
-  // Check if the combat log file exists
+  // Check if the combat log file exists and broadcast status
   const fs = require("fs");
   const logPath = getCombatLogPath();
-  if (logPath && !fs.existsSync(logPath)) {
+  const logFound = logPath && fs.existsSync(logPath);
+  broadcast("combat-log-status", { found: !!logFound, path: logPath || null });
+  if (!logFound) {
     console.warn("[CombatLog] WoWCombatLog.txt not found — enable Advanced Combat Logging in WoW");
     broadcast("combat-log-missing", { message: "Enable Advanced Combat Logging in WoW settings for automatic uploads" });
   }
