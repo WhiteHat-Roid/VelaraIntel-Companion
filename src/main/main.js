@@ -1,4 +1,6 @@
-// VelaraIntel Companion — Electron Main Process v0.5.2
+// VelaraIntel Companion — Electron Main Process v0.5.3
+// V0.5.3: Auto-upload on key end (combat log detection), fix dedup cache,
+//         real error logging on 422, retry on failure.
 // V0.5.2: Fixed "Start with Windows" — uses Windows Registry instead of
 //         Electron's broken setLoginItemSettings (fails with NSIS installers).
 // V0.5.1: Auto-start with Windows wired to startMinimized toggle in settings.
