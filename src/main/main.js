@@ -458,6 +458,12 @@ function createDashboard() {
   dashboardWindow.loadFile(path.join(__dirname, "..", "renderer", "dashboard.html"));
   dashboardWindow.once("ready-to-show", () => {
     if (!store.get("startMinimized")) dashboardWindow.show();
+    // Enable DevTools with Ctrl+Shift+F12 (admin only — requires /videv mindset)
+    dashboardWindow.webContents.on('before-input-event', (event, input) => {
+      if (input.key === 'F12' && input.control && input.shift) {
+        dashboardWindow.webContents.toggleDevTools();
+      }
+    });
   });
   dashboardWindow.on("close",  (e) => {
     if (app.isQuitting) { dashboardWindow = null; return; }

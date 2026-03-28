@@ -68,7 +68,7 @@
     /* ── Form elements ── */
     .field-label {
       font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase;
-      color: #556677; margin-bottom: 6px;
+      color: #8899AA; margin-bottom: 6px;
     }
     .path-row {
       display: flex; gap: 8px; margin-bottom: 16px;
@@ -84,7 +84,7 @@
       padding: 8px 14px; font-size: 11px; cursor: pointer; white-space: nowrap;
     }
     .btn-sm:hover { background: #2A3A4A; color: #C8D4DC; }
-    .hint { font-size: 9px; color: #3A4A5A; margin-top: -10px; margin-bottom: 14px; }
+    .hint { font-size: 9px; color: #667788; margin-top: -10px; margin-bottom: 14px; }
 
     /* ── Run card ── */
     .run-card {
@@ -96,14 +96,14 @@
     }
     .run-card .key-level { color: #C9A84C; }
     .run-card .stats {
-      font-size: 11px; color: #556677; margin-top: 6px;
+      font-size: 11px; color: #8899AA; margin-top: 6px;
     }
     .run-card .stats span { margin-right: 12px; }
     .run-card .stats .deaths { color: #C0392B; }
     .run-card .stats .timed { color: #27AE60; }
     .run-card .stats .depleted { color: #C0392B; }
     .no-run {
-      text-align: center; color: #3A4A5A; padding: 24px 0;
+      text-align: center; color: #667788; padding: 24px 0;
       font-size: 12px; font-style: italic;
     }
 
@@ -115,7 +115,7 @@
       flex: 1; padding: 8px 0; text-align: center;
       font-size: 11px; font-weight: 600; letter-spacing: 0.06em;
       text-transform: uppercase; cursor: pointer;
-      border: 1px solid #2A3A4A; background: transparent; color: #556677;
+      border: 1px solid #2A3A4A; background: transparent; color: #8899AA;
       transition: all 0.15s;
     }
     .privacy-btn:hover { border-color: #556677; color: #8899AA; }
@@ -164,7 +164,7 @@
     }
     .run-lib-info { flex: 1; }
     .run-lib-info .name { font-size: 12px; font-weight: 600; color: #C8D4DC; }
-    .run-lib-info .meta { font-size: 10px; color: #556677; }
+    .run-lib-info .meta { font-size: 10px; color: #8899AA; }
 
     /* ── Paste area ── */
     .paste-area {
@@ -174,7 +174,7 @@
       margin-bottom: 16px;
     }
     .paste-area:focus { border-color: #7B2FBE; }
-    .paste-area::placeholder { color: #2A3A4A; }
+    .paste-area::placeholder { color: #556677; }
 
     /* ── Status feed ── */
     .status-feed {
@@ -185,7 +185,7 @@
     .status-feed .line-ok { color: #27AE60; }
     .status-feed .line-err { color: #C0392B; }
     .status-feed .line-warn { color: #E8A030; }
-    .status-feed .line-info { color: #556677; }
+    .status-feed .line-info { color: #8899AA; }
   </style>
 </head>
 <body>
@@ -396,7 +396,9 @@
       } else {
         btn.textContent = '\u2717 Failed';
         btn.className = 'go-btn error';
-        addStatus('liveStatusFeed', '\u2717 Upload failed: ' + (result?.error || 'unknown'), 'err');
+        const errMsg = result?.error || result?.body?.detail || (result?.status ? 'HTTP ' + result.status : 'unknown');
+        addStatus('liveStatusFeed', '\u2717 Upload failed: ' + errMsg, 'err');
+        if (result?.body) addStatus('liveStatusFeed', 'Details: ' + JSON.stringify(result.body).substring(0, 200), 'err');
       }
 
       setTimeout(() => {
@@ -520,7 +522,9 @@
       } else {
         btn.textContent = '\u2717 Failed';
         btn.className = 'go-btn error';
-        addStatus('uploadStatusFeed', '\u2717 Upload failed: ' + (result?.error || 'unknown'), 'err');
+        const errMsg = result?.error || result?.body?.detail || (result?.status ? 'HTTP ' + result.status : 'unknown');
+        addStatus('uploadStatusFeed', '\u2717 Upload failed: ' + errMsg, 'err');
+        if (result?.body) addStatus('uploadStatusFeed', 'Details: ' + JSON.stringify(result.body).substring(0, 200), 'err');
       }
 
       setTimeout(() => {
