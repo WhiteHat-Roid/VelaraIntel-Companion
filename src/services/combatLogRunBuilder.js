@@ -49,6 +49,63 @@ const CLASS_BY_ID = {
   11: "DRUID", 12: "DEMONHUNTER", 13: "EVOKER",
 };
 
+// ─── Spec ID → Spec Name + Role (from COMBATANT_INFO field 3) ──────────────
+// This is the AUTHORITATIVE source for role detection. Spell inference is fallback only.
+const SPEC_INFO = {
+  // Death Knight
+  250: { spec: "Blood",         class: "DEATHKNIGHT",  role: "tank" },
+  251: { spec: "Frost",         class: "DEATHKNIGHT",  role: "dps" },
+  252: { spec: "Unholy",        class: "DEATHKNIGHT",  role: "dps" },
+  // Demon Hunter
+  577: { spec: "Havoc",         class: "DEMONHUNTER",  role: "dps" },
+  581: { spec: "Vengeance",     class: "DEMONHUNTER",  role: "tank" },
+  // Druid
+  102: { spec: "Balance",       class: "DRUID",        role: "dps" },
+  103: { spec: "Feral",         class: "DRUID",        role: "dps" },
+  104: { spec: "Guardian",      class: "DRUID",        role: "tank" },
+  105: { spec: "Restoration",   class: "DRUID",        role: "healer" },
+  // Evoker
+  1467: { spec: "Devastation",  class: "EVOKER",       role: "dps" },
+  1468: { spec: "Preservation", class: "EVOKER",       role: "healer" },
+  1473: { spec: "Augmentation", class: "EVOKER",       role: "dps" },
+  // Hunter
+  253: { spec: "Beast Mastery",  class: "HUNTER",      role: "dps" },
+  254: { spec: "Marksmanship",   class: "HUNTER",      role: "dps" },
+  255: { spec: "Survival",       class: "HUNTER",      role: "dps" },
+  // Mage
+  62:  { spec: "Arcane",         class: "MAGE",        role: "dps" },
+  63:  { spec: "Fire",           class: "MAGE",        role: "dps" },
+  64:  { spec: "Frost",          class: "MAGE",        role: "dps" },
+  // Monk
+  268: { spec: "Brewmaster",     class: "MONK",        role: "tank" },
+  269: { spec: "Windwalker",     class: "MONK",        role: "dps" },
+  270: { spec: "Mistweaver",     class: "MONK",        role: "healer" },
+  // Paladin
+  65:  { spec: "Holy",           class: "PALADIN",     role: "healer" },
+  66:  { spec: "Protection",     class: "PALADIN",     role: "tank" },
+  70:  { spec: "Retribution",    class: "PALADIN",     role: "dps" },
+  // Priest
+  256: { spec: "Discipline",     class: "PRIEST",      role: "healer" },
+  257: { spec: "Holy",           class: "PRIEST",      role: "healer" },
+  258: { spec: "Shadow",         class: "PRIEST",      role: "dps" },
+  // Rogue
+  259: { spec: "Assassination",  class: "ROGUE",       role: "dps" },
+  260: { spec: "Outlaw",         class: "ROGUE",       role: "dps" },
+  261: { spec: "Subtlety",       class: "ROGUE",       role: "dps" },
+  // Shaman
+  262: { spec: "Elemental",      class: "SHAMAN",      role: "dps" },
+  263: { spec: "Enhancement",    class: "SHAMAN",      role: "dps" },
+  264: { spec: "Restoration",    class: "SHAMAN",      role: "healer" },
+  // Warlock
+  265: { spec: "Affliction",     class: "WARLOCK",     role: "dps" },
+  266: { spec: "Demonology",     class: "WARLOCK",     role: "dps" },
+  267: { spec: "Destruction",    class: "WARLOCK",     role: "dps" },
+  // Warrior
+  71:  { spec: "Arms",           class: "WARRIOR",     role: "dps" },
+  72:  { spec: "Fury",           class: "WARRIOR",     role: "dps" },
+  73:  { spec: "Protection",     class: "WARRIOR",     role: "tank" },
+};
+
 // ─── Constants ─────────────────────────────────────────────────────────────
 
 // Dynamic segmentation — threshold set by _getSegmentGapThreshold() based on context
@@ -62,7 +119,7 @@ const MIN_FIELDS = {
   "CHALLENGE_MODE_END": 5,
   "ENCOUNTER_START": 5,
   "ENCOUNTER_END": 6,
-  "COMBATANT_INFO": 2,
+  "COMBATANT_INFO": 4,
   "SWING_DAMAGE": 11,
   "SPELL_DAMAGE": 15,
   "RANGE_DAMAGE": 15,
@@ -304,19 +361,34 @@ class CombatLogRunBuilder extends EventEmitter {
     }
 
     // ── COMBATANT_INFO — party member data ─────────────────────────────
-    // PRIVACY: COMBATANT_INFO contains talent trees, item levels, gear data.
-    // We ONLY extract GUID for party membership tracking.
-    // All other fields are intentionally ignored and never stored.
+    // PRIVACY: We extract GUID + spec ID only. Talent trees, item levels,
+    // gear data are intentionally ignored and never stored.
+    // Spec ID is the AUTHORITATIVE source for class, spec, and role.
     if (event === "COMBATANT_INFO") {
       const guid = fields[1] || "";
       if (isPlayerGuid(guid)) {
-        // Register as confirmed party member
-        if (!this.guidToClass.has(guid)) {
-          this.guidToClass.set(guid, "UNKNOWN");
+        // Parse spec ID from field position 3 (zero-indexed)
+        // Format: COMBATANT_INFO,GUID,Faction,SpecID,...
+        const specId = parseInt(fields[3], 10) || 0;
+        const specInfo = SPEC_INFO[specId];
+
+        if (specInfo) {
+          // Authoritative: COMBATANT_INFO spec ID overrides everything
+          this.guidToClass.set(guid, specInfo.class);
+          this.guidToRole.set(guid, specInfo.role);
+          this.guidToSpec.set(guid, specInfo.spec);
+          console.log(`[RunBuilder] COMBATANT_INFO: ${specInfo.class} ${specInfo.spec} (${specInfo.role}) specId=${specId}`);
+        } else {
+          // Unknown spec ID — register with UNKNOWN, spell inference will try later
+          if (!this.guidToClass.has(guid)) {
+            this.guidToClass.set(guid, "UNKNOWN");
+          }
+          if (!this.guidToRole.has(guid)) {
+            this.guidToRole.set(guid, "unknown");
+          }
+          console.warn(`[RunBuilder] COMBATANT_INFO: unknown specId=${specId} for ${guid}`);
         }
-        if (!this.guidToRole.has(guid)) {
-          this.guidToRole.set(guid, "unknown");
-        }
+
         // Mark as confirmed via COMBATANT_INFO (highest tier)
         this.confirmedPartyGuids.add(guid);
       }
@@ -503,34 +575,42 @@ class CombatLogRunBuilder extends EventEmitter {
     }
   }
 
-  // ── Class detection from spells ───────────────────────────────────────
+  // ── Class detection from spells (FALLBACK ONLY) ───────────────────────
+  // COMBATANT_INFO spec ID is the primary source. This only fires for players
+  // whose COMBATANT_INFO was missing or had an unrecognized spec ID.
   _detectClassFromSpell(guid, spellId) {
-    if (this.guidToClass.get(guid) && this.guidToClass.get(guid) !== "UNKNOWN") return;
+    // If COMBATANT_INFO already identified this player, don't override
+    if (this.confirmedPartyGuids.has(guid)) return;
 
-    // Map interrupt spell → class
-    const intClassMap = {
-      47528: "DEATHKNIGHT", 183752: "DEMONHUNTER", 78675: "DRUID", 106839: "DRUID",
-      351338: "EVOKER", 147362: "HUNTER", 187707: "HUNTER", 2139: "MAGE",
-      116705: "MONK", 96231: "PALADIN", 15487: "PRIEST", 1766: "ROGUE",
-      57994: "SHAMAN", 6552: "WARRIOR", 119910: "WARLOCK",
-    };
-    // Map defensive spell → class
-    const defClassMap = {
-      48707: "DEATHKNIGHT", 49028: "DEATHKNIGHT", 48792: "DEATHKNIGHT",
-      22812: "DRUID", 61336: "DRUID", 374348: "EVOKER", 186265: "HUNTER",
-      45438: "MAGE", 122278: "MONK", 116849: "MONK",
-      642: "PALADIN", 498: "PALADIN", 31850: "PALADIN", 86659: "PALADIN",
-      47788: "PRIEST", 33206: "PRIEST", 31224: "ROGUE", 5277: "ROGUE",
-      108271: "SHAMAN", 871: "WARRIOR", 1160: "WARRIOR", 12975: "WARRIOR",
-      108416: "WARLOCK", 6789: "WARLOCK",
-    };
+    // Only set class if still UNKNOWN
+    if (!this.guidToClass.get(guid) || this.guidToClass.get(guid) === "UNKNOWN") {
+      const intClassMap = {
+        47528: "DEATHKNIGHT", 183752: "DEMONHUNTER", 78675: "DRUID", 106839: "DRUID",
+        351338: "EVOKER", 147362: "HUNTER", 187707: "HUNTER", 2139: "MAGE",
+        116705: "MONK", 96231: "PALADIN", 15487: "PRIEST", 1766: "ROGUE",
+        57994: "SHAMAN", 6552: "WARRIOR", 119910: "WARLOCK",
+      };
+      const defClassMap = {
+        48707: "DEATHKNIGHT", 49028: "DEATHKNIGHT", 48792: "DEATHKNIGHT",
+        22812: "DRUID", 61336: "DRUID", 374348: "EVOKER", 186265: "HUNTER",
+        45438: "MAGE", 122278: "MONK", 116849: "MONK",
+        642: "PALADIN", 498: "PALADIN", 31850: "PALADIN", 86659: "PALADIN",
+        47788: "PRIEST", 33206: "PRIEST", 31224: "ROGUE", 5277: "ROGUE",
+        108271: "SHAMAN", 871: "WARRIOR", 1160: "WARRIOR", 12975: "WARRIOR",
+        108416: "WARLOCK", 6789: "WARLOCK",
+      };
 
-    const cls = intClassMap[spellId] || defClassMap[spellId];
-    if (cls) this.guidToClass.set(guid, cls);
+      const cls = intClassMap[spellId] || defClassMap[spellId];
+      if (cls) this.guidToClass.set(guid, cls);
+    }
 
-    // Detect role from defensive/healing spells
-    if ([47788, 33206, 116849].includes(spellId)) this.guidToRole.set(guid, "healer");
-    if ([49028, 86659, 871, 12975, 31850].includes(spellId)) this.guidToRole.set(guid, "tank");
+    // Only set role if still "unknown" AND not confirmed by COMBATANT_INFO
+    if (this.guidToRole.get(guid) === "unknown") {
+      // Only use HEALER-ONLY spells for role inference (these are truly spec-specific)
+      if ([47788, 33206, 116849].includes(spellId)) this.guidToRole.set(guid, "healer");
+      // Do NOT infer tank from Shield Wall/Last Stand/etc — all warrior specs use these
+      // Tank role should only come from COMBATANT_INFO or post-run heuristic
+    }
   }
 
   // ── Merge segments shorter than 3 seconds into previous ────────────────
