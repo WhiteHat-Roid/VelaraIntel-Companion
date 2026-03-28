@@ -18,7 +18,6 @@
       width: 100vw;
       height: 100vh;
     }
-
     #badge {
       -webkit-app-region: drag;
       width: 88px;
@@ -28,203 +27,21 @@
       display: flex;
       align-items: center;
       justify-content: center;
-      position: relative;
-      border: 2px solid #1A1A2E;
-      transition: border-color 0.6s ease, box-shadow 0.6s ease;
+      border: 2px solid rgba(123, 47, 190, 0.4);
+      box-shadow: 0 0 12px rgba(123, 47, 190, 0.2);
     }
-
     #badge .shield {
       width: 56px;
       height: 56px;
       object-fit: contain;
       pointer-events: none;
-      filter: brightness(0.5);
-      transition: filter 0.6s ease;
-    }
-
-    /* ── Idle (default) ── */
-    #badge.state-idle {
-      border-color: #1A1A2E;
-      box-shadow: none;
-    }
-    #badge.state-idle .shield {
-      filter: brightness(0.5);
-    }
-
-    /* ── Active (green) ── */
-    #badge.state-active {
-      border-color: #27AE60;
-      box-shadow:
-        0 0 12px rgba(39, 174, 96, 0.4),
-        0 0 28px rgba(39, 174, 96, 0.15),
-        inset 0 0 10px rgba(39, 174, 96, 0.08);
-      animation: pulse-active 3s ease-in-out infinite;
-    }
-    #badge.state-active .shield {
-      filter: brightness(1) drop-shadow(0 0 6px rgba(39, 174, 96, 0.5));
-    }
-    @keyframes pulse-active {
-      0%, 100% {
-        box-shadow:
-          0 0 12px rgba(39, 174, 96, 0.4),
-          0 0 28px rgba(39, 174, 96, 0.15),
-          inset 0 0 10px rgba(39, 174, 96, 0.08);
-      }
-      50% {
-        box-shadow:
-          0 0 18px rgba(39, 174, 96, 0.55),
-          0 0 40px rgba(39, 174, 96, 0.25),
-          inset 0 0 14px rgba(39, 174, 96, 0.12);
-      }
-    }
-
-    /* ── Watching (amber/yellow — needs attention) ── */
-    #badge.state-watching {
-      border-color: #E8A030;
-      box-shadow:
-        0 0 12px rgba(232, 160, 48, 0.4),
-        0 0 28px rgba(232, 160, 48, 0.15),
-        inset 0 0 10px rgba(232, 160, 48, 0.08);
-      animation: pulse-waiting 3s ease-in-out infinite;
-    }
-    #badge.state-watching .shield {
-      filter: brightness(1) drop-shadow(0 0 6px rgba(232, 160, 48, 0.5));
-    }
-    @keyframes pulse-waiting {
-      0%, 100% {
-        box-shadow:
-          0 0 12px rgba(232, 160, 48, 0.4),
-          0 0 28px rgba(232, 160, 48, 0.15),
-          inset 0 0 10px rgba(232, 160, 48, 0.08);
-      }
-      50% {
-        box-shadow:
-          0 0 18px rgba(232, 160, 48, 0.55),
-          0 0 40px rgba(232, 160, 48, 0.25),
-          inset 0 0 14px rgba(232, 160, 48, 0.12);
-      }
-    }
-
-    /* ── Error (red) ── */
-    #badge.state-error {
-      border-color: #C0392B;
-      box-shadow:
-        0 0 12px rgba(192, 57, 43, 0.4),
-        0 0 28px rgba(192, 57, 43, 0.15),
-        inset 0 0 10px rgba(192, 57, 43, 0.08);
-      animation: pulse-error 3s ease-in-out infinite;
-    }
-    #badge.state-error .shield {
-      filter: brightness(1) drop-shadow(0 0 6px rgba(192, 57, 43, 0.5));
-    }
-    @keyframes pulse-error {
-      0%, 100% {
-        box-shadow:
-          0 0 12px rgba(192, 57, 43, 0.4),
-          0 0 28px rgba(192, 57, 43, 0.15),
-          inset 0 0 10px rgba(192, 57, 43, 0.08);
-      }
-      50% {
-        box-shadow:
-          0 0 18px rgba(192, 57, 43, 0.55),
-          0 0 40px rgba(192, 57, 43, 0.25),
-          inset 0 0 14px rgba(192, 57, 43, 0.12);
-      }
+      filter: brightness(0.85);
     }
   </style>
 </head>
 <body>
-  <div id="badge" class="state-idle">
-    <img class="shield" id="shieldImg" src="" alt="">
+  <div id="badge">
+    <img class="shield" src="../../assets/icon.png" alt="">
   </div>
-
-  <script>
-    const badge = document.getElementById("badge");
-    const shieldImg = document.getElementById("shieldImg");
-    shieldImg.src = "../../assets/icon.png";
-
-    // Current state tracking
-    let currentState = "idle";
-
-    function setState(state) {
-      if (state === currentState) return;
-      currentState = state;
-      badge.className = "state-" + state;
-    }
-
-    // Listen for all status events from main process
-    if (window.velara) {
-      // Run detected — key is in progress
-      if (window.velara.onRunUpdate) {
-        window.velara.onRunUpdate((data) => {
-          if (data && (data.dungeonName || data.keyLevel)) {
-            setState("active");  // green — run data flowing
-          }
-        });
-      }
-
-      // Run opened — key just started
-      if (window.velara.onRunOpened) {
-        window.velara.onRunOpened(() => {
-          setState("active");  // green — key started
-        });
-      }
-
-      // Upload result — did it succeed?
-      if (window.velara.onUploadResult) {
-        window.velara.onUploadResult((result) => {
-          if (result && result.ok) {
-            setState("active");  // green — upload worked
-          } else {
-            setState("error");   // red — upload failed
-          }
-        });
-      }
-
-      // Combat log status — is the log file found?
-      if (window.velara.onCombatLogStatus) {
-        window.velara.onCombatLogStatus((status) => {
-          if (status && status.found) {
-            // Combat log found — only go green if we're not already active or error
-            if (currentState === "watching" || currentState === "idle") {
-              setState("active");
-            }
-          } else {
-            // Combat log not found — yellow
-            if (currentState !== "error") {
-              setState("watching");  // yellow — needs /combatlog
-            }
-          }
-        });
-      }
-
-      // Combat log missing — explicit warning
-      if (window.velara.onCombatLogMissing) {
-        window.velara.onCombatLogMissing(() => {
-          if (currentState !== "error" && currentState !== "active") {
-            setState("watching");  // yellow — needs /combatlog
-          }
-        });
-      }
-
-      // Key end detected — uploading
-      if (window.velara.onKeyEndDetected) {
-        window.velara.onKeyEndDetected(() => {
-          setState("active");  // green — key ended, uploading
-        });
-      }
-
-      // Enrichment failed
-      if (window.velara.onEnrichmentFailed) {
-        window.velara.onEnrichmentFailed(() => {
-          // Don't go red for enrichment failure — data still uploads, just thin
-          // Stay whatever state we were in
-        });
-      }
-    }
-
-    // Default state on load
-    setState("watching");  // yellow until we know combat log status
-  </script>
 </body>
 </html>

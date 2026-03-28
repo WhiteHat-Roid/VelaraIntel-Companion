@@ -12,6 +12,7 @@
       overflow: hidden;
     }
 
+    /* ── Titlebar ── */
     .titlebar {
       display: flex;
       align-items: center;
@@ -28,151 +29,167 @@
       font-size: 13px; font-weight: 700; letter-spacing: 0.1em;
       text-transform: uppercase; color: #C8D4DC;
     }
-    .titlebar-title .sub {
-      font-size: 9px; font-weight: 600; letter-spacing: 0.18em;
-      text-transform: uppercase; color: #7B2FBE;
-    }
+    .titlebar-title .sub { font-size: 9px; color: #556677; letter-spacing: 0.15em; text-transform: uppercase; }
     .titlebar-btns { display: flex; gap: 8px; -webkit-app-region: no-drag; }
-    .titlebar-btn {
-      width: 28px; height: 28px;
-      background: rgba(200,212,220,0.04); border: 1px solid #1A1A2E;
-      border-radius: 2px; color: #556677; font-size: 14px; cursor: pointer;
-      display: flex; align-items: center; justify-content: center;
+    .titlebar-btns button {
+      background: none; border: none; color: #556677; font-size: 16px;
+      cursor: pointer; padding: 4px 8px; border-radius: 4px;
     }
-    .titlebar-btn:hover { color: #C8D4DC; background: rgba(200,212,220,0.08); }
-    .titlebar-btn.close:hover { color: #C0392B; border-color: rgba(192,57,43,0.4); }
+    .titlebar-btns button:hover { background: #1A1A2E; color: #C8D4DC; }
 
-    .tabs { display: flex; border-bottom: 1px solid #1A1A2E; }
+    /* ── Tabs ── */
+    .tabs {
+      display: flex;
+      border-bottom: 1px solid #1A1A2E;
+      background: #0A0E13;
+    }
     .tab {
-      flex: 1; padding: 10px; text-align: center; font-size: 11px;
-      font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase;
-      color: #556677; cursor: pointer; border-bottom: 2px solid transparent; transition: all 0.15s;
+      flex: 1;
+      padding: 10px 0;
+      text-align: center;
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: #556677;
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      transition: all 0.2s;
     }
-    .tab.active { color: #7B2FBE; border-bottom-color: #7B2FBE; background: rgba(123,47,190,0.06); }
+    .tab:hover { color: #8899AA; }
+    .tab.active {
+      color: #7B2FBE;
+      border-bottom-color: #7B2FBE;
+      background: rgba(123, 47, 190, 0.04);
+    }
+    .tab-content { display: none; padding: 16px 20px; overflow-y: auto; max-height: 420px; }
+    .tab-content.active { display: block; }
 
-    .page { display: none; padding: 16px; overflow-y: auto; height: calc(100vh - 100px); }
-    .page.active { display: block; }
-
-    .status-card {
-      background: #0D1117; border: 1px solid #1A1A2E;
-      border-radius: 4px; padding: 14px; margin-bottom: 12px;
-    }
-    .status-label {
-      font-size: 9px; letter-spacing: 0.15em; text-transform: uppercase;
-      color: #556677; margin-bottom: 6px;
-    }
-    .status-value { font-size: 16px; font-weight: 700; }
-    .status-value.ok   { color: #27AE60; }
-    .status-value.warn { color: #C9A84C; }
-    .status-value.err  { color: #C0392B; }
-
-    .run-history-card {
-      background: #0D1117; border: 1px solid #1A1A2E;
-      border-radius: 4px; padding: 14px; margin-bottom: 12px; position: relative;
-    }
-    .run-history-label {
-      font-size: 9px; letter-spacing: 0.15em; text-transform: uppercase;
-      color: #556677; margin-bottom: 8px;
-    }
-
-    .custom-select { position: relative; width: 100%; }
-    .custom-select-trigger {
-      width: 100%; background: #080A0C; border: 1px solid #1A1A2E;
-      border-radius: 2px; color: #C8D4DC; font-family: 'Segoe UI', sans-serif;
-      font-size: 12px; padding: 8px 28px 8px 10px; cursor: pointer;
-      display: flex; align-items: center; justify-content: space-between;
-      user-select: none; transition: border-color 0.15s;
-    }
-    .custom-select-trigger:hover,
-    .custom-select-trigger.open { border-color: #7B2FBE; }
-    .custom-select-arrow {
-      font-size: 9px; color: #556677; margin-left: 8px;
-      flex-shrink: 0; transition: transform 0.15s;
-    }
-    .custom-select-trigger.open .custom-select-arrow { transform: rotate(180deg); }
-    .custom-select-dropdown {
-      display: none; position: absolute; top: 100%; left: 0; right: 0;
-      background: #0D1117; border: 1px solid #7B2FBE; border-top: none;
-      border-radius: 0 0 2px 2px; z-index: 999; max-height: 180px; overflow-y: auto;
-    }
-    .custom-select-dropdown.open { display: block; }
-    .custom-select-option {
-      padding: 8px 10px; font-size: 12px; color: #C8D4DC;
-      cursor: pointer; border-bottom: 1px solid rgba(26,26,46,0.5);
-    }
-    .custom-select-option:last-child { border-bottom: none; }
-    .custom-select-option:hover { background: rgba(123,47,190,0.1); color: #7B2FBE; }
-    .custom-select-option.selected { background: rgba(123,47,190,0.08); color: #7B2FBE; }
-    .custom-select-option.empty { color: #556677; cursor: default; }
-    .custom-select-option.empty:hover { background: none; color: #556677; }
-
-    .run-card {
-      background: #0D1117; border: 1px solid #1A1A2E;
-      border-left: 3px solid #C9A84C; border-radius: 4px;
-      padding: 14px; margin-bottom: 12px;
-    }
-    .run-dungeon { font-size: 14px; font-weight: 700; text-transform: uppercase; color: #EEF2F5; }
-    .run-key { color: #C9A84C; margin-left: 6px; }
-    .run-stats { display: flex; gap: 16px; margin-top: 8px; }
-    .run-stat-label { font-size: 8px; letter-spacing: 0.12em; text-transform: uppercase; color: #556677; }
-    .run-stat-val { font-size: 16px; font-weight: 700; }
-
-    .field { margin-bottom: 16px; }
+    /* ── Form elements ── */
     .field-label {
-      font-size: 9px; letter-spacing: 0.12em; text-transform: uppercase;
+      font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase;
       color: #556677; margin-bottom: 6px;
     }
-    .field-input {
-      width: 100%; background: #0D1117; border: 1px solid #1A1A2E;
-      border-radius: 2px; color: #C8D4DC; font-family: 'Segoe UI', sans-serif;
-      font-size: 12px; padding: 8px 10px; outline: none;
+    .path-row {
+      display: flex; gap: 8px; margin-bottom: 16px;
     }
-    .field-input:focus { border-color: #7B2FBE; }
-    .field-row { display: flex; gap: 8px; align-items: flex-end; }
-    .field-row .field-input { flex: 1; }
-    .browse-btn {
-      padding: 8px 14px; background: rgba(200,212,220,0.04);
-      border: 1px solid #1A1A2E; color: #C8D4DC; font-size: 11px;
-      cursor: pointer; border-radius: 2px; white-space: nowrap;
+    .path-input {
+      flex: 1; background: #0D1117; border: 1px solid #1A1A2E; color: #C8D4DC;
+      padding: 8px 12px; font-size: 11px; font-family: 'Consolas', monospace;
+      outline: none;
     }
-    .browse-btn:hover { background: rgba(200,212,220,0.08); }
-    select.field-input { appearance: none; -webkit-appearance: none; cursor: pointer; }
+    .path-input:focus { border-color: #7B2FBE; }
+    .btn-sm {
+      background: #1A1A2E; border: 1px solid #2A3A4A; color: #8899AA;
+      padding: 8px 14px; font-size: 11px; cursor: pointer; white-space: nowrap;
+    }
+    .btn-sm:hover { background: #2A3A4A; color: #C8D4DC; }
+    .hint { font-size: 9px; color: #3A4A5A; margin-top: -10px; margin-bottom: 14px; }
 
-    .toggle-row {
-      display: flex; align-items: center; justify-content: space-between;
-      padding: 10px 0; border-bottom: 1px solid rgba(26,26,46,0.4);
+    /* ── Run card ── */
+    .run-card {
+      background: #0D1117; border: 1px solid #1A1A2E; padding: 16px;
+      margin-bottom: 16px;
     }
-    .toggle-label { font-size: 12px; color: #C8D4DC; }
-    .toggle-sub { font-size: 10px; color: #556677; margin-top: 2px; }
-    .toggle-text { display: flex; flex-direction: column; }
-    .toggle {
-      width: 36px; height: 20px; background: #1A1A2E; border-radius: 10px;
-      cursor: pointer; position: relative; transition: background 0.2s; flex-shrink: 0;
+    .run-card .dungeon {
+      font-size: 16px; font-weight: 700; color: #C8D4DC;
     }
-    .toggle.on { background: #27AE60; }
-    .toggle::after {
-      content: ''; position: absolute; width: 16px; height: 16px;
-      background: #C8D4DC; border-radius: 50%; top: 2px; left: 2px; transition: left 0.2s;
+    .run-card .key-level { color: #C9A84C; }
+    .run-card .stats {
+      font-size: 11px; color: #556677; margin-top: 6px;
     }
-    .toggle.on::after { left: 18px; }
+    .run-card .stats span { margin-right: 12px; }
+    .run-card .stats .deaths { color: #C0392B; }
+    .run-card .stats .timed { color: #27AE60; }
+    .run-card .stats .depleted { color: #C0392B; }
+    .no-run {
+      text-align: center; color: #3A4A5A; padding: 24px 0;
+      font-size: 12px; font-style: italic;
+    }
 
-    .btn {
-      width: 100%; padding: 10px; border: 1px solid #7B2FBE;
-      background: rgba(123,47,190,0.1); color: #7B2FBE; font-size: 12px;
-      font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase;
-      cursor: pointer; border-radius: 2px; transition: all 0.15s; margin-top: 8px;
+    /* ── Privacy mode ── */
+    .privacy-row {
+      display: flex; gap: 8px; margin-bottom: 16px;
     }
-    .btn:hover { background: rgba(123,47,190,0.2); }
+    .privacy-btn {
+      flex: 1; padding: 8px 0; text-align: center;
+      font-size: 11px; font-weight: 600; letter-spacing: 0.06em;
+      text-transform: uppercase; cursor: pointer;
+      border: 1px solid #2A3A4A; background: transparent; color: #556677;
+      transition: all 0.15s;
+    }
+    .privacy-btn:hover { border-color: #556677; color: #8899AA; }
+    .privacy-btn.selected {
+      border-color: #7B2FBE; color: #7B2FBE;
+      background: rgba(123, 47, 190, 0.08);
+    }
 
-    .save-status {
-      font-size: 10px; letter-spacing: 0.08em; text-align: center;
-      color: #27AE60; margin-top: 8px; opacity: 0; transition: opacity 0.3s;
+    /* ── GO button ── */
+    .go-btn {
+      display: block; width: 100%; padding: 14px 0;
+      font-size: 16px; font-weight: 900; letter-spacing: 0.15em;
+      text-transform: uppercase; text-align: center;
+      border: none; cursor: pointer; margin-bottom: 12px;
+      transition: all 0.2s;
     }
-    .save-status.show { opacity: 1; }
+    .go-btn.ready {
+      background: #7B2FBE; color: #fff;
+    }
+    .go-btn.ready:hover { background: #8E3DD4; }
+    .go-btn.disabled {
+      background: #1A1A2E; color: #3A4A5A; cursor: default;
+    }
+    .go-btn.success { background: #27AE60; color: #fff; }
+    .go-btn.error { background: #C0392B; color: #fff; }
+
+    /* ── Run library (upload tab) ── */
+    .run-library { margin-bottom: 16px; }
+    .run-lib-item {
+      display: flex; align-items: center; gap: 10px;
+      padding: 10px 12px; border: 1px solid #1A1A2E;
+      margin-bottom: 4px; cursor: pointer; background: #0D1117;
+      transition: all 0.15s;
+    }
+    .run-lib-item:hover { border-color: #2A3A4A; }
+    .run-lib-item.selected { border-color: #7B2FBE; background: rgba(123, 47, 190, 0.06); }
+    .run-lib-item .radio {
+      width: 14px; height: 14px; border-radius: 50%;
+      border: 2px solid #2A3A4A; display: flex; align-items: center; justify-content: center;
+    }
+    .run-lib-item.selected .radio {
+      border-color: #7B2FBE;
+    }
+    .run-lib-item.selected .radio::after {
+      content: ''; width: 6px; height: 6px; border-radius: 50%; background: #7B2FBE;
+    }
+    .run-lib-info { flex: 1; }
+    .run-lib-info .name { font-size: 12px; font-weight: 600; color: #C8D4DC; }
+    .run-lib-info .meta { font-size: 10px; color: #556677; }
+
+    /* ── Paste area ── */
+    .paste-area {
+      width: 100%; height: 80px; background: #0D1117; border: 1px solid #1A1A2E;
+      color: #C8D4DC; padding: 8px 12px; font-size: 11px;
+      font-family: 'Consolas', monospace; resize: none; outline: none;
+      margin-bottom: 16px;
+    }
+    .paste-area:focus { border-color: #7B2FBE; }
+    .paste-area::placeholder { color: #2A3A4A; }
+
+    /* ── Status feed ── */
+    .status-feed {
+      background: #0A0E13; border: 1px solid #1A1A2E; padding: 8px 12px;
+      max-height: 100px; overflow-y: auto; font-family: 'Consolas', monospace;
+      font-size: 10px; line-height: 1.6;
+    }
+    .status-feed .line-ok { color: #27AE60; }
+    .status-feed .line-err { color: #C0392B; }
+    .status-feed .line-warn { color: #E8A030; }
+    .status-feed .line-info { color: #556677; }
   </style>
 </head>
 <body>
-
+  <!-- Titlebar -->
   <div class="titlebar">
     <div class="titlebar-left">
       <img class="titlebar-logo" src="../../assets/icon.png" alt="Velara">
@@ -182,323 +199,353 @@
       </div>
     </div>
     <div class="titlebar-btns">
-      <div class="titlebar-btn" id="btnMin" title="Minimize">&#8212;</div>
-      <div class="titlebar-btn close" id="btnClose" title="Close to tray">&#x2715;</div>
+      <button id="btnMin" title="Minimize">─</button>
+      <button id="btnClose" title="Close">✕</button>
     </div>
   </div>
 
+  <!-- Tabs -->
   <div class="tabs">
-    <div class="tab active" data-tab="dashboard">Dashboard</div>
-    <div class="tab" data-tab="settings">Settings</div>
+    <div class="tab active" data-tab="live">Live Log</div>
+    <div class="tab" data-tab="upload">Upload a Log</div>
   </div>
 
-  <div class="page active" id="page-dashboard">
+  <!-- Tab 1: Live Log -->
+  <div class="tab-content active" id="tab-live">
+    <div class="field-label">Combat Log Location</div>
+    <div class="path-row">
+      <input type="text" class="path-input" id="logPathInput" readonly>
+      <button class="btn-sm" id="btnBrowsePath">Browse</button>
+    </div>
+    <div class="hint">Point this to your WoW _retail_\Logs folder</div>
 
-    <div class="status-card">
-      <div class="status-label">Upload Status</div>
-      <div class="status-value warn" id="connStatus">Waiting for run...</div>
+    <div class="field-label">Last Completed Run</div>
+    <div id="liveRunCard">
+      <div class="no-run">No run detected yet — run a key with /combatlog enabled</div>
     </div>
 
-    <div class="status-card">
-      <div class="status-label">File Watcher</div>
-      <div class="status-value" id="watchStatus">Initializing...</div>
+    <div class="field-label">Privacy Mode</div>
+    <div class="privacy-row" id="livePrivacy">
+      <button class="privacy-btn selected" data-mode="standard">Standard</button>
+      <button class="privacy-btn" data-mode="private">Private</button>
+      <button class="privacy-btn" data-mode="practice">Practice</button>
     </div>
 
-    <div class="run-history-card">
-      <div class="run-history-label">Session Runs</div>
-      <div class="custom-select" id="customSelect">
-        <div class="custom-select-trigger" id="selectTrigger">
-          <span id="selectLabel">No runs detected yet</span>
-          <span class="custom-select-arrow">&#9660;</span>
-        </div>
-        <div class="custom-select-dropdown" id="selectDropdown">
-          <div class="custom-select-option empty">No runs detected yet</div>
-        </div>
-      </div>
-    </div>
+    <button class="go-btn disabled" id="liveGoBtn" disabled>GO!</button>
 
-    <div id="runDetail"></div>
-
+    <div class="field-label">Status</div>
+    <div class="status-feed" id="liveStatusFeed"></div>
   </div>
 
-  <div class="page" id="page-settings">
-
-    <div class="field">
-      <div class="field-label">WoW Install Path</div>
-      <div class="field-row">
-        <input class="field-input" id="wowPath" readonly placeholder="Not set">
-        <button class="browse-btn" id="btnBrowse">Browse</button>
-        <button class="browse-btn" id="btnDetect">Auto</button>
-      </div>
+  <!-- Tab 2: Upload a Log -->
+  <div class="tab-content" id="tab-upload">
+    <div class="field-label">Choose the file you want to upload</div>
+    <div class="path-row">
+      <input type="text" class="path-input" id="uploadFileInput" readonly>
+      <button class="btn-sm" id="btnChooseFile">Choose...</button>
     </div>
 
-    <div class="field">
-      <div class="field-label">Account</div>
-      <select class="field-input" id="accountName">
-        <option value="">Select account...</option>
-      </select>
+    <div class="field-label">Or paste addon JSON export</div>
+    <textarea class="paste-area" id="pasteArea" placeholder="Paste /vi export here..."></textarea>
+
+    <div class="field-label">Runs Found</div>
+    <div class="run-library" id="runLibrary">
+      <div class="no-run">Select a combat log file to see runs</div>
     </div>
 
-    <div class="field">
-      <div class="field-label">Overlay Hotkey</div>
-      <input class="field-input" id="hotkey" placeholder="CommandOrControl+Shift+V">
+    <div class="field-label">Privacy Mode</div>
+    <div class="privacy-row" id="uploadPrivacy">
+      <button class="privacy-btn selected" data-mode="standard">Standard</button>
+      <button class="privacy-btn" data-mode="private">Private</button>
+      <button class="privacy-btn" data-mode="practice">Practice</button>
     </div>
 
-    <div class="toggle-row">
-      <span class="toggle-label">Auto-upload runs</span>
-      <div class="toggle on" id="toggleAutoUpload"></div>
-    </div>
+    <button class="go-btn disabled" id="uploadGoBtn" disabled>GO!</button>
 
-    <div class="toggle-row">
-      <div class="toggle-text">
-        <span class="toggle-label">Start with Windows</span>
-        <span class="toggle-sub">Runs in tray automatically on login</span>
-      </div>
-      <div class="toggle" id="toggleStartMin"></div>
-    </div>
-
-    <button class="btn" id="btnSave">Save Settings</button>
-    <div class="save-status" id="saveStatus">Settings saved &#10003;</div>
-
+    <div class="status-feed" id="uploadStatusFeed"></div>
   </div>
 
   <script>
-    const sessionRuns = [];
-    const MAX_RUNS = 15;
-    let selectedIndex = 0;
-    let dropdownOpen  = false;
+    // ── Tab switching ──
+    const tabs = document.querySelectorAll('.tab');
+    const contents = document.querySelectorAll('.tab-content');
+    tabs.forEach(tab => {
+      tab.addEventListener('click', () => {
+        tabs.forEach(t => t.classList.remove('active'));
+        contents.forEach(c => c.classList.remove('active'));
+        tab.classList.add('active');
+        document.getElementById('tab-' + tab.dataset.tab).classList.add('active');
+      });
+    });
 
-    function formatRunTime() {
-      const now = new Date();
-      return now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    // ── Window controls ──
+    document.getElementById('btnMin').addEventListener('click', () => window.velara.minimizeDashboard());
+    document.getElementById('btnClose').addEventListener('click', () => window.velara.closeDashboard());
+
+    // ── Privacy mode buttons ──
+    function setupPrivacyRow(rowId) {
+      const row = document.getElementById(rowId);
+      const btns = row.querySelectorAll('.privacy-btn');
+      btns.forEach(btn => {
+        btn.addEventListener('click', () => {
+          btns.forEach(b => b.classList.remove('selected'));
+          btn.classList.add('selected');
+        });
+      });
+    }
+    setupPrivacyRow('livePrivacy');
+    setupPrivacyRow('uploadPrivacy');
+
+    function getPrivacy(rowId) {
+      const selected = document.querySelector('#' + rowId + ' .privacy-btn.selected');
+      const mode = selected ? selected.dataset.mode : 'standard';
+      if (mode === 'private') return { runMode: 'standard', privacyMode: 'private' };
+      if (mode === 'practice') return { runMode: 'practice', privacyMode: 'private' };
+      return { runMode: 'standard', privacyMode: 'shareable' };
     }
 
-    function deriveRunStats(run) {
-      // Derive deaths from deathCountFinal or by counting segment deaths
-      let deaths = run.totalDeaths || run.deathCountFinal || 0;
-      const segments = run.combatSegments || [];
-      if (!deaths && segments.length > 0) {
-        deaths = segments.reduce((sum, seg) => {
-          const segDeaths = Array.isArray(seg.deaths) ? seg.deaths.length : (seg.deathCount || 0);
-          return sum + segDeaths;
-        }, 0);
+    // ── Status feed ──
+    function addStatus(feedId, msg, level) {
+      const feed = document.getElementById(feedId);
+      const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      const cls = 'line-' + (level || 'info');
+      feed.innerHTML += '<div class="' + cls + '">[' + time + '] ' + msg + '</div>';
+      feed.scrollTop = feed.scrollHeight;
+    }
+
+    // ── Helpers ──
+    function formatDuration(ms) {
+      if (!ms || ms <= 0) return '?:??';
+      const s = Math.floor(ms / 1000);
+      return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
+    }
+
+    function renderRunCard(payload) {
+      const r = payload.run;
+      const segs = r.combatSegments || [];
+      const deaths = segs.reduce((s, seg) => s + (seg.deaths ? seg.deaths.length : 0), 0);
+      const pulls = segs.length;
+      const wipes = segs.filter(seg => seg.rawOutcome === 'wipe').length;
+      const dur = formatDuration(r.durationMs);
+      const timed = r.completionResult && r.completionResult.medal > 0;
+      const timedStr = timed
+        ? '<span class="timed">Timed</span>'
+        : '<span class="depleted">Depleted</span>';
+
+      return '<div class="run-card">'
+        + '<div class="dungeon">' + (r.dungeonName || 'Unknown') + ' <span class="key-level">+' + (r.keyLevel || '?') + '</span></div>'
+        + '<div class="stats">'
+        + '<span class="deaths">' + deaths + ' Deaths</span>'
+        + '<span>' + pulls + ' Pulls</span>'
+        + '<span>' + wipes + ' Wipes</span>'
+        + '</div>'
+        + '<div class="stats">Duration: ' + dur + ' · ' + timedStr + '</div>'
+        + '</div>';
+    }
+
+    // ═══════════════════════════════════════════════
+    // TAB 1: LIVE LOG
+    // ═══════════════════════════════════════════════
+
+    let livePayload = null;
+
+    // Load combat log path
+    window.velara.getSettings().then(s => {
+      const logsPath = s.wowPath ? s.wowPath + '\\Logs' : '';
+      document.getElementById('logPathInput').value = logsPath;
+    });
+
+    document.getElementById('btnBrowsePath').addEventListener('click', async () => {
+      const result = await window.velara.browseWowPath();
+      if (result.path) {
+        document.getElementById('logPathInput').value = result.path + '\\Logs';
+        await window.velara.saveSettings({ wowPath: result.path });
       }
-      // Pulls = number of combat segments
-      const pulls = run.totalPulls || segments.length || 0;
-      // Wipes — use wipes array if present, otherwise count segments where all 5 died
-      let wipeCount = 0;
-      if (Array.isArray(run.wipes)) {
-        wipeCount = run.wipes.length;
-      } else if (run.wipeCount != null) {
-        wipeCount = run.wipeCount;
+    });
+
+    // Run completed event
+    if (window.velara.onRunCompleted) {
+      window.velara.onRunCompleted((payload) => {
+        livePayload = payload;
+        document.getElementById('liveRunCard').innerHTML = renderRunCard(payload);
+        const btn = document.getElementById('liveGoBtn');
+        btn.disabled = false;
+        btn.className = 'go-btn ready';
+      });
+    }
+
+    // GO button — Live tab
+    document.getElementById('liveGoBtn').addEventListener('click', async () => {
+      if (!livePayload) return;
+      const btn = document.getElementById('liveGoBtn');
+      btn.disabled = true;
+      btn.textContent = 'Uploading...';
+      btn.className = 'go-btn disabled';
+
+      const priv = getPrivacy('livePrivacy');
+      const result = await window.velara.uploadRun({
+        payload: livePayload,
+        runMode: priv.runMode,
+        privacyMode: priv.privacyMode,
+      });
+
+      if (result && result.ok) {
+        btn.textContent = '\u2713 Uploaded!';
+        btn.className = 'go-btn success';
+        addStatus('liveStatusFeed', '\u2713 Uploaded — opening browser', 'ok');
       } else {
-        wipeCount = segments.filter(seg => seg.rawOutcome === 'wipe').length;
+        btn.textContent = '\u2717 Failed';
+        btn.className = 'go-btn error';
+        addStatus('liveStatusFeed', '\u2717 Upload failed: ' + (result?.error || 'unknown'), 'err');
       }
-      return { deaths, pulls, wipeCount };
-    }
 
-    function addRunToHistory(run) {
-      const runId = run.runId || `${run.dungeonName}-${run.keyLevel}-${Date.now()}`;
-      if (sessionRuns.find(r => r.runId === runId)) return;
-      const stats = deriveRunStats(run);
-      sessionRuns.unshift({ ...run, runId, detectedAt: formatRunTime(), _deaths: stats.deaths, _pulls: stats.pulls, _wipeCount: stats.wipeCount });
-      if (sessionRuns.length > MAX_RUNS) sessionRuns.pop();
-      selectedIndex = 0;
-      rebuildDropdown();
-      renderRunDetail(sessionRuns[0]);
-    }
+      setTimeout(() => {
+        btn.textContent = 'GO!';
+        btn.className = livePayload ? 'go-btn ready' : 'go-btn disabled';
+        btn.disabled = !livePayload;
+      }, 3000);
+    });
 
-    function rebuildDropdown() {
-      const dropdown = document.getElementById('selectDropdown');
-      const label    = document.getElementById('selectLabel');
-      dropdown.innerHTML = '';
-      if (sessionRuns.length === 0) {
-        label.textContent = 'No runs detected yet';
-        const opt = document.createElement('div');
-        opt.className = 'custom-select-option empty';
-        opt.textContent = 'No runs detected yet';
-        dropdown.appendChild(opt);
+    // ═══════════════════════════════════════════════
+    // TAB 2: UPLOAD A LOG
+    // ═══════════════════════════════════════════════
+
+    let uploadRuns = [];
+    let selectedRunIndex = -1;
+
+    // Auto-populate with newest combat log
+    window.velara.getSettings().then(s => {
+      if (s.wowPath) {
+        const logsDir = s.wowPath + '\\Logs';
+        document.getElementById('uploadFileInput').value = logsDir + '\\WoWCombatLog.txt';
+      }
+    });
+
+    document.getElementById('btnChooseFile').addEventListener('click', async () => {
+      const result = await window.velara.browseCombatLog();
+      if (result.path) {
+        document.getElementById('uploadFileInput').value = result.path;
+        await parseFile(result.path);
+      }
+    });
+
+    async function parseFile(filePath) {
+      const lib = document.getElementById('runLibrary');
+      lib.innerHTML = '<div class="no-run">Parsing...</div>';
+      uploadRuns = [];
+      selectedRunIndex = -1;
+      updateUploadGoBtn();
+
+      const result = await window.velara.parseCombatLogFile(filePath);
+      if (!result.ok || result.runs.length === 0) {
+        lib.innerHTML = '<div class="no-run">No runs found in file</div>';
         return;
       }
-      const sel = sessionRuns[selectedIndex];
-      label.textContent = `${sel.dungeonName || 'Unknown'} +${sel.keyLevel || '?'}  \u00b7  ${sel.detectedAt}`;
-      sessionRuns.forEach((run, idx) => {
-        const opt = document.createElement('div');
-        opt.className = 'custom-select-option' + (idx === selectedIndex ? ' selected' : '');
-        opt.textContent = `${run.dungeonName || 'Unknown'} +${run.keyLevel || '?'}  \u00b7  ${run.detectedAt}`;
-        opt.addEventListener('click', () => {
-          selectedIndex = idx;
-          closeDropdown(); rebuildDropdown(); renderRunDetail(sessionRuns[idx]);
+
+      uploadRuns = result.runs;
+      let html = '';
+      for (const r of uploadRuns) {
+        const dur = formatDuration(r.durationMs);
+        html += '<div class="run-lib-item" data-idx="' + r.index + '">'
+          + '<div class="radio"></div>'
+          + '<div class="run-lib-info">'
+          + '<div class="name">' + r.dungeonName + ' +' + r.keyLevel + '</div>'
+          + '<div class="meta">' + dur + ' · ' + r.deaths + ' deaths · ' + r.segments + ' segs'
+          + (r.timed ? ' · <span style="color:#27AE60">Timed</span>' : '') + '</div>'
+          + '</div></div>';
+      }
+      lib.innerHTML = html;
+
+      lib.querySelectorAll('.run-lib-item').forEach(item => {
+        item.addEventListener('click', () => {
+          lib.querySelectorAll('.run-lib-item').forEach(i => i.classList.remove('selected'));
+          item.classList.add('selected');
+          selectedRunIndex = parseInt(item.dataset.idx, 10);
+          updateUploadGoBtn();
         });
-        dropdown.appendChild(opt);
       });
     }
 
-    function openDropdown()  {
-      dropdownOpen = true;
-      document.getElementById('selectTrigger').classList.add('open');
-      document.getElementById('selectDropdown').classList.add('open');
-    }
-    function closeDropdown() {
-      dropdownOpen = false;
-      document.getElementById('selectTrigger').classList.remove('open');
-      document.getElementById('selectDropdown').classList.remove('open');
+    function updateUploadGoBtn() {
+      const btn = document.getElementById('uploadGoBtn');
+      const hasSelection = selectedRunIndex >= 0 || document.getElementById('pasteArea').value.trim().length > 0;
+      btn.disabled = !hasSelection;
+      btn.className = hasSelection ? 'go-btn ready' : 'go-btn disabled';
     }
 
-    document.getElementById('selectTrigger').addEventListener('click', () => {
-      if (sessionRuns.length === 0) return;
-      dropdownOpen ? closeDropdown() : openDropdown();
-    });
-    document.addEventListener('click', (e) => {
-      if (!document.getElementById('customSelect').contains(e.target)) closeDropdown();
-    });
+    document.getElementById('pasteArea').addEventListener('input', updateUploadGoBtn);
 
-    function renderRunDetail(run) {
-      const el = document.getElementById('runDetail');
-      if (!run) { el.innerHTML = ''; return; }
-      el.innerHTML = `
-        <div class="run-card">
-          <span class="run-dungeon">${run.dungeonName || 'Unknown'}</span>
-          <span class="run-key">+${run.keyLevel || '?'}</span>
-          <div class="run-stats">
-            <div>
-              <div class="run-stat-label">Deaths</div>
-              <div class="run-stat-val" style="color:#C0392B">${run._deaths || 0}</div>
-            </div>
-            <div>
-              <div class="run-stat-label">Pulls</div>
-              <div class="run-stat-val">${run._pulls || 0}</div>
-            </div>
-            <div>
-              <div class="run-stat-label">Wipes</div>
-              <div class="run-stat-val" style="color:#C9A84C">${run._wipeCount || 0}</div>
-            </div>
-          </div>
-        </div>
-      `;
-    }
+    // GO button — Upload tab
+    document.getElementById('uploadGoBtn').addEventListener('click', async () => {
+      const btn = document.getElementById('uploadGoBtn');
+      btn.disabled = true;
+      btn.textContent = 'Uploading...';
+      btn.className = 'go-btn disabled';
 
-    document.querySelectorAll('.tab').forEach(tab => {
-      tab.addEventListener('click', () => {
-        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-        document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
-        tab.classList.add('active');
-        document.getElementById('page-' + tab.dataset.tab).classList.add('active');
+      const priv = getPrivacy('uploadPrivacy');
+      let payload = null;
+
+      // Check paste area first
+      const pasteText = document.getElementById('pasteArea').value.trim();
+      if (pasteText) {
+        try {
+          payload = JSON.parse(pasteText);
+        } catch (e) {
+          addStatus('uploadStatusFeed', 'Invalid JSON: ' + e.message, 'err');
+          btn.textContent = 'GO!';
+          updateUploadGoBtn();
+          return;
+        }
+      } else if (selectedRunIndex >= 0 && uploadRuns[selectedRunIndex]) {
+        payload = uploadRuns[selectedRunIndex].payload;
+      }
+
+      if (!payload) {
+        addStatus('uploadStatusFeed', 'No run selected', 'warn');
+        btn.textContent = 'GO!';
+        updateUploadGoBtn();
+        return;
+      }
+
+      const result = await window.velara.uploadRun({
+        payload,
+        runMode: priv.runMode,
+        privacyMode: priv.privacyMode,
       });
-    });
 
-    document.getElementById('btnClose').addEventListener('click', () => window.velara.closeDashboard());
-    document.getElementById('btnMin').addEventListener('click',   () => window.velara.minimizeDashboard());
-
-    document.querySelectorAll('.toggle').forEach(toggle => {
-      toggle.addEventListener('click', () => toggle.classList.toggle('on'));
-    });
-
-    async function loadSettings() {
-      const s = await window.velara.getSettings();
-      document.getElementById('wowPath').value = s.wowPath || '';
-      document.getElementById('hotkey').value  = s.hotkey  || 'CommandOrControl+Shift+V';
-
-      if (s.autoUpload) document.getElementById('toggleAutoUpload').classList.add('on');
-      else              document.getElementById('toggleAutoUpload').classList.remove('on');
-
-      // Use actual Windows login item state as source of truth
-      if (s.autoStartOnBoot) document.getElementById('toggleStartMin').classList.add('on');
-      else                   document.getElementById('toggleStartMin').classList.remove('on');
-
-      if (s.wowPath) {
-        const { accounts } = await window.velara.getAccounts(s.wowPath);
-        const select = document.getElementById('accountName');
-        select.innerHTML = '<option value="">Select account...</option>';
-        accounts.forEach(a => {
-          const opt = document.createElement('option');
-          opt.value = a; opt.textContent = a;
-          if (a === s.accountName) opt.selected = true;
-          select.appendChild(opt);
-        });
+      if (result && result.ok) {
+        btn.textContent = '\u2713 Uploaded!';
+        btn.className = 'go-btn success';
+        addStatus('uploadStatusFeed', '\u2713 Uploaded — opening browser', 'ok');
+      } else {
+        btn.textContent = '\u2717 Failed';
+        btn.className = 'go-btn error';
+        addStatus('uploadStatusFeed', '\u2717 Upload failed: ' + (result?.error || 'unknown'), 'err');
       }
 
-      const watchEl = document.getElementById('watchStatus');
-      watchEl.textContent = s.wowPath ? 'Watching' : 'No WoW path set';
-      watchEl.className   = 'status-value ' + (s.wowPath ? 'ok' : 'warn');
+      setTimeout(() => {
+        btn.textContent = 'GO!';
+        updateUploadGoBtn();
+      }, 3000);
+    });
+
+    // ═══════════════════════════════════════════════
+    // STATUS LOG LISTENER (from main process)
+    // ═══════════════════════════════════════════════
+
+    if (window.velara.onStatusLog) {
+      window.velara.onStatusLog((msg, level) => {
+        addStatus('liveStatusFeed', msg, level);
+      });
     }
 
-    document.getElementById('btnBrowse').addEventListener('click', async () => {
-      const { path } = await window.velara.browseWowPath();
-      if (path) {
-        document.getElementById('wowPath').value = path;
-        const { accounts } = await window.velara.getAccounts(path);
-        const select = document.getElementById('accountName');
-        select.innerHTML = '<option value="">Select account...</option>';
-        accounts.forEach(a => {
-          const opt = document.createElement('option');
-          opt.value = a; opt.textContent = a;
-          select.appendChild(opt);
-        });
-      }
+    // Build info
+    window.velara.getBuildInfo().then(info => {
+      document.getElementById('titleSub').textContent = 'v' + info.version;
     });
 
-    document.getElementById('btnDetect').addEventListener('click', async () => {
-      const { path } = await window.velara.detectWowPath();
-      if (path) {
-        document.getElementById('wowPath').value = path;
-        const { accounts } = await window.velara.getAccounts(path);
-        const select = document.getElementById('accountName');
-        select.innerHTML = '<option value="">Select account...</option>';
-        accounts.forEach(a => {
-          const opt = document.createElement('option');
-          opt.value = a; opt.textContent = a;
-          select.appendChild(opt);
-        });
-      } else {
-        document.getElementById('wowPath').value = '';
-        document.getElementById('wowPath').placeholder = 'Not found — use Browse';
-      }
-    });
-
-    document.getElementById('btnSave').addEventListener('click', async () => {
-      const startWithWindows = document.getElementById('toggleStartMin').classList.contains('on');
-      const settings = {
-        wowPath        : document.getElementById('wowPath').value,
-        accountName    : document.getElementById('accountName').value,
-        hotkey         : document.getElementById('hotkey').value,
-        autoUpload     : document.getElementById('toggleAutoUpload').classList.contains('on'),
-        startMinimized : startWithWindows,
-      };
-      await window.velara.saveSettings(settings);
-      const status = document.getElementById('saveStatus');
-      status.classList.add('show');
-      setTimeout(() => status.classList.remove('show'), 2000);
-      loadSettings();
-    });
-
-    window.velara.onRunUpdate((run) => {
-      addRunToHistory(run);
-      document.getElementById('connStatus').textContent = 'Run detected \u2014 uploading...';
-      document.getElementById('connStatus').className   = 'status-value warn';
-    });
-
-    window.velara.onUploadResult((result) => {
-      const connEl = document.getElementById('connStatus');
-      if (result.ok) {
-        connEl.textContent = result.skipped ? 'Already uploaded' : 'Uploaded \u2714  Opening results...';
-        connEl.className   = 'status-value ok';
-      } else {
-        connEl.textContent = 'Upload failed: ' + (result.error || result.status);
-        connEl.className   = 'status-value err';
-      }
-    });
-
-    loadSettings();
-
-    // Show build info in title bar
-    window.velara.getBuildInfo().then((info) => {
-      const sub = document.getElementById('titleSub');
-      if (sub && info && info.buildTimestamp) {
-        const ts = info.buildTimestamp.replace('T', ' ').substring(0, 16);
-        sub.textContent = 'v' + info.version + ' \u00b7 build ' + ts;
-      }
-    }).catch(() => {});
+    // Initial status
+    addStatus('liveStatusFeed', 'Watching for runs...', 'info');
   </script>
 </body>
 </html>

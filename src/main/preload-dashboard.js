@@ -2,15 +2,30 @@
 const { contextBridge, ipcRenderer } = require("electron");
 
 contextBridge.exposeInMainWorld("velara", {
-  getSettings: () => ipcRenderer.invoke("get-settings"),
-  saveSettings: (settings) => ipcRenderer.invoke("save-settings", settings),
-  detectWowPath: () => ipcRenderer.invoke("detect-wow-path"),
-  getAccounts: (wowPath) => ipcRenderer.invoke("get-accounts", wowPath),
-  browseWowPath: () => ipcRenderer.invoke("browse-wow-path"),
-  manualUpload: (runData) => ipcRenderer.invoke("manual-upload", runData),
-  getBuildInfo: () => ipcRenderer.invoke("get-build-info"),
-  closeDashboard: () => ipcRenderer.send("close-dashboard"),
+  // Window controls
+  closeDashboard:    () => ipcRenderer.send("close-dashboard"),
   minimizeDashboard: () => ipcRenderer.send("minimize-dashboard"),
-  onRunUpdate: (callback) => ipcRenderer.on("run-update", (_, data) => callback(data)),
-  onUploadResult: (callback) => ipcRenderer.on("upload-result", (_, data) => callback(data)),
+
+  // Settings
+  getSettings:       () => ipcRenderer.invoke("get-settings"),
+  saveSettings:      (s) => ipcRenderer.invoke("save-settings", s),
+  detectWowPath:     () => ipcRenderer.invoke("detect-wow-path"),
+  browseWowPath:     () => ipcRenderer.invoke("browse-wow-path"),
+  browseCombatLog:   () => ipcRenderer.invoke("browse-combat-log"),
+  getBuildInfo:      () => ipcRenderer.invoke("get-build-info"),
+
+  // Upload (GO button)
+  uploadRun:         (data) => ipcRenderer.invoke("upload-run", data),
+
+  // Parse combat log file (Upload tab)
+  parseCombatLogFile: (filePath) => ipcRenderer.invoke("parse-combat-log-file", filePath),
+
+  // Ingest JSON (manual paste upload)
+  ingestJSON:        (json) => ipcRenderer.invoke("upload-run", json),
+
+  // Status events
+  onStatusLog:       (cb) => ipcRenderer.on("status-log", (_, data) => cb(data.msg, data.level)),
+  onRunCompleted:    (cb) => ipcRenderer.on("run-completed", (_, data) => cb(data)),
+  onUploadResult:    (cb) => ipcRenderer.on("upload-result", (_, data) => cb(data)),
+  onKeyEndDetected:  (cb) => ipcRenderer.on("key-end-detected", (_, data) => cb(data)),
 });

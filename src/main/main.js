@@ -495,21 +495,10 @@ function toggleOverlay() {
   overlayWindow.isVisible() ? overlayWindow.hide() : overlayWindow.show();
 }
 
-// ── Tray status tracking ──────────────────────────────────────────────────────
-let companionStatus = "yellow";
-
-const STATUS_TOOLTIPS = {
-  green:  "Velara Intelligence — Connected & Healthy",
-  yellow: "Velara Intelligence — Waiting (type /combatlog in WoW)",
-  red:    "Velara Intelligence — Upload error",
-};
-
-function updateTrayStatus(status) {
-  if (status === companionStatus || !tray) return;
-  companionStatus = status;
-  const dot = status === "green" ? "\u{1F7E2}" : status === "red" ? "\u{1F534}" : "\u{1F7E1}";
-  tray.setToolTip(STATUS_TOOLTIPS[status] || "Velara Intelligence");
-  console.log(`[Tray] Status: ${status} ${dot}`);
+// ── Status broadcast helper ──────────────────────────────────────────────────
+function broadcastStatus(msg, level) {
+  broadcast("status-log", { msg, level });
+  console.log(`[Status] [${level}] ${msg}`);
 }
 
 function forceQuit() {
@@ -531,7 +520,7 @@ function createTray() {
     ? nativeImage.createFromPath(iconPath)
     : nativeImage.createEmpty();
   tray = new Tray(icon);
-  tray.setToolTip(STATUS_TOOLTIPS.yellow);
+  tray.setToolTip("Velara Intelligence Companion");
   tray.setContextMenu(Menu.buildFromTemplate([
     { label: "Show Dashboard", click: () => createDashboard()  },
     { label: "Toggle Overlay", click: () => toggleOverlay()    },
@@ -610,7 +599,6 @@ function startSVWatcher() {
             apiUploader.upload(payload).then((result) => {
               console.log("[Uploader] Result:", JSON.stringify(result));
               broadcast("upload-result", result);
-              updateTrayStatus(result.ok ? "green" : "red");
               openRunInBrowser(result);
             });
           } else {
@@ -772,33 +760,29 @@ function startCombatLogWatcher() {
   if (resolvedLogPath) combatLogWatcher.logPath = resolvedLogPath;
   combatLogParser  = new CombatLogParser();
 
-  // PRIMARY upload path: CombatLogRunBuilder builds full payload from combat log alone
+  // PRIMARY path: CombatLogRunBuilder builds full payload from combat log alone
+  // Upload ONLY happens when user presses GO in the dashboard — never automatically
   const runBuilder = new CombatLogRunBuilder();
+  let lastCompletedPayload = null;
 
   runBuilder.on("keyStart", (run) => {
     broadcast("run-opened", run);
-    updateTrayStatus("green");
+    broadcastStatus("Key started: " + (run.dungeonName || "Unknown") + " +" + (run.keyLevel || "?"), "info");
   });
 
   runBuilder.on("keyEnd", (payload) => {
-    broadcast("key-end-detected", { message: "Key completed — uploading..." });
-    broadcast("run-update", payload.run);
+    lastCompletedPayload = payload;
+    broadcast("run-completed", payload);
+    broadcastStatus("Key completed: " + payload.run.dungeonName + " +" + payload.run.keyLevel, "info");
 
-    if (store.get("autoUpload")) {
-      const payloadSize = JSON.stringify(payload).length;
-      console.log(`[RunBuilder] Payload size: ${(payloadSize / 1024).toFixed(1)} KB`);
-      if (payloadSize > 500000) console.warn("[RunBuilder] WARNING: Payload over 500KB");
-      apiUploader.upload(payload).then((result) => {
-        console.log("[RunBuilder] Upload result:", JSON.stringify(result));
-        broadcast("upload-result", result);
-        updateTrayStatus(result.ok ? "green" : "red");
-        openRunInBrowser(result);
-      });
-    }
+    const segs = payload.run.combatSegments || [];
+    const deaths = segs.reduce((s, seg) => s + (seg.deaths?.length || 0), 0);
+    const ints = segs.reduce((s, seg) => s + (seg.interrupts?.length || 0), 0);
+    const defs = segs.reduce((s, seg) => s + (seg.defensives?.length || 0), 0);
+    broadcastStatus(segs.length + " segments, " + deaths + " deaths, " + ints + " interrupts, " + defs + " defensives", "info");
   });
 
-  combatLogWatcher.on("line",  (line) => {
-    // Feed every line to the run builder (primary path)
+  combatLogWatcher.on("line", (line) => {
     try {
       runBuilder.processLine(line);
     } catch (err) {
@@ -810,16 +794,15 @@ function startCombatLogWatcher() {
   combatLogWatcher.start();
 
   // Check if the combat log file exists and broadcast status
-  const fs = require("fs");
   const logPath = getCombatLogPath();
   const logFound = logPath && fs.existsSync(logPath);
   broadcast("combat-log-status", { found: !!logFound, path: logPath || null });
   if (logFound) {
-    updateTrayStatus("green");
+    broadcastStatus("Combat log found: " + path.basename(logPath), "ok");
   } else {
-    updateTrayStatus("yellow");
     console.warn("[CombatLog] WoWCombatLog.txt not found — enable Advanced Combat Logging in WoW");
-    broadcast("combat-log-missing", { message: "Enable Advanced Combat Logging in WoW settings for automatic uploads" });
+    broadcastStatus("Combat log not found — type /combatlog in WoW", "warn");
+    broadcast("combat-log-missing", { message: "Enable Advanced Combat Logging in WoW settings" });
   }
 }
 
@@ -902,6 +885,84 @@ function setupIPC() {
     currentRunId          : runAssembler ? runAssembler.currentRunID : null,
     lastKnownRunId,
   }));
+
+  // ── Upload (GO button) ──────────────────────────────────────────────────
+  ipcMain.handle("upload-run", async (_, { payload, runMode, privacyMode }) => {
+    try {
+      payload.run.runMode = runMode;
+      payload.run.privacyMode = privacyMode;
+
+      const payloadSize = JSON.stringify(payload).length;
+      broadcastStatus("Uploading " + (payloadSize / 1024).toFixed(1) + " KB to velaraintel.com...", "info");
+
+      const result = await apiUploader.upload(payload);
+
+      if (result.ok) {
+        broadcastStatus("Upload complete!", "ok");
+        openRunInBrowser(result);
+      } else {
+        broadcastStatus("Upload failed: " + (result.error || result.status || "unknown"), "err");
+      }
+
+      broadcast("upload-result", result);
+      return result;
+    } catch (err) {
+      broadcastStatus("Upload error: " + err.message, "err");
+      return { ok: false, error: err.message };
+    }
+  });
+
+  // ── Parse combat log file (Upload tab) ────────────────────────────────
+  ipcMain.handle("parse-combat-log-file", async (_, filePath) => {
+    try {
+      const content = fs.readFileSync(filePath, "utf8");
+      const lines = content.split("\n").filter(l => l.trim().length > 0);
+
+      broadcastStatus("Parsing " + lines.length + " lines from " + path.basename(filePath) + "...", "info");
+
+      const builder = new CombatLogRunBuilder();
+      const runs = [];
+
+      builder.on("keyEnd", (payload) => {
+        runs.push(payload);
+      });
+
+      for (const line of lines) {
+        try { builder.processLine(line); } catch {}
+      }
+
+      broadcastStatus("Found " + runs.length + " run(s) in file", "info");
+
+      return {
+        ok: true,
+        runs: runs.map((p, i) => ({
+          index: i,
+          dungeonName: p.run.dungeonName,
+          keyLevel: p.run.keyLevel,
+          durationMs: p.run.durationMs,
+          deaths: p.run.deathCountFinal || 0,
+          segments: (p.run.combatSegments || []).length,
+          timed: p.run.completionResult?.medal > 0,
+          payload: p,
+        })),
+      };
+    } catch (err) {
+      broadcastStatus("Parse error: " + err.message, "err");
+      return { ok: false, error: err.message, runs: [] };
+    }
+  });
+
+  // ── Browse for combat log file ────────────────────────────────────────
+  ipcMain.handle("browse-combat-log", async () => {
+    const result = await dialog.showOpenDialog(dashboardWindow, {
+      properties: ["openFile"],
+      title: "Select a WoW Combat Log file",
+      filters: [{ name: "Combat Log", extensions: ["txt"] }],
+      defaultPath: getCombatLogPath() || "",
+    });
+    if (result.canceled || !result.filePaths.length) return { path: "" };
+    return { path: result.filePaths[0] };
+  });
 
   ipcMain.on("close-dashboard",    () => { if (dashboardWindow) dashboardWindow.hide(); });
   ipcMain.on("minimize-dashboard", () => { if (dashboardWindow) dashboardWindow.minimize(); });
