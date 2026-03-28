@@ -8,6 +8,7 @@ contextBridge.exposeInMainWorld("velara", {
   getAccounts: (wowPath) => ipcRenderer.invoke("get-accounts", wowPath),
   browseWowPath: () => ipcRenderer.invoke("browse-wow-path"),
   manualUpload: (runData) => ipcRenderer.invoke("manual-upload", runData),
+  getBuildInfo: () => ipcRenderer.invoke("get-build-info"),
   closeDashboard: () => ipcRenderer.send("close-dashboard"),
   minimizeDashboard: () => ipcRenderer.send("minimize-dashboard"),
   onRunUpdate: (callback) => ipcRenderer.on("run-update", (_, data) => callback(data)),

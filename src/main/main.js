@@ -1,10 +1,20 @@
-// VelaraIntel Companion — Electron Main Process v0.5.3
+// VelaraIntel Companion — Electron Main Process v1.0.0
+// V1.0.0: ARCHITECTURE SHIFT — pure combat log pipeline with hardened parser.
+//         Dynamic segmentation, tiered party detection, fault-tolerant parsing.
+//         ChatGPT-approved architecture. This is a fundamentally new product.
+// V0.5.5: ARCHITECTURE REWRITE — builds runs 100% from combat log (like WCL).
+//         No more SavedVariables dependency for uploads. CombatLogRunBuilder.
+// V0.5.4: Combat log auto-upload (no /reload), enrichment pipeline fix,
+//         segmentId matching, getCombatLogPath dated files, tray status,
+//         forceQuit, completionResult, community gate compat.
 // V0.5.3: Auto-upload on key end (combat log detection), fix dedup cache,
 //         real error logging on 422, retry on failure.
 // V0.5.2: Fixed "Start with Windows" — uses Windows Registry instead of
 //         Electron's broken setLoginItemSettings (fails with NSIS installers).
 // V0.5.1: Auto-start with Windows wired to startMinimized toggle in settings.
 // V0.5.0: Removed API key requirement. Added clientId UUID for rate tracking.
+
+const BUILD_TIMESTAMP = "2026-03-28T22:00:00";
 
 const {
   app, BrowserWindow, Tray, Menu, globalShortcut,
@@ -20,6 +30,7 @@ const { LuaParser }        = require("../services/luaParser");
 const { ApiUploader }      = require("../services/apiUploader");
 const { CombatLogWatcher } = require("../services/combatLogWatcher");
 const { CombatLogParser, parseCombatLog } = require("../services/combatLogParser");
+const { CombatLogRunBuilder } = require("../services/combatLogRunBuilder");
 const { RunAssembler }     = require("../services/runAssembler");
 const fs = require("fs");
 
@@ -95,6 +106,7 @@ let runAssembler     = null;
 let apiUploader      = null;
 let lastKnownRunId   = null;
 let lastActiveRunId  = null;
+let cachedActiveRun  = null;  // In-memory copy of _activeRun for key-end upload
 
 const WOW_SEARCH_PATHS = [
   "C:\\Program Files (x86)\\World of Warcraft\\_retail_",
@@ -135,24 +147,36 @@ function getCombatLogPath() {
   const wowPath = store.get("wowPath");
   if (!wowPath) return null;
 
-  // Check multiple possible locations
-  const candidates = [
-    path.join(wowPath, "Logs", "WoWCombatLog.txt"),
-    path.join(path.resolve(wowPath, ".."), "Logs", "WoWCombatLog.txt"),
-    path.join(wowPath, "..", "Logs", "WoWCombatLog.txt"),
+  // WoW creates either WoWCombatLog.txt or WoWCombatLog-MMDDYY_HHMMSS.txt
+  // depending on Advanced Combat Logging settings. Find the most recent one.
+  const logsDirs = [
+    path.join(wowPath, "Logs"),
+    path.join(path.resolve(wowPath, ".."), "Logs"),
   ];
 
-  for (const p of candidates) {
-    if (fs.existsSync(p)) return p;
+  for (const logsDir of logsDirs) {
+    if (!fs.existsSync(logsDir)) continue;
+
+    // Check for exact name first
+    const exact = path.join(logsDir, "WoWCombatLog.txt");
+    if (fs.existsSync(exact)) return exact;
+
+    // Find dated combat log files (WoWCombatLog-MMDDYY_HHMMSS.txt)
+    try {
+      const files = fs.readdirSync(logsDir)
+        .filter(f => f.startsWith("WoWCombatLog") && f.endsWith(".txt"))
+        .map(f => ({ name: f, full: path.join(logsDir, f), mtime: fs.statSync(path.join(logsDir, f)).mtimeMs }))
+        .sort((a, b) => b.mtime - a.mtime);  // newest first
+
+      if (files.length > 0) {
+        console.log(`[CombatLog] Found ${files.length} log file(s), using newest: ${files[0].name}`);
+        return files[0].full;
+      }
+    } catch { /* skip */ }
   }
 
-  // Check if Logs directory exists (file created on first combat)
-  const logsDir = path.join(wowPath, "Logs");
-  if (fs.existsSync(logsDir)) return path.join(logsDir, "WoWCombatLog.txt");
-  const parentLogs = path.join(path.resolve(wowPath, ".."), "Logs");
-  if (fs.existsSync(parentLogs)) return path.join(parentLogs, "WoWCombatLog.txt");
-
-  return candidates[0]; // default
+  // Fallback: return default path (file may be created later)
+  return path.join(wowPath, "Logs", "WoWCombatLog.txt");
 }
 
 // ── Privacy — strip forbidden fields before upload ────────────────────────────
@@ -203,6 +227,8 @@ function buildV12Payload(latest) {
         hasInterrupts          : false,
         hasEnemyHealthSnapshots: false,
         hasEnemyPositions      : false,
+        hasDefensives          : false,
+        hasEncounterData       : false,
       },
       player       : stripPrivacy(latest.player || { class: "UNKNOWN", role: "dps" }),
       partyMembers : (Array.isArray(latest.partyMembers) ? latest.partyMembers : []).map(stripPrivacy),
@@ -222,6 +248,8 @@ function buildV12Payload(latest) {
         segmentId:     b.segmentId    || null,
         pullIndex:     b.pullIndex    || null,
       })) : [],
+      completionResult: latest.completionResult || null,
+      deathCountFinal:  latest.deathCountFinal  || null,
     },
   };
 }
@@ -242,64 +270,142 @@ function enrichPayloadWithCombatLog(payload, latest) {
 
   try {
     console.log(`[Enrich] Reading combat log: ${logPath}`);
+    const stat = fs.statSync(logPath);
+    console.log(`[Enrich] Combat log size: ${(stat.size / 1024 / 1024).toFixed(1)} MB`);
     const logContent = fs.readFileSync(logPath, "utf8");
     const combatLogLines = logContent.split("\n").filter(l => l.trim().length > 0);
     console.log(`[Enrich] Combat log: ${combatLogLines.length} lines`);
 
     // Build a run object with ms timestamps for the parser
+    const runStartTs  = (latest.startSec || 0) * 1000;
+    const runFinishTs = (latest.finishSec || 0) * 1000 || Date.now();
+
+    const rawSegments = (latest.combatSegments || []).map(seg => ({
+      segmentId: seg.segmentId,
+      startTs: (seg.startSec || 0) * 1000,
+      finishTs: (seg.finishSec || 0) * 1000,
+      rawOutcome: seg.rawOutcome,
+    }));
+
+    // Fix segments with finishTs=0 (WoW hasn't flushed SV yet)
+    // Estimate finishTs from next segment's start or run end time
+    let fixedCount = 0;
+    for (let i = 0; i < rawSegments.length; i++) {
+      if (rawSegments[i].finishTs <= 0 || rawSegments[i].finishTs <= rawSegments[i].startTs) {
+        if (i + 1 < rawSegments.length && rawSegments[i + 1].startTs > 0) {
+          rawSegments[i].finishTs = rawSegments[i + 1].startTs;
+        } else {
+          rawSegments[i].finishTs = runFinishTs;
+        }
+        fixedCount++;
+      }
+    }
+    if (fixedCount > 0) {
+      console.log(`[Enrich] Fixed ${fixedCount} segments with missing finishTs (SV not flushed)`);
+    }
+
+    // If we have ZERO segments (SV wasn't read during run), create one big segment
+    // covering the entire run so the parser can still match events
+    if (rawSegments.length === 0 && runStartTs > 0) {
+      console.log(`[Enrich] No segments from addon — creating synthetic segment for full run window`);
+      rawSegments.push({
+        segmentId: `${latest.runId || "unk"}-s-synth`,
+        startTs: runStartTs,
+        finishTs: runFinishTs,
+        rawOutcome: "synthetic",
+      });
+    }
+
+    console.log(`[Enrich] Segments for parser: ${rawSegments.length} (startTs range: ${rawSegments.map(s => s.startTs).join(", ")})`);
+
     const run = {
       runId: latest.runId,
-      startTs: (latest.startSec || 0) * 1000,
-      finishTs: (latest.finishSec || 0) * 1000,
+      startTs: runStartTs,
+      finishTs: runFinishTs,
       mapId: latest.mapId,
       keyLevel: latest.keyLevel,
       player: latest.player,
       partyMembers: latest.partyMembers,
-      combatSegments: (latest.combatSegments || []).map(seg => ({
-        segmentId: seg.segmentId,
-        startTs: (seg.startSec || 0) * 1000,
-        finishTs: (seg.finishSec || 0) * 1000,
-        rawOutcome: seg.rawOutcome,
-      })),
+      combatSegments: rawSegments,
     };
 
-    // Filter log lines to the run's time window (rough filter before full parse)
-    // The parser does its own clock sync, but we can pre-filter by keeping only
-    // lines from a few minutes before run start to a few minutes after run end
     const result = parseCombatLog({ run, combatLogLines });
+    console.log(`[Enrich] Parser diagnostics: ${JSON.stringify(result.parserDiagnostics)}`);
 
     console.log(`[Enrich] Parse complete: ${result.enrichedSegments.length} segments enriched`);
     console.log(`[Enrich] Clock sync: ${result.clockSyncConfidence}, offset: ${result.clockOffsetMs}ms`);
     console.log(`[Enrich] Data quality: ${JSON.stringify(result.dataQuality)}`);
     console.log(`[Enrich] Capabilities: ${JSON.stringify(result.capabilityFlags)}`);
 
-    // Attach enriched data to each combatSegment in the payload
+    // Attach enriched data to payload combatSegments
     const evidenceMap = new Map();
-    for (const eseg of result.enrichedSegments) {
+    const evidenceByIndex = new Map();
+    for (let i = 0; i < result.enrichedSegments.length; i++) {
+      const eseg = result.enrichedSegments[i];
       evidenceMap.set(eseg.segmentId, eseg);
+      evidenceByIndex.set(i, eseg);
     }
 
     const runObj = payload.run;
-    for (const seg of (runObj.combatSegments || [])) {
-      const evidence = evidenceMap.get(seg.segmentId);
-      if (evidence) {
-        // Attach evidence arrays to the segment
-        seg.damageBuckets = evidence.damageBuckets || [];
-        seg.interrupts = evidence.interrupts || [];
-        seg.defensives = evidence.cooldownEvents || [];
-        seg.enemyCasts = evidence.enemyCasts || [];
-        seg.spikes = evidence.spikes || [];
-        seg.healthMinBuckets = (evidence.damageBuckets || []).map(b => {
-          // Derive a rough health pressure metric from damage vs healing
+    const payloadSegIds = (runObj.combatSegments || []).map(s => s.segmentId);
+    const enrichedSegIds = result.enrichedSegments.map(s => s.segmentId);
+    console.log(`[Enrich] Payload segmentIds: [${payloadSegIds.join(", ")}]`);
+    console.log(`[Enrich] Enriched segmentIds: [${enrichedSegIds.join(", ")}]`);
+
+    let matchedById = 0, matchedByIndex = 0;
+
+    // If payload has no segments (combat-log-only path) or segments don't match,
+    // use enriched segments directly as the payload's combatSegments
+    if (!runObj.combatSegments || runObj.combatSegments.length === 0) {
+      console.log("[Enrich] Payload has no segments — using enriched segments directly");
+      runObj.combatSegments = result.enrichedSegments.map((eseg, i) => ({
+        segmentId: eseg.segmentId,
+        index: i + 1,
+        startTs: rawSegments[i]?.startTs || 0,
+        finishTs: rawSegments[i]?.finishTs || 0,
+        segmentType: "combat",
+        rawOutcome: rawSegments[i]?.rawOutcome || "unknown",
+        damageBuckets: eseg.damageBuckets || [],
+        interrupts: eseg.interrupts || [],
+        defensives: eseg.cooldownEvents || [],
+        enemyCasts: eseg.enemyCasts || [],
+        spikes: eseg.spikes || [],
+        deathsEvidence: eseg.deaths && eseg.deaths.length > 0 ? eseg.deaths : undefined,
+        healthMinBuckets: (eseg.damageBuckets || []).map(b => {
           const netDamage = (b.partyDamageTaken || 0) - (b.partyHealingReceived || 0);
           return Math.max(0, Math.min(100, Math.round(100 - (netDamage / 10000))));
-        });
-        // Enrich deaths with pre-death evidence
-        if (evidence.deaths && evidence.deaths.length > 0) {
-          seg.deathsEvidence = evidence.deaths;
+        }),
+      }));
+      matchedById = runObj.combatSegments.length;
+    } else {
+      for (let i = 0; i < runObj.combatSegments.length; i++) {
+        const seg = runObj.combatSegments[i];
+        // Try by segmentId first, then fall back to index
+        let evidence = evidenceMap.get(seg.segmentId);
+        if (evidence) {
+          matchedById++;
+        } else if (evidenceByIndex.has(i)) {
+          evidence = evidenceByIndex.get(i);
+          matchedByIndex++;
+          console.log(`[Enrich] Segment ${seg.segmentId} matched by index ${i} (enriched id: ${evidence.segmentId})`);
+        }
+        if (evidence) {
+          seg.damageBuckets = evidence.damageBuckets || [];
+          seg.interrupts = evidence.interrupts || [];
+          seg.defensives = evidence.cooldownEvents || [];
+          seg.enemyCasts = evidence.enemyCasts || [];
+          seg.spikes = evidence.spikes || [];
+          seg.healthMinBuckets = (evidence.damageBuckets || []).map(b => {
+            const netDamage = (b.partyDamageTaken || 0) - (b.partyHealingReceived || 0);
+            return Math.max(0, Math.min(100, Math.round(100 - (netDamage / 10000))));
+          });
+          if (evidence.deaths && evidence.deaths.length > 0) {
+            seg.deathsEvidence = evidence.deaths;
+          }
         }
       }
     }
+    console.log(`[Enrich] Evidence matching: ${matchedById} by ID, ${matchedByIndex} by index, ${runObj.combatSegments.length} total segments`);
 
     // Update capability flags on the payload
     const caps = runObj.telemetryCapabilities;
@@ -353,7 +459,10 @@ function createDashboard() {
   dashboardWindow.once("ready-to-show", () => {
     if (!store.get("startMinimized")) dashboardWindow.show();
   });
-  dashboardWindow.on("close",  (e) => { e.preventDefault(); dashboardWindow.hide(); });
+  dashboardWindow.on("close",  (e) => {
+    if (app.isQuitting) { dashboardWindow = null; return; }
+    e.preventDefault(); dashboardWindow.hide();
+  });
   dashboardWindow.on("closed", ()  => { dashboardWindow = null; });
 }
 
@@ -381,8 +490,35 @@ function toggleOverlay() {
   overlayWindow.isVisible() ? overlayWindow.hide() : overlayWindow.show();
 }
 
+// ── Tray status tracking ──────────────────────────────────────────────────────
+let companionStatus = "yellow";
+
+const STATUS_TOOLTIPS = {
+  green:  "Velara Intelligence — Connected & Healthy",
+  yellow: "Velara Intelligence — Waiting (type /combatlog in WoW)",
+  red:    "Velara Intelligence — Upload error",
+};
+
+function updateTrayStatus(status) {
+  if (status === companionStatus || !tray) return;
+  companionStatus = status;
+  const dot = status === "green" ? "\u{1F7E2}" : status === "red" ? "\u{1F534}" : "\u{1F7E1}";
+  tray.setToolTip(STATUS_TOOLTIPS[status] || "Velara Intelligence");
+  console.log(`[Tray] Status: ${status} ${dot}`);
+}
+
+function forceQuit() {
+  app.isQuitting = true;
+  if (svWatcher) svWatcher.stop();
+  if (combatLogWatcher) combatLogWatcher.stop();
+  globalShortcut.unregisterAll();
+  if (tray) { tray.destroy(); tray = null; }
+  if (overlayWindow) { overlayWindow.destroy(); overlayWindow = null; }
+  if (dashboardWindow) { dashboardWindow.destroy(); dashboardWindow = null; }
+  app.exit(0);
+}
+
 function createTray() {
-  const fs = require("fs");
   const icoPath = path.join(__dirname, "..", "..", "assets", "icon.ico");
   const pngPath = path.join(__dirname, "..", "..", "assets", "icon.png");
   const iconPath = (process.platform === "win32" && fs.existsSync(icoPath)) ? icoPath : pngPath;
@@ -390,12 +526,12 @@ function createTray() {
     ? nativeImage.createFromPath(iconPath)
     : nativeImage.createEmpty();
   tray = new Tray(icon);
-  tray.setToolTip("Velara Intelligence Companion");
+  tray.setToolTip(STATUS_TOOLTIPS.yellow);
   tray.setContextMenu(Menu.buildFromTemplate([
     { label: "Show Dashboard", click: () => createDashboard()  },
     { label: "Toggle Overlay", click: () => toggleOverlay()    },
     { type: "separator" },
-    { label: "Quit", click: () => { app.isQuitting = true; app.quit(); } },
+    { label: "Quit", click: forceQuit },
   ]));
   tray.on("double-click", () => createDashboard());
 }
@@ -435,6 +571,8 @@ function startSVWatcher() {
 
       if (db._activeRun && db._activeRun.runId) {
         const ar = db._activeRun;
+        // Always cache the latest active run data (segments, deaths, etc. accumulate)
+        cachedActiveRun = JSON.parse(JSON.stringify(ar));
         if (ar.runId !== lastActiveRunId) {
           lastActiveRunId = ar.runId;
           console.log(`[SV] Run opened: ${ar.dungeonName} +${ar.keyLevel} (${ar.runId})`);
@@ -467,6 +605,7 @@ function startSVWatcher() {
             apiUploader.upload(payload).then((result) => {
               console.log("[Uploader] Result:", JSON.stringify(result));
               broadcast("upload-result", result);
+              updateTrayStatus(result.ok ? "green" : "red");
               openRunInBrowser(result);
             });
           } else {
@@ -483,79 +622,136 @@ function startSVWatcher() {
   svWatcher.start();
 }
 
-// ── Key-end detection via combat log → trigger SV re-read ────────────────────
-// WoW writes CHALLENGE_MODE_COMPLETED to the combat log in real time.
-// When we see it, we wait for SV to flush, then re-read and upload.
+// ── Combat log key tracking ──────────────────────────────────────────────────
+// WoW's combat log contains CHALLENGE_MODE_START and CHALLENGE_MODE_END with
+// full run metadata (dungeonName, mapId, keyLevel, affixes, completion data).
+// We capture this directly — no SavedVariables flush needed.
 
-let keyEndPollTimer = null;
+let activeKeyFromLog = null;  // metadata captured from CHALLENGE_MODE_START
+let keyEndPollTimer  = null;
 
-function onKeyEndDetected() {
-  console.log("[KeyEnd] CHALLENGE_MODE_COMPLETED detected in combat log — waiting for SV flush...");
-  broadcast("key-end-detected", { message: "Key completed — uploading..." });
+function onChallengeStart(line) {
+  // Format: CHALLENGE_MODE_START,"Skyreach",1209,161,4,[165]
+  //                               ^name     ^mapId ^? ^keyLevel ^affixes
+  try {
+    const parts = line.split(",");
+    const dungeonName = (parts[1] || "").replace(/"/g, "").trim();
+    const mapId       = parseInt(parts[2], 10) || 0;
+    const keyLevel    = parseInt(parts[4], 10) || 0;
 
-  // Wait 5 seconds for WoW to flush SavedVariables, then poll
-  if (keyEndPollTimer) clearInterval(keyEndPollTimer);
-  let attempts = 0;
-  const maxAttempts = 10; // 10 attempts × 3s = 30 seconds total
+    const nowSec = Math.floor(Date.now() / 1000);
+    const runId  = `${mapId}-${nowSec}-${crypto.randomBytes(2).toString("hex")}-${crypto.randomBytes(2).toString("hex")}`;
 
-  setTimeout(() => {
-    keyEndPollTimer = setInterval(() => {
-      attempts++;
-      console.log(`[KeyEnd] SV poll attempt ${attempts}/${maxAttempts}`);
+    activeKeyFromLog = {
+      runId,
+      dungeonName,
+      mapId,
+      keyLevel,
+      startSec: nowSec,
+      finishSec: 0,
+      runType: "private",
+      runMode: "standard",
+      privacyMode: "shareable",
+      addonVersion: "0.8.2",
+      exportVersion: "1.0.0",
+      combatSegments: [],
+      bossEncounters: [],
+      partyMembers: cachedActiveRun?.partyMembers || [],
+      player: cachedActiveRun?.player || { class: "UNKNOWN", role: "dps" },
+      telemetryCapabilities: {
+        hasCombatSegments: true, hasEnemyRegistry: false, hasPartySnapshot: false,
+        hasDeathContext: false, hasDamageBuckets: false, hasEnemyCasts: false,
+        hasInterrupts: false, hasEnemyHealthSnapshots: false, hasEnemyPositions: false,
+        hasDefensives: false, hasEncounterData: false,
+      },
+    };
 
-      const svPath = getSavedVarsPath();
-      if (!svPath) { clearInterval(keyEndPollTimer); return; }
+    console.log(`[KeyStart] ${dungeonName} +${keyLevel} (mapId=${mapId}) runId=${runId}`);
+    broadcast("run-opened", activeKeyFromLog);
+  } catch (err) {
+    console.error("[KeyStart] Failed to parse CHALLENGE_MODE_START:", err.message);
+  }
+}
 
-      try {
-        const fs = require("fs");
-        const content = fs.readFileSync(svPath, "utf8");
-        const parser = new LuaParser();
-        const parsed = parser.parse(content);
-        if (!parsed || !parsed.VelaraIntelDB) return;
+function onChallengeEnd(line) {
+  // Format: CHALLENGE_MODE_END,1209,1,4,1024935,199.621994,965.740173
+  //                            ^mapId ^success ^keyLevel ^timeMs
+  try {
+    const parts     = line.split(",");
+    const mapId     = parseInt(parts[1], 10) || 0;
+    const success   = parseInt(parts[2], 10) || 0;
+    const keyLevel  = parseInt(parts[3], 10) || 0;
+    const timeMs    = parseInt(parts[4], 10) || 0;
 
-        const db = parsed.VelaraIntelDB;
-        const runs = db.runs || [];
-        if (runs.length > 0) {
-          const latest = runs[0];
-          if (latest.runId && latest.finishSec > 0 && latest.runId !== lastKnownRunId) {
-            lastKnownRunId = latest.runId;
-            lastActiveRunId = null;
-            clearInterval(keyEndPollTimer);
+    console.log(`[KeyEnd] CHALLENGE_MODE_END: mapId=${mapId} success=${success} key=+${keyLevel} time=${timeMs}ms`);
+    broadcast("key-end-detected", { message: "Key completed — uploading..." });
 
-            console.log(`[KeyEnd] New run found: ${latest.dungeonName} +${latest.keyLevel} (${latest.runId})`);
+    // Build run data from combat log metadata (no SV needed)
+    let run = activeKeyFromLog;
+    if (!run || run.mapId !== mapId) {
+      // No matching start event — build minimal run from end event
+      console.log("[KeyEnd] No matching CHALLENGE_MODE_START — building from end event");
+      const nowSec = Math.floor(Date.now() / 1000);
+      const startSec = timeMs > 0 ? nowSec - Math.floor(timeMs / 1000) : nowSec - 1800;
+      run = {
+        runId: `${mapId}-${nowSec}-${crypto.randomBytes(2).toString("hex")}-${crypto.randomBytes(2).toString("hex")}`,
+        dungeonName: cachedActiveRun?.dungeonName || "Unknown",
+        mapId,
+        keyLevel,
+        startSec,
+        finishSec: nowSec,
+        runType: "private",
+        runMode: "standard",
+        privacyMode: "shareable",
+        addonVersion: "0.8.2",
+        exportVersion: "1.0.0",
+        combatSegments: cachedActiveRun?.combatSegments || [],
+        bossEncounters: cachedActiveRun?.bossEncounters || [],
+        partyMembers: cachedActiveRun?.partyMembers || [],
+        player: cachedActiveRun?.player || { class: "UNKNOWN", role: "dps" },
+        telemetryCapabilities: {
+          hasCombatSegments: true, hasEnemyRegistry: false, hasPartySnapshot: false,
+          hasDeathContext: false, hasDamageBuckets: false, hasEnemyCasts: false,
+          hasInterrupts: false, hasEnemyHealthSnapshots: false, hasEnemyPositions: false,
+          hasDefensives: false, hasEncounterData: false,
+        },
+      };
+    } else {
+      run.finishSec = Math.floor(Date.now() / 1000);
+    }
 
-            if (!latest.mapId || latest.mapId === 0) {
-              console.log(`[KeyEnd] Skipping run ${latest.runId} — mapId is 0`);
-              return;
-            }
+    // Set completion result from combat log data
+    run.completionResult = { medal: success > 0 ? 1 : 0, timeMs, money: 0 };
+    run.deathCountFinal = run.deathCountFinal || null;
 
-            let payload = buildV12Payload(latest);
-            payload = enrichPayloadWithCombatLog(payload, latest);
-            broadcast("run-update", latest);
+    console.log(`[KeyEnd] Uploading: ${run.dungeonName} +${run.keyLevel} (${run.runId})`);
 
-            if (store.get("autoUpload")) {
-              apiUploader.upload(payload).then((result) => {
-                console.log("[KeyEnd] Upload result:", JSON.stringify(result));
-                broadcast("upload-result", result);
-                openRunInBrowser(result);
-              });
-            }
-            return;
-          }
-        }
+    if (!run.mapId || run.mapId === 0) {
+      console.log("[KeyEnd] Skipping — mapId is 0");
+      activeKeyFromLog = null;
+      return;
+    }
 
-        if (attempts >= maxAttempts) {
-          clearInterval(keyEndPollTimer);
-          console.log("[KeyEnd] SV not updated after 30s — waiting for /reload as fallback");
-          broadcast("key-end-timeout", { message: "Waiting for /reload — SV not flushed yet" });
-        }
-      } catch (err) {
-        if (err.code !== "EBUSY") {
-          console.error("[KeyEnd] SV read error:", err.message);
-        }
-      }
-    }, 3000);
-  }, 5000);
+    lastKnownRunId  = run.runId;
+    lastActiveRunId = null;
+    activeKeyFromLog = null;
+    cachedActiveRun  = null;
+
+    let payload = buildV12Payload(run);
+    payload = enrichPayloadWithCombatLog(payload, run);
+    broadcast("run-update", run);
+
+    if (store.get("autoUpload")) {
+      apiUploader.upload(payload).then((result) => {
+        console.log("[KeyEnd] Upload result:", JSON.stringify(result));
+        broadcast("upload-result", result);
+        openRunInBrowser(result);
+      });
+    }
+  } catch (err) {
+    console.error("[KeyEnd] Failed to process CHALLENGE_MODE_END:", err.message);
+    console.error("[KeyEnd] Stack:", err.stack);
+  }
 }
 
 // ── Pipeline: Combat log watcher ──────────────────────────────────────────────
@@ -571,23 +767,37 @@ function startCombatLogWatcher() {
   if (resolvedLogPath) combatLogWatcher.logPath = resolvedLogPath;
   combatLogParser  = new CombatLogParser();
 
-  combatLogParser.on("pullEnd", (pull) => {
-    if (runAssembler.isOpen) {
-      runAssembler.addPull(pull);
-      broadcast("pull-update", { runId: runAssembler.currentRunID, pull });
+  // PRIMARY upload path: CombatLogRunBuilder builds full payload from combat log alone
+  const runBuilder = new CombatLogRunBuilder();
+
+  runBuilder.on("keyStart", (run) => {
+    broadcast("run-opened", run);
+    updateTrayStatus("green");
+  });
+
+  runBuilder.on("keyEnd", (payload) => {
+    broadcast("key-end-detected", { message: "Key completed — uploading..." });
+    broadcast("run-update", payload.run);
+
+    if (store.get("autoUpload")) {
+      const payloadSize = JSON.stringify(payload).length;
+      console.log(`[RunBuilder] Payload size: ${(payloadSize / 1024).toFixed(1)} KB`);
+      if (payloadSize > 500000) console.warn("[RunBuilder] WARNING: Payload over 500KB");
+      apiUploader.upload(payload).then((result) => {
+        console.log("[RunBuilder] Upload result:", JSON.stringify(result));
+        broadcast("upload-result", result);
+        updateTrayStatus(result.ok ? "green" : "red");
+        openRunInBrowser(result);
+      });
     }
   });
 
   combatLogWatcher.on("line",  (line) => {
+    // Feed every line to the run builder (primary path)
     try {
-      combatLogParser.parseLine(line);
+      runBuilder.processLine(line);
     } catch (err) {
-      console.error("[CombatLog] Parse error:", err.message);
-    }
-
-    // Detect key completion from combat log lines
-    if (line.includes("CHALLENGE_MODE_COMPLETED") || line.includes("CHALLENGE_MODE_END")) {
-      onKeyEndDetected();
+      console.error("[RunBuilder] Line error:", err.message);
     }
   });
 
@@ -599,7 +809,10 @@ function startCombatLogWatcher() {
   const logPath = getCombatLogPath();
   const logFound = logPath && fs.existsSync(logPath);
   broadcast("combat-log-status", { found: !!logFound, path: logPath || null });
-  if (!logFound) {
+  if (logFound) {
+    updateTrayStatus("green");
+  } else {
+    updateTrayStatus("yellow");
     console.warn("[CombatLog] WoWCombatLog.txt not found — enable Advanced Combat Logging in WoW");
     broadcast("combat-log-missing", { message: "Enable Advanced Combat Logging in WoW settings for automatic uploads" });
   }
@@ -623,6 +836,11 @@ function setupUploader() {
 }
 
 function setupIPC() {
+  ipcMain.handle("get-build-info", () => ({
+    version: "1.0.0",
+    buildTimestamp: BUILD_TIMESTAMP,
+  }));
+
   ipcMain.handle("get-settings", () => ({
     wowPath        : store.get("wowPath"),
     accountName    : store.get("accountName"),
@@ -685,6 +903,7 @@ function setupIPC() {
 }
 
 app.whenReady().then(() => {
+  console.log(`[Velara] Companion v1.0.0 — build ${BUILD_TIMESTAMP}`);
   if (!store.get("wowPath")) {
     const detected = detectWowPath();
     if (detected) {

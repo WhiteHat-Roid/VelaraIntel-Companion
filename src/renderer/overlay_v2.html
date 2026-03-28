@@ -75,30 +75,30 @@
       }
     }
 
-    /* ── Watching (purple) ── */
+    /* ── Watching (amber/yellow — needs attention) ── */
     #badge.state-watching {
-      border-color: #7B2FBE;
+      border-color: #E8A030;
       box-shadow:
-        0 0 12px rgba(123, 47, 190, 0.4),
-        0 0 28px rgba(123, 47, 190, 0.15),
-        inset 0 0 10px rgba(123, 47, 190, 0.08);
-      animation: pulse-watching 3s ease-in-out infinite;
+        0 0 12px rgba(232, 160, 48, 0.4),
+        0 0 28px rgba(232, 160, 48, 0.15),
+        inset 0 0 10px rgba(232, 160, 48, 0.08);
+      animation: pulse-waiting 3s ease-in-out infinite;
     }
     #badge.state-watching .shield {
-      filter: brightness(1) drop-shadow(0 0 6px rgba(123, 47, 190, 0.5));
+      filter: brightness(1) drop-shadow(0 0 6px rgba(232, 160, 48, 0.5));
     }
-    @keyframes pulse-watching {
+    @keyframes pulse-waiting {
       0%, 100% {
         box-shadow:
-          0 0 12px rgba(123, 47, 190, 0.4),
-          0 0 28px rgba(123, 47, 190, 0.15),
-          inset 0 0 10px rgba(123, 47, 190, 0.08);
+          0 0 12px rgba(232, 160, 48, 0.4),
+          0 0 28px rgba(232, 160, 48, 0.15),
+          inset 0 0 10px rgba(232, 160, 48, 0.08);
       }
       50% {
         box-shadow:
-          0 0 18px rgba(123, 47, 190, 0.55),
-          0 0 40px rgba(123, 47, 190, 0.25),
-          inset 0 0 14px rgba(123, 47, 190, 0.12);
+          0 0 18px rgba(232, 160, 48, 0.55),
+          0 0 40px rgba(232, 160, 48, 0.25),
+          inset 0 0 14px rgba(232, 160, 48, 0.12);
       }
     }
 
@@ -137,34 +137,91 @@
 
   <script>
     const badge = document.getElementById("badge");
-
-    // Path relative to src/renderer/ — assets folder is two levels up
     const shieldImg = document.getElementById("shieldImg");
     shieldImg.src = "../../assets/icon.png";
 
-    function updateRun(run) {
-      if (!run) {
-        badge.className = "state-watching";
-        return;
-      }
+    // Current state tracking
+    let currentState = "idle";
 
-      if (run.error) {
-        badge.className = "state-error";
-        return;
-      }
-
-      if (run.dungeonName || run.keyLevel) {
-        badge.className = "state-active";
-        return;
-      }
-
-      badge.className = "state-idle";
+    function setState(state) {
+      if (state === currentState) return;
+      currentState = state;
+      badge.className = "state-" + state;
     }
 
-    // Listen for run updates from main process
-    if (window.velara && window.velara.onRunUpdate) {
-      window.velara.onRunUpdate((data) => updateRun(data));
+    // Listen for all status events from main process
+    if (window.velara) {
+      // Run detected — key is in progress
+      if (window.velara.onRunUpdate) {
+        window.velara.onRunUpdate((data) => {
+          if (data && (data.dungeonName || data.keyLevel)) {
+            setState("active");  // green — run data flowing
+          }
+        });
+      }
+
+      // Run opened — key just started
+      if (window.velara.onRunOpened) {
+        window.velara.onRunOpened(() => {
+          setState("active");  // green — key started
+        });
+      }
+
+      // Upload result — did it succeed?
+      if (window.velara.onUploadResult) {
+        window.velara.onUploadResult((result) => {
+          if (result && result.ok) {
+            setState("active");  // green — upload worked
+          } else {
+            setState("error");   // red — upload failed
+          }
+        });
+      }
+
+      // Combat log status — is the log file found?
+      if (window.velara.onCombatLogStatus) {
+        window.velara.onCombatLogStatus((status) => {
+          if (status && status.found) {
+            // Combat log found — only go green if we're not already active or error
+            if (currentState === "watching" || currentState === "idle") {
+              setState("active");
+            }
+          } else {
+            // Combat log not found — yellow
+            if (currentState !== "error") {
+              setState("watching");  // yellow — needs /combatlog
+            }
+          }
+        });
+      }
+
+      // Combat log missing — explicit warning
+      if (window.velara.onCombatLogMissing) {
+        window.velara.onCombatLogMissing(() => {
+          if (currentState !== "error" && currentState !== "active") {
+            setState("watching");  // yellow — needs /combatlog
+          }
+        });
+      }
+
+      // Key end detected — uploading
+      if (window.velara.onKeyEndDetected) {
+        window.velara.onKeyEndDetected(() => {
+          setState("active");  // green — key ended, uploading
+        });
+      }
+
+      // Enrichment failed
+      if (window.velara.onEnrichmentFailed) {
+        window.velara.onEnrichmentFailed(() => {
+          // Don't go red for enrichment failure — data still uploads, just thin
+          // Stay whatever state we were in
+        });
+      }
     }
+
+    // Default state on load
+    setState("watching");  // yellow until we know combat log status
   </script>
 </body>
 </html>

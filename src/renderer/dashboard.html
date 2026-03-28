@@ -178,7 +178,7 @@
       <img class="titlebar-logo" src="../../assets/icon.png" alt="Velara">
       <div class="titlebar-title">
         <span class="brand">Velara</span>
-        <span class="sub">Intelligence</span>
+        <span class="sub" id="titleSub">Intelligence</span>
       </div>
     </div>
     <div class="titlebar-btns">
@@ -273,10 +273,35 @@
       return now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     }
 
+    function deriveRunStats(run) {
+      // Derive deaths from deathCountFinal or by counting segment deaths
+      let deaths = run.totalDeaths || run.deathCountFinal || 0;
+      const segments = run.combatSegments || [];
+      if (!deaths && segments.length > 0) {
+        deaths = segments.reduce((sum, seg) => {
+          const segDeaths = Array.isArray(seg.deaths) ? seg.deaths.length : (seg.deathCount || 0);
+          return sum + segDeaths;
+        }, 0);
+      }
+      // Pulls = number of combat segments
+      const pulls = run.totalPulls || segments.length || 0;
+      // Wipes — use wipes array if present, otherwise count segments where all 5 died
+      let wipeCount = 0;
+      if (Array.isArray(run.wipes)) {
+        wipeCount = run.wipes.length;
+      } else if (run.wipeCount != null) {
+        wipeCount = run.wipeCount;
+      } else {
+        wipeCount = segments.filter(seg => seg.rawOutcome === 'wipe').length;
+      }
+      return { deaths, pulls, wipeCount };
+    }
+
     function addRunToHistory(run) {
       const runId = run.runId || `${run.dungeonName}-${run.keyLevel}-${Date.now()}`;
       if (sessionRuns.find(r => r.runId === runId)) return;
-      sessionRuns.unshift({ ...run, runId, detectedAt: formatRunTime() });
+      const stats = deriveRunStats(run);
+      sessionRuns.unshift({ ...run, runId, detectedAt: formatRunTime(), _deaths: stats.deaths, _pulls: stats.pulls, _wipeCount: stats.wipeCount });
       if (sessionRuns.length > MAX_RUNS) sessionRuns.pop();
       selectedIndex = 0;
       rebuildDropdown();
@@ -338,15 +363,15 @@
           <div class="run-stats">
             <div>
               <div class="run-stat-label">Deaths</div>
-              <div class="run-stat-val" style="color:#C0392B">${run.totalDeaths || 0}</div>
+              <div class="run-stat-val" style="color:#C0392B">${run._deaths || 0}</div>
             </div>
             <div>
               <div class="run-stat-label">Pulls</div>
-              <div class="run-stat-val">${run.totalPulls || 0}</div>
+              <div class="run-stat-val">${run._pulls || 0}</div>
             </div>
             <div>
               <div class="run-stat-label">Wipes</div>
-              <div class="run-stat-val" style="color:#C9A84C">${run.wipes ? run.wipes.length : 0}</div>
+              <div class="run-stat-val" style="color:#C9A84C">${run._wipeCount || 0}</div>
             </div>
           </div>
         </div>
@@ -465,6 +490,15 @@
     });
 
     loadSettings();
+
+    // Show build info in title bar
+    window.velara.getBuildInfo().then((info) => {
+      const sub = document.getElementById('titleSub');
+      if (sub && info && info.buildTimestamp) {
+        const ts = info.buildTimestamp.replace('T', ' ').substring(0, 16);
+        sub.textContent = 'v' + info.version + ' \u00b7 build ' + ts;
+      }
+    }).catch(() => {});
   </script>
 </body>
 </html>
