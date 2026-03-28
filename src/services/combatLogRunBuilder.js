@@ -134,8 +134,7 @@ class CombatLogRunBuilder extends EventEmitter {
     this.guidToClass     = new Map();
     this.guidToRole      = new Map();
     this.guidToSpec      = new Map();
-    this.guidToAnon      = new Map();  // GUID → "Player-1" etc
-    this.anonCounter     = 0;
+    this.guidToName      = new Map();  // GUID → "Name-Realm"
     this.damageBuffers   = new Map();  // per-player pre-death damage
     this.playerDamageTaken = new Map();  // GUID → total damage taken
     this.playerHealingDone = new Map();  // GUID → total healing done
@@ -145,14 +144,9 @@ class CombatLogRunBuilder extends EventEmitter {
     this.eventCount      = 0;
   }
 
-  // Get anonymized label for a player GUID
-  _anon(guid) {
-    if (!guid) return "Unknown";
-    if (!this.guidToAnon.has(guid)) {
-      this.anonCounter++;
-      this.guidToAnon.set(guid, "Player-" + this.anonCounter);
-    }
-    return this.guidToAnon.get(guid);
+  // Get player name for a GUID
+  _playerName(guid) {
+    return this.guidToName.get(guid) || "Unknown";
   }
 
   _getDmgBuf(guid) {
@@ -352,6 +346,14 @@ class CombatLogRunBuilder extends EventEmitter {
     const destGuid   = fields[5] || "";
     const destName   = (fields[6] || "").replace(/"/g, "");
 
+    // ── Extract player names from combat log ────────────────────────────
+    if (isPlayerGuid(sourceGuid) && sourceName && !this.guidToName.has(sourceGuid)) {
+      this.guidToName.set(sourceGuid, sourceName);
+    }
+    if (isPlayerGuid(destGuid) && destName && !this.guidToName.has(destGuid)) {
+      this.guidToName.set(destGuid, destName);
+    }
+
     // ── Spell-based class/role detection ────────────────────────────────
     if (isPlayerGuid(sourceGuid) && isCast) {
       const spellId = parseInt(fields[9], 10) || 0;
@@ -378,6 +380,7 @@ class CombatLogRunBuilder extends EventEmitter {
       seg.deaths.push({
         deathId, segmentId: seg.segmentId, deathTs: ts,
         offsetMs: ts - seg.startTs,
+        name: this.guidToName.get(destGuid) || "Unknown",
         class: this.guidToClass.get(destGuid) || "UNKNOWN",
         role: this.guidToRole.get(destGuid) || "unknown",
         firstDeathInPull: seg.deaths.length === 0,
@@ -404,6 +407,7 @@ class CombatLogRunBuilder extends EventEmitter {
       this.currentSeg.interrupts.push({
         ts, offsetMs: ts - this.currentSeg.startTs,
         spellName,
+        sourceName: this.guidToName.get(sourceGuid) || "Unknown",
         sourceClass: this.guidToClass.get(sourceGuid) || "UNKNOWN",
         sourceRole: this.guidToRole.get(sourceGuid) || "unknown",
         targetSpellName: tgtSpellName,
@@ -466,6 +470,7 @@ class CombatLogRunBuilder extends EventEmitter {
         this.currentSeg.defensives.push({
           ts, offsetMs: ts - this.currentSeg.startTs,
           spellName,
+          name: this.guidToName.get(sourceGuid) || "Unknown",
           class: this.guidToClass.get(sourceGuid) || "UNKNOWN",
           role: this.guidToRole.get(sourceGuid) || "unknown",
         });
@@ -650,11 +655,12 @@ class CombatLogRunBuilder extends EventEmitter {
       }
     }
 
-    // Build anonymous party list from detected GUIDs
+    // Build party list from detected GUIDs — includes character names
     const partyMembers = [];
     for (const [guid, cls] of this.guidToClass) {
       if (!isPlayerGuid(guid)) continue;
       partyMembers.push({
+        name: this.guidToName.get(guid) || "Unknown",
         class: cls !== "UNKNOWN" && cls !== "DETECTED" ? cls : "UNKNOWN",
         role: this.guidToRole.get(guid) || "unknown",
         spec: this.guidToSpec.get(guid) || "",
@@ -703,7 +709,7 @@ class CombatLogRunBuilder extends EventEmitter {
           hasDefensives: totalDefs > 0,
           hasEncounterData: this.bossEncounters.length > 0,
         },
-        player: partyMembers[0] || { class: "UNKNOWN", role: "dps" },
+        player: partyMembers[0] || { name: "Unknown", class: "UNKNOWN", role: "dps" },
         partyMembers: partyMembers.slice(1),
         combatSegments: finalSegments,
         bossEncounters: this.bossEncounters,
