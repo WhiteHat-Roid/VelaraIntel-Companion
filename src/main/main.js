@@ -470,9 +470,12 @@ function createOverlay() {
   if (overlayWindow) return;
   const bounds = store.get("overlayBounds");
   overlayWindow = new BrowserWindow({
-    x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height,
+    x: bounds.x, y: bounds.y,
+    width: 120, height: 120,
     frame: false, transparent: true, alwaysOnTop: true, skipTaskbar: true,
-    resizable: true, hasShadow: false, focusable: false, backgroundColor: "#00000000",
+    resizable: false, hasShadow: false, focusable: false,
+    backgroundColor: "#00000000",
+    roundedCorners: false,
     webPreferences: {
       preload: path.join(__dirname, "preload-overlay.js"),
       contextIsolation: true, nodeIntegration: false,
@@ -480,8 +483,10 @@ function createOverlay() {
   });
   overlayWindow.loadFile(path.join(__dirname, "..", "renderer", "overlay_v2.html"));
   overlayWindow.setIgnoreMouseEvents(false);
-  overlayWindow.on("moved",   () => store.set("overlayBounds", overlayWindow.getBounds()));
-  overlayWindow.on("resized", () => store.set("overlayBounds", overlayWindow.getBounds()));
+  overlayWindow.on("moved", () => {
+    const b = overlayWindow.getBounds();
+    store.set("overlayBounds", { ...store.get("overlayBounds"), x: b.x, y: b.y });
+  });
   overlayWindow.on("closed",  () => { overlayWindow = null; });
 }
 
