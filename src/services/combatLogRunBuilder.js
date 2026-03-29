@@ -34,11 +34,12 @@ const INTERRUPT_SPELLS = new Set([
 const DUNGEON_NAMES = {
   2526: "Algeth'ar Academy",   210: "Algeth'ar Academy",
   2811: "Magisters' Terrace",  206: "Magisters' Terrace",
-  502:  "Maisara Caverns",
+  502:  "Maisara Caverns",        2874: "Maisara Caverns",
   2915: "Nexus-Point Xenas",   503: "Nexus-Point Xenas",
   246:  "Pit of Saron",        658: "Pit of Saron",
   1753: "Seat of the Triumvirate", 504: "Seat of the Triumvirate",
   1209: "Skyreach",
+  505:  "Windrunner Spire",
   2805: "Windrunner Spire",    2769: "Windrunner Spire",
 };
 

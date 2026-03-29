@@ -67,6 +67,24 @@ class CombatLogWatcher extends EventEmitter {
     }
   }
 
+  // Read the last N bytes of the file and return them as lines.
+  // Used to pick up COMBATANT_INFO events that were written before the watcher started.
+  readLastChunk(bytes = 200000) {
+    try {
+      const stat = fs.statSync(this.logPath);
+      const startPos = Math.max(0, stat.size - bytes);
+      const fd = fs.openSync(this.logPath, "r");
+      const buf = Buffer.alloc(stat.size - startPos);
+      fs.readSync(fd, buf, 0, buf.length, startPos);
+      fs.closeSync(fd);
+      const text = buf.toString("utf8");
+      return text.split("\n").filter(l => l.trim().length > 0);
+    } catch (err) {
+      console.error("[CombatLogWatcher] readLastChunk error:", err.message);
+      return [];
+    }
+  }
+
   _read() {
     if (!this.active) return;
 

@@ -14,7 +14,7 @@
 // V0.5.1: Auto-start with Windows wired to startMinimized toggle in settings.
 // V0.5.0: Removed API key requirement. Added clientId UUID for rate tracking.
 
-const BUILD_TIMESTAMP = "2026-03-28T22:00:00";
+const BUILD_TIMESTAMP = "2026-03-29T12:00:00";
 
 const {
   app, BrowserWindow, Tray, Menu, globalShortcut,
@@ -149,38 +149,50 @@ function getCombatLogPath() {
 
   // WoW creates either WoWCombatLog.txt or WoWCombatLog-MMDDYY_HHMMSS.txt
   // depending on Advanced Combat Logging settings. Find the most recent one.
-  const logsDirs = [
-    path.join(wowPath, "Logs"),
-    path.join(path.resolve(wowPath, ".."), "Logs"),
-  ];
+  // ONLY search _retail_/Logs — do NOT search parent World of Warcraft/Logs
+  // (that folder contains BlizzardBrowser and other non-combat-log content).
+  const logsDir = path.join(wowPath, "Logs");
 
-  for (const logsDir of logsDirs) {
-    if (!fs.existsSync(logsDir)) continue;
+  if (!fs.existsSync(logsDir)) {
+    console.warn(`[CombatLog] Logs directory not found: ${logsDir}`);
+    return path.join(wowPath, "Logs", "WoWCombatLog.txt");
+  }
 
-    // Check for exact name first
-    const exact = path.join(logsDir, "WoWCombatLog.txt");
-    if (fs.existsSync(exact)) return exact;
-
-    // Find dated combat log files (WoWCombatLog-MMDDYY_HHMMSS.txt)
+  // Check for exact name first (non-dated combat log)
+  const exact = path.join(logsDir, "WoWCombatLog.txt");
+  if (fs.existsSync(exact)) {
     try {
-      const files = fs.readdirSync(logsDir)
-        .filter(f => f.startsWith("WoWCombatLog") && f.endsWith(".txt"))
-        .map(f => ({ name: f, full: path.join(logsDir, f), mtime: fs.statSync(path.join(logsDir, f)).mtimeMs }))
-        .sort((a, b) => b.mtime - a.mtime);  // newest first
-
-      if (files.length > 0) {
-        console.log(`[CombatLog] Found ${files.length} log file(s), using newest: ${files[0].name}`);
-        return files[0].full;
-      }
+      if (fs.statSync(exact).isFile()) return exact;
     } catch { /* skip */ }
   }
 
-  // Fallback: return default path (file may be created later)
+  // Find dated combat log files (WoWCombatLog-MMDDYY_HHMMSS.txt)
+  try {
+    const files = fs.readdirSync(logsDir)
+      .filter(f => {
+        if (!f.startsWith("WoWCombatLog") || !f.endsWith(".txt")) return false;
+        // Ensure it's a file, not a directory
+        try { return fs.statSync(path.join(logsDir, f)).isFile(); } catch { return false; }
+      })
+      .map(f => ({ name: f, full: path.join(logsDir, f), mtime: fs.statSync(path.join(logsDir, f)).mtimeMs }))
+      .sort((a, b) => b.mtime - a.mtime);  // newest first
+
+    if (files.length > 0) {
+      console.log(`[CombatLog] Found ${files.length} log file(s) in ${logsDir}, using newest: ${files[0].name}`);
+      return files[0].full;
+    } else {
+      console.warn(`[CombatLog] No WoWCombatLog*.txt files found in ${logsDir}`);
+    }
+  } catch (err) {
+    console.error(`[CombatLog] Error scanning ${logsDir}:`, err.message);
+  }
+
+  // Fallback: return default path (file may be created later when /combatlog is enabled)
   return path.join(wowPath, "Logs", "WoWCombatLog.txt");
 }
 
 // ── Privacy — strip forbidden fields before upload ────────────────────────────
-const FORBIDDEN_FIELDS = new Set(["guid", "playerName", "characterName", "realmName", "battleTag"]);
+const FORBIDDEN_FIELDS = new Set(["guid", "battleTag", "accountId", "email", "ipAddress"]);
 function stripPrivacy(obj) {
   if (!obj || typeof obj !== "object") return obj;
   const clean = {};
@@ -583,33 +595,16 @@ function startSVWatcher() {
         }
       }
 
+      // SV watcher NO LONGER uploads runs.
+      // The CombatLogRunBuilder is the ONLY upload path now.
+      // SV watcher only caches _activeRun for party member data.
       const runs = db.runs || [];
       if (runs.length > 0) {
         const latest = runs[0];
         if (latest.runId && latest.finishSec > 0 && latest.runId !== lastKnownRunId) {
           lastKnownRunId  = latest.runId;
           lastActiveRunId = null;
-
-          console.log(`[SV] Run detected: ${latest.dungeonName} +${latest.keyLevel} (${latest.runId})`);
-
-          if (!latest.mapId || latest.mapId === 0) {
-            console.log(`[SV] Skipping run ${latest.runId} — mapId is 0`);
-            return;
-          }
-
-          let payload = buildV12Payload(latest);
-          payload = enrichPayloadWithCombatLog(payload, latest);
-          broadcast("run-update", latest);
-
-          if (store.get("autoUpload")) {
-            apiUploader.upload(payload).then((result) => {
-              console.log("[Uploader] Result:", JSON.stringify(result));
-              broadcast("upload-result", result);
-              openRunInBrowser(result);
-            });
-          } else {
-            console.log("[SV] Auto-upload disabled — skipping");
-          }
+          console.log(`[SV] Run completed: ${latest.dungeonName} +${latest.keyLevel} (${latest.runId}) — NOT uploading (use GO button or Upload A Log)`);
         }
       }
     } catch (err) {
@@ -740,13 +735,10 @@ function onChallengeEnd(line) {
     payload = enrichPayloadWithCombatLog(payload, run);
     broadcast("run-update", run);
 
-    if (store.get("autoUpload")) {
-      apiUploader.upload(payload).then((result) => {
-        console.log("[KeyEnd] Upload result:", JSON.stringify(result));
-        broadcast("upload-result", result);
-        openRunInBrowser(result);
-      });
-    }
+    // DEAD CODE PATH — onChallengeEnd is not called by the line handler.
+    // CombatLogRunBuilder handles key detection now. This block is kept for
+    // reference only and MUST NOT upload.
+    console.log(`[KeyEnd] Run data built but NOT uploading — use GO button or Upload A Log`);
   } catch (err) {
     console.error("[KeyEnd] Failed to process CHALLENGE_MODE_END:", err.message);
     console.error("[KeyEnd] Stack:", err.stack);
@@ -799,6 +791,33 @@ function startCombatLogWatcher() {
   combatLogWatcher.on("error", (err) => console.error("[CombatLog] Error:", err.message));
   combatLogWatcher.start();
 
+  // Feed the last chunk of the combat log to the runBuilder so it picks up
+  // any COMBATANT_INFO or CHALLENGE_MODE_START events that were written
+  // before the watcher started tailing. This ensures spec/role detection
+  // works even if the companion was opened mid-session.
+  try {
+    const recentLines = combatLogWatcher.readLastChunk(200000); // ~200KB
+    if (recentLines.length > 0) {
+      console.log(`[CombatLog] Processing ${recentLines.length} recent lines for COMBATANT_INFO catchup`);
+      let combatantInfoCount = 0;
+      for (const line of recentLines) {
+        try {
+          // Only process COMBATANT_INFO and key lifecycle events from the lookback
+          // Skip damage/heal/death events to avoid duplicating segment data
+          if (line.includes("COMBATANT_INFO") || line.includes("CHALLENGE_MODE_START")) {
+            runBuilder.processLine(line);
+            if (line.includes("COMBATANT_INFO")) combatantInfoCount++;
+          }
+        } catch {}
+      }
+      if (combatantInfoCount > 0) {
+        console.log(`[CombatLog] Catchup: processed ${combatantInfoCount} COMBATANT_INFO events`);
+      }
+    }
+  } catch (err) {
+    console.warn("[CombatLog] Lookback catchup failed:", err.message);
+  }
+
   // Check if the combat log file exists and broadcast status
   const logPath = getCombatLogPath();
   const logFound = logPath && fs.existsSync(logPath);
@@ -817,21 +836,17 @@ function setupUploader() {
   apiUploader    = new ApiUploader(clientId);
   runAssembler   = new RunAssembler({
     onReady: async (payload) => {
+      // RunAssembler NO LONGER uploads. Only the GO button and Upload A Log upload.
+      // This callback only broadcasts for UI awareness.
       broadcast("run-assembled", payload.run);
-      if (!store.get("autoUpload")) {
-        console.log("[Uploader] Auto-upload disabled — skipping"); return;
-      }
-      const result = await apiUploader.upload(payload);
-      console.log("[Uploader] Result:", JSON.stringify(result));
-      broadcast("upload-result", result);
-      openRunInBrowser(result);
+      console.log(`[RunAssembler] Run ready: ${payload.run?.dungeonName} — NOT auto-uploading (use GO button)`);
     },
   });
 }
 
 function setupIPC() {
   ipcMain.handle("get-build-info", () => ({
-    version: "1.0.0",
+    version: require("../../../package.json").version,
     buildTimestamp: BUILD_TIMESTAMP,
   }));
 
@@ -975,7 +990,8 @@ function setupIPC() {
 }
 
 app.whenReady().then(() => {
-  console.log(`[Velara] Companion v1.0.0 — build ${BUILD_TIMESTAMP}`);
+  const PKG_VERSION = require("../../../package.json").version;
+  console.log(`[Velara] Companion v${PKG_VERSION} — build ${BUILD_TIMESTAMP}`);
   if (!store.get("wowPath")) {
     const detected = detectWowPath();
     if (detected) {
