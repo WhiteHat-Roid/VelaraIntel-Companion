@@ -861,7 +861,7 @@ function setupUploader() {
 
 function setupIPC() {
   ipcMain.handle("get-build-info", () => ({
-    version: require("../../../package.json").version,
+    version: app.getVersion(),
     buildTimestamp: BUILD_TIMESTAMP,
   }));
 
@@ -1005,8 +1005,7 @@ function setupIPC() {
 }
 
 app.whenReady().then(() => {
-  const PKG_VERSION = require("../../../package.json").version;
-  console.log(`[Velara] Companion v${PKG_VERSION} — build ${BUILD_TIMESTAMP}`);
+  console.log(`[Velara] Companion v${app.getVersion()} — build ${BUILD_TIMESTAMP}`);
   if (!store.get("wowPath")) {
     const detected = detectWowPath();
     if (detected) {
