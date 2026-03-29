@@ -96,6 +96,64 @@ function getAutoStart() {
   }
 }
 
+// ── WoW retail process detection ─────────────────────────────────────────────
+// Polls for Wow.exe (retail only) every 10 seconds.
+// When detected: show dashboard + start watchers.
+// When gone: hide dashboard to tray (don't quit — player may upload after).
+
+let wowDetected      = false;
+let wowPollTimer     = null;
+let watchersStarted  = false;
+
+function isRetailWowRunning() {
+  try {
+    // wmic is reliable on Windows and returns the full exe path
+    const output = execSync(
+      'wmic process where "name=\'Wow.exe\'" get ExecutablePath /format:list',
+      { windowsHide: true, encoding: "utf-8", timeout: 5000 }
+    );
+    // Must contain _retail_ in the path — excludes Classic, PTR, Beta
+    return output.includes("_retail_");
+  } catch {
+    return false;
+  }
+}
+
+function startWowPoll() {
+  if (wowPollTimer) return;
+  console.log("[WoW] Starting retail process detection (10s poll)");
+
+  wowPollTimer = setInterval(() => {
+    const running = isRetailWowRunning();
+
+    if (running && !wowDetected) {
+      // WoW just launched
+      wowDetected = true;
+      console.log("[WoW] Retail WoW detected — showing dashboard");
+      broadcastStatus("WoW detected — companion active", "ok");
+      createDashboard();
+      if (dashboardWindow) { dashboardWindow.show(); dashboardWindow.focus(); }
+
+      // Start watchers if not already running
+      if (!watchersStarted) {
+        startSVWatcher();
+        startCombatLogWatcher();
+        watchersStarted = true;
+      }
+    } else if (!running && wowDetected) {
+      // WoW just closed
+      wowDetected = false;
+      console.log("[WoW] Retail WoW closed — hiding to tray");
+      broadcastStatus("WoW closed — companion in tray", "info");
+      if (dashboardWindow) dashboardWindow.hide();
+    }
+  }, 10000);
+}
+
+function stopWowPoll() {
+  if (wowPollTimer) { clearInterval(wowPollTimer); wowPollTimer = null; }
+}
+
 let dashboardWindow  = null;
 let overlayWindow    = null;
 let tray             = null;
@@ -1018,17 +1076,41 @@ app.whenReady().then(() => {
   setupIPC();
   setupUploader();
   createTray();
-  createDashboard();
-  createOverlay();
+
   const hotkey = store.get("hotkey");
   if (hotkey) globalShortcut.register(hotkey, toggleOverlay);
-  startSVWatcher();
-  startCombatLogWatcher();
+
+  // Check if WoW is already running at startup
+  const wowAlready = isRetailWowRunning();
+  if (wowAlready) {
+    console.log("[Velara] WoW already running — launching full companion");
+    wowDetected = true;
+    createDashboard();
+    createOverlay();
+    startSVWatcher();
+    startCombatLogWatcher();
+    watchersStarted = true;
+  } else {
+    console.log("[Velara] WoW not running — waiting in tray (poll every 10s)");
+    // Create dashboard hidden so tray double-click can show it manually
+    createDashboard();
+    if (dashboardWindow) dashboardWindow.hide();
+  }
+
+  // Always poll — detects WoW launch/close transitions
+  startWowPoll();
+
+  // Enable auto-start at Windows boot (tray mode — lightweight until WoW opens)
+  if (!getAutoStart()) {
+    setAutoStart(true);
+    console.log("[Velara] Auto-start enabled — companion will start with Windows");
+  }
 });
 
 app.on("window-all-closed", (e) => e.preventDefault());
 app.on("before-quit", () => {
   app.isQuitting = true;
+  stopWowPoll();
   if (svWatcher)        svWatcher.stop();
   if (combatLogWatcher) combatLogWatcher.stop();
   globalShortcut.unregisterAll();
