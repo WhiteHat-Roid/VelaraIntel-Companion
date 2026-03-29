@@ -780,7 +780,12 @@ function startCombatLogWatcher() {
     broadcastStatus(segs.length + " segments, " + deaths + " deaths, " + ints + " interrupts, " + defs + " defensives", "info");
   });
 
+  let lineCounter = 0;
   combatLogWatcher.on("line", (line) => {
+    lineCounter++;
+    if (lineCounter % 1000 === 0) {
+      broadcastStatus("Processed " + lineCounter + " combat log lines", "info");
+    }
     try {
       runBuilder.processLine(line);
     } catch (err) {
@@ -817,6 +822,16 @@ function startCombatLogWatcher() {
   } catch (err) {
     console.warn("[CombatLog] Lookback catchup failed:", err.message);
   }
+
+  // Report key status after catchup
+  if (runBuilder.inKey) {
+    broadcastStatus("Key in progress detected — waiting for completion", "info");
+  } else {
+    broadcastStatus("No active key detected — run a key or use Upload A Log tab", "info");
+  }
+
+  // Report watched path
+  broadcastStatus("Watching: " + (combatLogWatcher.logPath || "unknown path"), "info");
 
   // Check if the combat log file exists and broadcast status
   const logPath = getCombatLogPath();
