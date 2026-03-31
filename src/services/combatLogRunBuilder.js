@@ -60,6 +60,7 @@ const SPEC_INFO = {
   // Demon Hunter
   577: { spec: "Havoc",         class: "DEMONHUNTER",  role: "dps" },
   581: { spec: "Vengeance",     class: "DEMONHUNTER",  role: "tank" },
+  1480:{ spec: "Devourer",      class: "DEMONHUNTER",  role: "dps" },
   // Druid
   102: { spec: "Balance",       class: "DRUID",        role: "dps" },
   103: { spec: "Feral",         class: "DRUID",        role: "dps" },
@@ -120,7 +121,7 @@ const MIN_FIELDS = {
   "CHALLENGE_MODE_END": 5,
   "ENCOUNTER_START": 5,
   "ENCOUNTER_END": 6,
-  "COMBATANT_INFO": 4,
+  "COMBATANT_INFO": 26,
   "SWING_DAMAGE": 11,
   "SPELL_DAMAGE": 15,
   "RANGE_DAMAGE": 15,
@@ -173,6 +174,24 @@ function splitFields(line) {
 
 function randHex(n) { return crypto.randomBytes(n).toString("hex"); }
 
+// ── Advanced combat log detection ──────────────────────────────────────────
+// ADVANCED_LOG_ENABLED=1 inserts a 19-field info block after the spell prefix.
+// We detect it by checking if the field at the expected suffix start looks like
+// a GUID string rather than a numeric damage/heal value.
+
+const ADVANCED_INFO_FIELD_COUNT = 19;
+
+function hasAdvancedInfo(fields, checkIndex) {
+  const val = fields[checkIndex] || "";
+  return val.includes("-") || val === "0000000000000000";
+}
+
+function isHostileUnit(flagsHex) {
+  const flags = parseInt(flagsHex, 16);
+  if (isNaN(flags)) return false;
+  return (flags & 0x40) !== 0;  // COMBATLOG_OBJECT_REACTION_HOSTILE
+}
+
 // ─── CombatLogRunBuilder ──────────────────────────────────────────────────
 
 class CombatLogRunBuilder extends EventEmitter {
@@ -198,6 +217,8 @@ class CombatLogRunBuilder extends EventEmitter {
     this.playerHealingDone = new Map();  // GUID → total healing done
     this.confirmedPartyGuids = new Set();
     this.segCounters     = { death: 0, cd: 0, int: 0, ec: 0 };
+    this.lastCreatureDamageTs = 0;  // Last time ANY creature dealt or received damage
+    this.knownInterruptibleSpells = new Map();  // spellId → { spellId, spellName, npcId, npcName, count }
     this.lineCount       = 0;
     this.eventCount      = 0;
   }
@@ -219,14 +240,10 @@ class CombatLogRunBuilder extends EventEmitter {
     while (buf.length > 0 && buf[0].ts < cutoff) buf.shift();
   }
 
-  // ── Dynamic segment gap threshold based on context ─────────────────────
+  // ── Dynamic segment gap threshold (safety net only) ────────────────────
+  // NPC tracking is primary; this is a fallback for edge cases
   _getSegmentGapThreshold() {
-    // Boss RP phases, intermissions, and phase transitions can have 10+ second gaps
-    if (this.openBoss) {
-      return 12000;  // 12 seconds during boss fights
-    }
-    // For trash, use a shorter threshold
-    return 5000;  // 5 seconds for trash packs
+    return 20000;  // 20 seconds — safety net only
   }
 
   // ── Close current segment if gap detected ─────────────────────────────
@@ -263,6 +280,7 @@ class CombatLogRunBuilder extends EventEmitter {
     seg.rawOutcome = seg.deaths.length >= 5 ? "wipe" : "regen_restored";
     this.currentSeg = null;
     this.segments.push(seg);
+    this.lastCreatureDamageTs = 0;
   }
 
   _addDmg(ts, amount) {
@@ -290,6 +308,13 @@ class CombatLogRunBuilder extends EventEmitter {
     const body  = rawLine.substring(spaceIdx + 2).trim();
     const ts    = parseTimestamp(tsRaw);
     if (ts <= 0) return null;
+
+    // ── Creature damage gap: 3s of no creature combat = pull boundary ──
+    if (this.currentSeg && this.lastCreatureDamageTs > 0) {
+      if (ts - this.lastCreatureDamageTs > 3000) {
+        this._closeSeg(this.lastCreatureDamageTs);
+      }
+    }
 
     const fields = splitFields(body);
     const event  = fields[0];
@@ -368,9 +393,11 @@ class CombatLogRunBuilder extends EventEmitter {
     if (event === "COMBATANT_INFO") {
       const guid = fields[1] || "";
       if (isPlayerGuid(guid)) {
-        // Parse spec ID from field position 3 (zero-indexed)
-        // Format: COMBATANT_INFO,GUID,Faction,SpecID,...
-        const specId = parseInt(fields[3], 10) || 0;
+        // Parse spec ID from field position 25 (zero-indexed)
+        // Format: COMBATANT_INFO,GUID,Faction,Str,Agi,Sta,Int,...,Armor,CurrentSpecID,...
+        // Blizzard moved spec ID from field 3 to field 25 in Midnight (TWW)
+        // Field 25 is CurrentSpecID. Do NOT guess from spell IDs — this is the ONLY truth.
+        const specId = parseInt(fields[25], 10) || 0;
         const specInfo = SPEC_INFO[specId];
 
         if (specInfo) {
@@ -396,7 +423,7 @@ class CombatLogRunBuilder extends EventEmitter {
       return null;
     }
 
-    // ── Segment management via damage gaps ──────────────────────────────
+    // ── Segment management via NPC tracking + damage gap safety net ────
     const isDamage = event === "SWING_DAMAGE" || event === "SPELL_DAMAGE" ||
                      event === "SPELL_PERIODIC_DAMAGE" || event === "RANGE_DAMAGE";
     const isHeal   = event === "SPELL_HEAL" || event === "SPELL_PERIODIC_HEAL";
@@ -407,17 +434,31 @@ class CombatLogRunBuilder extends EventEmitter {
 
     if (!isDamage && !isHeal && !isCast && !isCastStart && !isDied && !isInterrupt) return null;
 
-    // Check for segment gap before processing
+    const sourceGuid = fields[1] || "";
+    const sourceName = (fields[2] || "").replace(/"/g, "");
+    const destGuid   = fields[5] || "";
+    const destName   = (fields[6] || "").replace(/"/g, "");
+
+    // ── Creature damage timestamp tracking (hostile only) ────────────────
+    if (isDamage) {
+      const sourceFlags = fields[3] || "0";
+      const destFlags = fields[7] || "0";
+      const hostileCreatureInvolved =
+          (isCreatureGuid(sourceGuid) && isHostileUnit(sourceFlags)) ||
+          (isCreatureGuid(destGuid) && isHostileUnit(destFlags));
+      const playerInvolved = isPlayerGuid(sourceGuid) || isPlayerGuid(destGuid);
+      if (hostileCreatureInvolved && playerInvolved) {
+        this.lastCreatureDamageTs = ts;
+        if (!this.currentSeg) this._openSeg(ts);
+      }
+    }
+
+    // Safety-net gap check (20s fallback)
     if (isDamage || isCast || isInterrupt) {
       this._checkSegmentGap(ts);
       if (!this.currentSeg) this._openSeg(ts);
       this.lastDamageTs = ts;
     }
-
-    const sourceGuid = fields[1] || "";
-    const sourceName = (fields[2] || "").replace(/"/g, "");
-    const destGuid   = fields[5] || "";
-    const destName   = (fields[6] || "").replace(/"/g, "");
 
     // ── Extract player names from combat log ────────────────────────────
     if (isPlayerGuid(sourceGuid) && sourceName && !this.guidToName.has(sourceGuid)) {
@@ -433,7 +474,7 @@ class CombatLogRunBuilder extends EventEmitter {
       this._detectClassFromSpell(sourceGuid, spellId);
     }
 
-    // ── UNIT_DIED ───────────────────────────────────────────────────────
+    // ── UNIT_DIED — player death tracking ──────────────────────────────
     if (isDied && isPlayerGuid(destGuid)) {
       if (!this.currentSeg) this._openSeg(ts);
       this.segCounters.death++;
@@ -475,31 +516,64 @@ class CombatLogRunBuilder extends EventEmitter {
       this.segCounters.int++;
       const spellId = parseInt(fields[9], 10) || 0;
       const spellName = (fields[10] || "").replace(/"/g, "");
-      const tgtSpellId = parseInt(fields[12], 10) || 0;
-      const tgtSpellName = (fields[13] || "").replace(/"/g, "");
+
+      // Detect advanced info block for interrupted spell extraction
+      const intAdvStart = 12;
+      const intHasAdv = hasAdvancedInfo(fields, intAdvStart);
+      const intSuffixStart = intHasAdv ? intAdvStart + ADVANCED_INFO_FIELD_COUNT : intAdvStart;
+
+      const interruptedSpellId = parseInt(fields[intSuffixStart], 10) || 0;
+      const interruptedSpellName = (fields[intSuffixStart + 1] || "").replace(/"/g, "");
+
       this.currentSeg.interrupts.push({
         ts, offsetMs: ts - this.currentSeg.startTs,
         spellName,
         sourceName: this.guidToName.get(sourceGuid) || "Unknown",
         sourceClass: this.guidToClass.get(sourceGuid) || "UNKNOWN",
         sourceRole: this.guidToRole.get(sourceGuid) || "unknown",
-        targetSpellName: tgtSpellName,
+        targetSpellId: interruptedSpellId,
+        targetSpellName: interruptedSpellName,
+        targetNpcId: npcIdFromGuid(destGuid),
         targetNpcName: isCreatureGuid(destGuid) ? destName : null,
       });
+
+      // Track interrupted spell for Learned Interrupt Database
+      if (interruptedSpellId > 0 && isCreatureGuid(destGuid)) {
+        if (!this.knownInterruptibleSpells) this.knownInterruptibleSpells = new Map();
+        const key = interruptedSpellId;
+        if (!this.knownInterruptibleSpells.has(key)) {
+          this.knownInterruptibleSpells.set(key, {
+            spellId: interruptedSpellId,
+            spellName: interruptedSpellName,
+            npcId: npcIdFromGuid(destGuid),
+            npcName: destName || "Unknown",
+            count: 0,
+          });
+        }
+        this.knownInterruptibleSpells.get(key).count++;
+      }
       return null;
     }
 
-    // ── Damage ──────────────────────────────────────────────────────────
+    // ── Damage (dynamic suffix detection for advanced combat log) ──────
     if (isDamage && isPlayerGuid(destGuid)) {
       let spellId = 0, spellName = "Melee", amount = 0, overkill = 0;
       if (event === "SWING_DAMAGE") {
-        amount = parseInt(fields[9], 10) || 0;
-        overkill = parseInt(fields[10], 10) || 0;
+        // Swing: no spell prefix — advanced info starts at field 9
+        const swingAdvStart = 9;
+        const swingHasAdv = hasAdvancedInfo(fields, swingAdvStart);
+        const swingSuffixStart = swingHasAdv ? swingAdvStart + ADVANCED_INFO_FIELD_COUNT : swingAdvStart;
+        amount   = parseInt(fields[swingSuffixStart],     10) || 0;
+        overkill = parseInt(fields[swingSuffixStart + 1], 10) || 0;
       } else {
-        spellId = parseInt(fields[9], 10) || 0;
+        // Spell/Range: spell prefix at fields 9-11, advanced info at field 12
+        spellId   = parseInt(fields[9], 10) || 0;
         spellName = (fields[10] || "").replace(/"/g, "");
-        amount = parseInt(fields[12], 10) || 0;
-        overkill = parseInt(fields[13], 10) || 0;
+        const advStart = 12;
+        const hasAdv = hasAdvancedInfo(fields, advStart);
+        const suffixStart = hasAdv ? advStart + ADVANCED_INFO_FIELD_COUNT : advStart;
+        amount   = parseInt(fields[suffixStart],     10) || 0;
+        overkill = parseInt(fields[suffixStart + 1], 10) || 0;
       }
 
       if (isNaN(amount) || amount < 0) return null;
@@ -517,21 +591,29 @@ class CombatLogRunBuilder extends EventEmitter {
       return null;
     }
 
-    // ── Healing done tracking (for post-run role heuristic) ───────────
-    if (isHeal && isPlayerGuid(sourceGuid)) {
-      const healAmount = parseInt(fields[12], 10) || 0;
-      if (!isNaN(healAmount) && healAmount > 0) {
-        this.playerHealingDone.set(sourceGuid, (this.playerHealingDone.get(sourceGuid) || 0) + healAmount);
-      }
-    }
+    // ── Healing (dynamic suffix detection for advanced combat log) ──────
+    if (isHeal) {
+      // Heal suffix: spell prefix at fields 9-11, check for advanced info at field 12
+      const healAdvStart = 12;
+      const healHasAdv = hasAdvancedInfo(fields, healAdvStart);
+      const healSuffixStart = healHasAdv ? healAdvStart + ADVANCED_INFO_FIELD_COUNT : healAdvStart;
+      const healAmount = parseInt(fields[healSuffixStart], 10) || 0;
+      const overhealAmount = parseInt(fields[healSuffixStart + 1], 10) || 0;
 
-    // ── Healing received ────────────────────────────────────────────────
-    if (isHeal && isPlayerGuid(destGuid) && this.currentSeg) {
-      const amount = parseInt(fields[12], 10) || 0;
-      if (isNaN(amount) || amount < 0) return null;
-      const overheal = parseInt(fields[13], 10) || 0;
-      const effective = Math.max(0, amount - overheal);
-      this._addHeal(ts, effective);
+      // Healing done tracking (for post-run role heuristic)
+      if (isPlayerGuid(sourceGuid)) {
+        if (!isNaN(healAmount) && healAmount > 0) {
+          this.playerHealingDone.set(sourceGuid, (this.playerHealingDone.get(sourceGuid) || 0) + healAmount);
+        }
+      }
+
+      // Healing received
+      if (isPlayerGuid(destGuid) && this.currentSeg) {
+        if (!isNaN(healAmount) && healAmount > 0) {
+          const effective = Math.max(0, healAmount - overhealAmount);
+          this._addHeal(ts, effective);
+        }
+      }
       return null;
     }
 
@@ -551,8 +633,9 @@ class CombatLogRunBuilder extends EventEmitter {
       return null;
     }
 
-    // ── Enemy cast start (capped at 30 per segment) ─────────────────────
-    if (isCastStart && isCreatureGuid(sourceGuid) && this.currentSeg) {
+    // ── Enemy cast start (capped at 30 per segment, hostile only) ────────
+    const sourceFlags = fields[3] || "0";
+    if (isCastStart && isCreatureGuid(sourceGuid) && isHostileUnit(sourceFlags) && this.currentSeg) {
       if (this.currentSeg.enemyCasts.length < 30) {
         const spellId = parseInt(fields[9], 10) || 0;
         const spellName = (fields[10] || "").replace(/"/g, "");
@@ -624,7 +707,7 @@ class CombatLogRunBuilder extends EventEmitter {
       const seg = this.segments[i];
       const duration = seg.finishTs - seg.startTs;
 
-      if (duration < 3000 && merged.length > 0) {
+      if (duration < 5000 && merged.length > 0) {
         // Merge into previous segment
         const prev = merged[merged.length - 1];
         prev.finishTs = seg.finishTs;
@@ -759,7 +842,7 @@ class CombatLogRunBuilder extends EventEmitter {
 
     return {
       addon: "VelaraIntel",
-      v: "0.8.3",
+      v: "1.1.0",
       uploadTs: Date.now(),
       clockOffsetMs: 0,
       clockSyncConfidence: "high",
@@ -775,8 +858,8 @@ class CombatLogRunBuilder extends EventEmitter {
         runType: "private",
         runMode: "standard",
         privacyMode: "shareable",
-        addonVersion: "0.8.3",
-        exportVersion: "1.0.0",
+        addonVersion: "1.1.0",
+        exportVersion: "1.1.0",
         telemetryCapabilities: {
           hasCombatSegments: finalSegments.length > 0,
           hasEnemyRegistry: false,
@@ -796,6 +879,9 @@ class CombatLogRunBuilder extends EventEmitter {
         bossEncounters: this.bossEncounters,
         completionResult: { medal: success > 0 ? 1 : 0, timeMs, money: 0 },
         deathCountFinal: totalDeaths,
+        interruptibleSpells: this.knownInterruptibleSpells
+            ? [...this.knownInterruptibleSpells.values()]
+            : [],
         pulls: [],
         wipes: [],
         damageBuckets: [],

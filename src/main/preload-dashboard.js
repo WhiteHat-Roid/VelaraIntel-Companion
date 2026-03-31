@@ -23,9 +23,19 @@ contextBridge.exposeInMainWorld("velara", {
   // Ingest JSON (manual paste upload)
   ingestJSON:        (json) => ipcRenderer.invoke("upload-run", json),
 
+  // Live Log toggle
+  setLiveLog:        (enabled) => ipcRenderer.send("set-live-log", enabled),
+  getLiveLog:        () => ipcRenderer.invoke("get-live-log"),
+
+  // Privacy mode persistence (for auto-upload)
+  setPrivacyMode:    (mode) => ipcRenderer.send("set-privacy-mode", mode),
+  getPrivacyMode:    () => ipcRenderer.invoke("get-privacy-mode"),
+
   // Status events
   onStatusLog:       (cb) => ipcRenderer.on("status-log", (_, data) => cb(data.msg, data.level)),
   onRunCompleted:    (cb) => ipcRenderer.on("run-completed", (_, data) => cb(data)),
   onUploadResult:    (cb) => ipcRenderer.on("upload-result", (_, data) => cb(data)),
   onKeyEndDetected:  (cb) => ipcRenderer.on("key-end-detected", (_, data) => cb(data)),
+  onAutoUploadSuccess: (cb) => ipcRenderer.on("auto-upload-success", (_, data) => cb(data)),
+  onAutoUploadFailed:  (cb) => ipcRenderer.on("auto-upload-failed", (_, data) => cb(data)),
 });

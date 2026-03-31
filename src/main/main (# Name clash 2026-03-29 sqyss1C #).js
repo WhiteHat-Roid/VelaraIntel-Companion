@@ -14,7 +14,7 @@
 // V0.5.1: Auto-start with Windows wired to startMinimized toggle in settings.
 // V0.5.0: Removed API key requirement. Added clientId UUID for rate tracking.
 
-const BUILD_TIMESTAMP = "2026-03-30T22:00:00";
+const BUILD_TIMESTAMP = "2026-03-29T12:00:00";
 
 const {
   app, BrowserWindow, Tray, Menu, globalShortcut,
@@ -139,20 +139,14 @@ function startWowPoll() {
         startSVWatcher();
         startCombatLogWatcher();
         watchersStarted = true;
-      } else {
-        // Watchers already running — re-scan for newest combat log file
-        // WoW creates a new dated log file each session
-        rescanCombatLog();
       }
-
-      // Start 30-second periodic re-scan for new log files
-      startLogRescanTimer();
+      // Show overlay too
+      if (!overlayWindow) createOverlay();
     } else if (!running && wowDetected) {
       // WoW just closed
       wowDetected = false;
       console.log("[WoW] Retail WoW closed — hiding to tray");
       broadcastStatus("WoW closed — companion in tray", "info");
-      stopLogRescanTimer();
       if (dashboardWindow) dashboardWindow.hide();
     }
   }, 10000);
@@ -168,13 +162,11 @@ let tray             = null;
 let svWatcher        = null;
 let combatLogWatcher = null;
 let combatLogParser  = null;
-let runBuilder       = null;  // Module-scope so WoW poll can check inKey / reset
 let runAssembler     = null;
 let apiUploader      = null;
 let lastKnownRunId   = null;
 let lastActiveRunId  = null;
 let cachedActiveRun  = null;  // In-memory copy of _activeRun for key-end upload
-let logRescanTimer   = null;  // 30-second periodic combat log re-scan
 
 const WOW_SEARCH_PATHS = [
   "C:\\Program Files (x86)\\World of Warcraft\\_retail_",
@@ -559,7 +551,7 @@ function createOverlay() {
     x: bounds.x, y: bounds.y,
     width: 120, height: 120,
     frame: false, transparent: true, alwaysOnTop: true, skipTaskbar: true,
-    resizable: false, hasShadow: false, focusable: true,
+    resizable: false, hasShadow: false, focusable: false,
     backgroundColor: "#00000000",
     roundedCorners: false,
     webPreferences: {
@@ -589,7 +581,7 @@ function broadcastStatus(msg, level) {
 
 function forceQuit() {
   app.isQuitting = true;
-  stopLogRescanTimer();
+  stopWowPoll();
   if (svWatcher) svWatcher.stop();
   if (combatLogWatcher) combatLogWatcher.stop();
   globalShortcut.unregisterAll();
@@ -814,76 +806,6 @@ function onChallengeEnd(line) {
   }
 }
 
-// ── Combat log file re-scan ──────────────────────────────────────────────────
-// Re-checks for the newest combat log file. If a newer file is found and we're
-// not mid-key, switches the watcher to the new file and resets state.
-function rescanCombatLog() {
-  if (!combatLogWatcher) return;
-
-  const newPath = getCombatLogPath();
-  if (!newPath) return;
-
-  const currentPath = combatLogWatcher.logPath;
-  if (newPath === currentPath) return;
-
-  // Don't switch mid-key — would lose run data
-  if (runBuilder && runBuilder.inKey) {
-    console.log(`[LogRescan] Newer log found (${path.basename(newPath)}) but key in progress — deferring switch`);
-    return;
-  }
-
-  console.log(`[LogRescan] Switching: ${path.basename(currentPath)} → ${path.basename(newPath)}`);
-  broadcastStatus("New combat log detected: " + path.basename(newPath), "info");
-
-  // Switch the watcher to the new file
-  combatLogWatcher.switchTo(newPath);
-
-  // Reset the run builder so it doesn't carry state from the old file
-  if (runBuilder) {
-    runBuilder.reset();
-  }
-
-  // Reset GO button — no stale payload from old file
-  broadcast("run-completed", null);
-
-  // Run COMBATANT_INFO catchup on the new file
-  try {
-    const recentLines = combatLogWatcher.readLastChunk(200000);
-    if (recentLines.length > 0) {
-      console.log(`[LogRescan] Processing ${recentLines.length} recent lines for COMBATANT_INFO catchup`);
-      let combatantInfoCount = 0;
-      for (const line of recentLines) {
-        try {
-          if (line.includes("COMBATANT_INFO") || line.includes("CHALLENGE_MODE_START")) {
-            runBuilder.processLine(line);
-            if (line.includes("COMBATANT_INFO")) combatantInfoCount++;
-          }
-        } catch {}
-      }
-      if (combatantInfoCount > 0) {
-        console.log(`[LogRescan] Catchup: processed ${combatantInfoCount} COMBATANT_INFO events`);
-      }
-    }
-  } catch (err) {
-    console.warn("[LogRescan] Catchup failed:", err.message);
-  }
-
-  broadcastStatus("Switched to: " + path.basename(newPath), "ok");
-  broadcast("combat-log-status", { found: true, path: newPath });
-}
-
-function startLogRescanTimer() {
-  if (logRescanTimer) return;
-  logRescanTimer = setInterval(() => {
-    if (wowDetected) rescanCombatLog();
-  }, 30000);
-  console.log("[LogRescan] 30-second periodic re-scan started");
-}
-
-function stopLogRescanTimer() {
-  if (logRescanTimer) { clearInterval(logRescanTimer); logRescanTimer = null; }
-}
-
 // ── Pipeline: Combat log watcher ──────────────────────────────────────────────
 function startCombatLogWatcher() {
   if (combatLogWatcher) combatLogWatcher.stop();
@@ -899,7 +821,7 @@ function startCombatLogWatcher() {
 
   // PRIMARY path: CombatLogRunBuilder builds full payload from combat log alone
   // Upload ONLY happens when user presses GO in the dashboard — never automatically
-  runBuilder = new CombatLogRunBuilder();
+  const runBuilder = new CombatLogRunBuilder();
   let lastCompletedPayload = null;
 
   runBuilder.on("keyStart", (run) => {
@@ -917,43 +839,6 @@ function startCombatLogWatcher() {
     const ints = segs.reduce((s, seg) => s + (seg.interrupts?.length || 0), 0);
     const defs = segs.reduce((s, seg) => s + (seg.defensives?.length || 0), 0);
     broadcastStatus(segs.length + " segments, " + deaths + " deaths, " + ints + " interrupts, " + defs + " defensives", "info");
-
-    // AUTO-UPLOAD if Live Log mode is enabled
-    const liveLogEnabled = store.get("liveLog", true); // default ON
-    if (liveLogEnabled && segs.length > 0) {
-      // Read privacy mode from store (set by dashboard toggle)
-      const privacySelection = store.get("privacyMode", "standard");
-      let runMode = "standard";
-      let privacyMode = "shareable";
-      if (privacySelection === "private") { runMode = "standard"; privacyMode = "private"; }
-      else if (privacySelection === "practice") { runMode = "practice"; privacyMode = "private"; }
-
-      // Do NOT auto-upload practice mode runs
-      if (runMode === "practice") {
-        broadcastStatus("Practice mode — skipping auto-upload", "info");
-      } else {
-        payload.run.runMode = runMode;
-        payload.run.privacyMode = privacyMode;
-
-        broadcastStatus("Uploading to velaraintel.com...", "info");
-        apiUploader.upload(payload).then((result) => {
-          if (result.ok) {
-            broadcastStatus("Uploaded!", "ok");
-            openRunInBrowser(result);
-            broadcast("auto-upload-success", result);
-          } else {
-            broadcastStatus("Auto-upload failed: " + (result.error || result.status || "unknown"), "err");
-            broadcast("auto-upload-failed", result);
-            // GO button remains available as fallback
-          }
-        }).catch((err) => {
-          broadcastStatus("Auto-upload error: " + err.message, "err");
-          broadcast("auto-upload-failed", { ok: false, error: err.message });
-        });
-      }
-    } else if (liveLogEnabled && segs.length === 0) {
-      broadcastStatus("No segments detected — skipping auto-upload (use GO button to retry)", "warn");
-    }
   });
 
   let lineCounter = 0;
@@ -1176,21 +1061,6 @@ function setupIPC() {
     return { path: result.filePaths[0] };
   });
 
-  // ── Live Log toggle ──────────────────────────────────────────────────
-  ipcMain.on("set-live-log", (event, enabled) => {
-    store.set("liveLog", enabled);
-    broadcastStatus(enabled ? "Live logging active" : "Live logging paused", "info");
-  });
-
-  ipcMain.handle("get-live-log", () => store.get("liveLog", true));
-
-  // ── Privacy mode persistence (for auto-upload) ─────────────────────
-  ipcMain.on("set-privacy-mode", (event, mode) => {
-    store.set("privacyMode", mode);
-  });
-
-  ipcMain.handle("get-privacy-mode", () => store.get("privacyMode", "standard"));
-
   ipcMain.on("close-dashboard",    () => { if (dashboardWindow) dashboardWindow.hide(); });
   ipcMain.on("minimize-dashboard", () => { if (dashboardWindow) dashboardWindow.minimize(); });
 }
@@ -1223,7 +1093,6 @@ app.whenReady().then(() => {
     startSVWatcher();
     startCombatLogWatcher();
     watchersStarted = true;
-    startLogRescanTimer();
   } else {
     console.log("[Velara] WoW not running — waiting in tray (poll every 10s)");
     // Create dashboard hidden so tray double-click can show it manually
@@ -1245,7 +1114,6 @@ app.on("window-all-closed", (e) => e.preventDefault());
 app.on("before-quit", () => {
   app.isQuitting = true;
   stopWowPoll();
-  stopLogRescanTimer();
   if (svWatcher)        svWatcher.stop();
   if (combatLogWatcher) combatLogWatcher.stop();
   globalShortcut.unregisterAll();

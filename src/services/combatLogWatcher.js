@@ -24,6 +24,16 @@ class CombatLogWatcher extends EventEmitter {
     return this.logPath;
   }
 
+  // Switch to a different log file path without destroying the watcher.
+  // Stops the old fs.watch/polling, updates the path, and restarts.
+  switchTo(newLogPath) {
+    const wasActive = this.active;
+    if (wasActive) this.stop();
+    this.logPath = newLogPath;
+    this.filePos = 0;
+    if (wasActive) this.start();
+  }
+
   start() {
     if (this.active) return;
     this.active = true;

@@ -123,6 +123,22 @@ function npcIdFromGuid(guid) {
   return null;
 }
 
+// ── Advanced combat log detection ──────────────────────────────────────────
+// ADVANCED_LOG_ENABLED=1 inserts a 19-field info block after the spell prefix.
+
+const ADVANCED_INFO_FIELD_COUNT = 19;
+
+function hasAdvancedInfo(fields, checkIndex) {
+  const val = fields[checkIndex] || "";
+  return val.includes("-") || val === "0000000000000000";
+}
+
+function isHostileUnit(flagsHex) {
+  const flags = parseInt(flagsHex, 16);
+  if (isNaN(flags)) return false;
+  return (flags & 0x40) !== 0;  // COMBATLOG_OBJECT_REACTION_HOSTILE
+}
+
 // ─── GUID → Class/Role/Spec Map Builder ───────────────────────────────────────
 // PRIMARY: Addon provides guid on player + partyMembers
 // FALLBACK: Spell-based detection (last resort only per ChatGPT ruling)
@@ -434,15 +450,23 @@ function parseCombatLog({ run, combatLogLines, partyGuids = [] }) {
     let spellId = 0, spellName = "Melee", amount = 0, overkill = 0, school = "1";
 
     if (event === "SWING_DAMAGE") {
-      amount   = parseInt(fields[9],  10) || 0;
-      overkill = parseInt(fields[10], 10) || 0;
-      school   = fields[11] || "1";
+      // Swing: no spell prefix — advanced info starts at field 9
+      const swingAdvStart = 9;
+      const swingHasAdv = hasAdvancedInfo(fields, swingAdvStart);
+      const swingSuffixStart = swingHasAdv ? swingAdvStart + ADVANCED_INFO_FIELD_COUNT : swingAdvStart;
+      amount   = parseInt(fields[swingSuffixStart],     10) || 0;
+      overkill = parseInt(fields[swingSuffixStart + 1], 10) || 0;
+      school   = fields[swingSuffixStart + 2] || "1";
     } else {
+      // Spell/Range/Periodic: spell prefix at fields 9-11, check for advanced info at 12
       spellId   = parseInt(fields[9],  10) || 0;
       spellName = (fields[10] || "").replace(/"/g, "");
       school    = fields[11] || "0";
-      amount    = parseInt(fields[12], 10) || 0;
-      overkill  = parseInt(fields[13], 10) || 0;
+      const advStart = 12;
+      const hasAdv = hasAdvancedInfo(fields, advStart);
+      const suffixStart = hasAdv ? advStart + ADVANCED_INFO_FIELD_COUNT : advStart;
+      amount    = parseInt(fields[suffixStart],     10) || 0;
+      overkill  = parseInt(fields[suffixStart + 1], 10) || 0;
     }
 
     const sourceNpcId   = npcIdFromGuid(sourceGuid);
@@ -496,8 +520,12 @@ function parseCombatLog({ run, combatLogLines, partyGuids = [] }) {
 
     const spellId     = parseInt(fields[9],  10) || 0;
     const spellName   = (fields[10] || "").replace(/"/g, "");
-    const amount      = parseInt(fields[12], 10) || 0;
-    const overhealing = parseInt(fields[13], 10) || 0;
+    // Heal suffix: spell prefix at fields 9-11, check for advanced info at field 12
+    const healAdvStart = 12;
+    const healHasAdv = hasAdvancedInfo(fields, healAdvStart);
+    const healSuffixStart = healHasAdv ? healAdvStart + ADVANCED_INFO_FIELD_COUNT : healAdvStart;
+    const amount      = parseInt(fields[healSuffixStart], 10) || 0;
+    const overhealing = parseInt(fields[healSuffixStart + 1], 10) || 0;
     const effective   = Math.max(0, amount - overhealing);
 
     const seg = getSegment(segmentId);
@@ -549,31 +577,16 @@ function parseCombatLog({ run, combatLogLines, partyGuids = [] }) {
       });
     }
 
-    // Interrupt
-    if (INTERRUPT_SPELLS.has(spellId)) {
-      segData.intCounter++;
-      segData.interrupts.push({
-        interruptId    : `${run.runId || "unk"}-${segmentId}-int${segData.intCounter}`,
-        segmentId,
-        interruptTs    : normalizedTs,
-        offsetMs       : seg ? normalizedTs - seg.startTs : 0,
-        sourceGuid,
-        sourceClass    : guidToClass.get(sourceGuid) || "UNKNOWN",
-        sourceRole     : guidToRole.get(sourceGuid)  || "unknown",
-        targetGuid     : destGuid,
-        targetNpcId    : npcIdFromGuid(destGuid),
-        targetNpcName  : destName || null,
-        spellId,
-        spellName,
-        result         : "success",
-      });
-    }
+    // Interrupt detection moved to SPELL_INTERRUPT event handler (processSpellInterrupt)
+    // which can extract the actual interrupted spell name/ID from the combat log.
   }
 
   function processEnemyCast(fields, normalizedTs, segmentId, event) {
     const sourceGuid = fields[1] || "";
     const sourceName = (fields[2] || "").replace(/"/g, "");
+    const sourceFlags = fields[3] || "0";
     if (!isCreatureGuid(sourceGuid)) return;
+    if (!isHostileUnit(sourceFlags)) return;  // Skip friendly creatures (Mirror Image, pets, totems)
 
     const spellId   = parseInt(fields[9],  10) || 0;
     const spellName = (fields[10] || "").replace(/"/g, "");
@@ -597,6 +610,47 @@ function parseCombatLog({ run, combatLogLines, partyGuids = [] }) {
     });
   }
 
+  // ── SPELL_INTERRUPT — extract interrupted spell with advanced info detection ──
+
+  function processSpellInterrupt(fields, normalizedTs, segmentId) {
+    const sourceGuid = fields[1] || "";
+    const destGuid   = fields[5] || "";
+    const destName   = (fields[6] || "").replace(/"/g, "");
+    if (!isPlayerGuid(sourceGuid)) return;
+
+    const spellId   = parseInt(fields[9], 10) || 0;
+    const spellName = (fields[10] || "").replace(/"/g, "");
+
+    // Detect advanced info block for interrupted spell extraction
+    const intAdvStart = 12;
+    const intHasAdv = hasAdvancedInfo(fields, intAdvStart);
+    const intSuffixStart = intHasAdv ? intAdvStart + ADVANCED_INFO_FIELD_COUNT : intAdvStart;
+
+    const interruptedSpellId   = parseInt(fields[intSuffixStart], 10) || 0;
+    const interruptedSpellName = (fields[intSuffixStart + 1] || "").replace(/"/g, "");
+
+    const seg     = getSegment(segmentId);
+    const segData = getSegData(segmentId);
+    segData.intCounter++;
+    segData.interrupts.push({
+      interruptId    : `${run.runId || "unk"}-${segmentId}-int${segData.intCounter}`,
+      segmentId,
+      interruptTs    : normalizedTs,
+      offsetMs       : seg ? normalizedTs - seg.startTs : 0,
+      sourceGuid,
+      sourceClass    : guidToClass.get(sourceGuid) || "UNKNOWN",
+      sourceRole     : guidToRole.get(sourceGuid)  || "unknown",
+      targetGuid     : destGuid,
+      targetNpcId    : npcIdFromGuid(destGuid),
+      targetNpcName  : destName || null,
+      spellId,
+      spellName,
+      targetSpellId  : interruptedSpellId,
+      targetSpellName: interruptedSpellName,
+      result         : "success",
+    });
+  }
+
   // ── Main parse loop ──────────────────────────────────────────────────────────
 
   const RELEVANT_EVENTS = new Set([
@@ -606,6 +660,7 @@ function parseCombatLog({ run, combatLogLines, partyGuids = [] }) {
     "SPELL_PERIODIC_DAMAGE",
     "SPELL_CAST_SUCCESS",
     "SPELL_CAST_START",
+    "SPELL_INTERRUPT",
     "SPELL_HEAL",
     "SPELL_PERIODIC_HEAL",
   ]);
@@ -657,6 +712,9 @@ function parseCombatLog({ run, combatLogLines, partyGuids = [] }) {
         break;
       case "SPELL_CAST_START":
         processEnemyCast(fields, normalizedTs, segmentId, event);
+        break;
+      case "SPELL_INTERRUPT":
+        processSpellInterrupt(fields, normalizedTs, segmentId);
         break;
       case "SPELL_HEAL":
       case "SPELL_PERIODIC_HEAL":
