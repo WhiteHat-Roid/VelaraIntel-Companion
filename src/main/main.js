@@ -900,6 +900,7 @@ function startCombatLogWatcher() {
   // PRIMARY path: CombatLogRunBuilder builds full payload from combat log alone
   // Upload ONLY happens when user presses GO in the dashboard — never automatically
   runBuilder = new CombatLogRunBuilder();
+  runBuilder.clientId = ensureClientId();
   let lastCompletedPayload = null;
 
   runBuilder.on("keyStart", (run) => {

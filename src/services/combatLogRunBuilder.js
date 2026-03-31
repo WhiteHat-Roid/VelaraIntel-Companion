@@ -840,10 +840,18 @@ class CombatLogRunBuilder extends EventEmitter {
     console.log(`[RunBuilder] Payload: ${finalSegments.length} segments, ${totalInts} interrupts, ${totalDefs} defensives, ${totalECs} enemy casts, ${totalDeaths} deaths, ${totalBuckets} damage buckets`);
     console.log(`[RunBuilder] Lines processed: ${this.lineCount}, events matched: ${this.eventCount}`);
 
+    const partyMembers = run.partyMembers || [];
+    const uploaderName = (partyMembers[0] && partyMembers[0].name) || "Unknown";
+
     return {
       addon: "VelaraIntel",
       v: "1.1.0",
       uploadTs: Date.now(),
+      uploadedBy: {
+        clientId: this.clientId || "unknown",
+        characterName: uploaderName,
+        fullName: uploaderName,
+      },
       clockOffsetMs: 0,
       clockSyncConfidence: "high",
       run: {
