@@ -10,18 +10,93 @@ const { EventEmitter } = require("events");
 // ─── Spell allowlists (same as combatLogParser.js) ─────────────────────────
 
 const DEFENSIVE_CD_SPELLS = new Set([
-  48707, 49028, 48792,          // DK: AMS, DRW, IBF
-  22812, 61336,                 // Druid: Barkskin, Survival Instincts
-  374348,                       // Evoker: Obsidian Scales
-  186265,                       // Hunter: Turtle
-  45438,                        // Mage: Ice Block
-  122278, 116849,               // Monk: Dampen Harm, Life Cocoon
-  642, 498, 31850, 86659,       // Paladin: Bubble, DP, AD, GoAK
-  47788, 33206,                 // Priest: Guardian Spirit, Pain Suppression
-  31224, 5277,                  // Rogue: Cloak, Evasion
-  108271,                       // Shaman: Astral Shift
-  871, 1160, 12975,             // Warrior: Shield Wall, Demo Shout, Last Stand
-  108416, 6789,                 // Warlock: Dark Pact, Mortal Coil
+  // ── Death Knight ──
+  48707,    // Anti-Magic Shell
+  49028,    // Dancing Rune Weapon
+  48792,    // Icebound Fortitude
+  51052,    // Anti-Magic Zone
+  49039,    // Lichborne
+  55233,    // Vampiric Blood
+
+  // ── Demon Hunter ──
+  198589,   // Blur
+  196718,   // Darkness
+  196555,   // Netherwalk
+  187827,   // Metamorphosis (Havoc — provides Leech)
+  203720,   // Demon Spikes (Vengeance)
+  204021,   // Fiery Brand (Vengeance)
+
+  // ── Druid ──
+  22812,    // Barkskin
+  61336,    // Survival Instincts
+  102342,   // Ironbark (external — cast on ally)
+  108238,   // Renewal
+  22842,    // Frenzied Regeneration (Guardian)
+
+  // ── Evoker ──
+  374348,   // Obsidian Scales
+  374227,   // Zephyr
+  370960,   // Emerald Communion (Preservation)
+
+  // ── Hunter ──
+  186265,   // Aspect of the Turtle
+  109304,   // Exhilaration
+  388035,   // Fortitude of the Bear (external)
+
+  // ── Mage ──
+  45438,    // Ice Block
+  342245,   // Alter Time
+  55342,    // Mirror Image
+  235450,   // Prismatic Barrier (Arcane)
+  11426,    // Ice Barrier (Frost)
+  235313,   // Blazing Barrier (Fire)
+
+  // ── Monk ──
+  122278,   // Dampen Harm
+  116849,   // Life Cocoon (external)
+  115203,   // Fortifying Brew
+  122783,   // Diffuse Magic
+  115176,   // Zen Meditation
+
+  // ── Paladin ──
+  642,      // Divine Shield (Bubble)
+  498,      // Divine Protection
+  31850,    // Ardent Defender
+  86659,    // Guardian of Ancient Kings
+  633,      // Lay on Hands (external)
+  1022,     // Blessing of Protection (external)
+  6940,     // Blessing of Sacrifice (external)
+
+  // ── Priest ──
+  47788,    // Guardian Spirit (external)
+  33206,    // Pain Suppression (external)
+  19236,    // Desperate Prayer
+  62618,    // Power Word: Barrier (external/group)
+  271466,   // Luminous Barrier (Disc)
+
+  // ── Rogue ──
+  31224,    // Cloak of Shadows
+  5277,     // Evasion
+  1966,     // Feint
+  185311,   // Crimson Vial
+
+  // ── Shaman ──
+  108271,   // Astral Shift
+  98008,    // Spirit Link Totem (group)
+  108280,   // Healing Tide Totem (group)
+
+  // ── Warlock ──
+  104773,   // Unending Resolve
+  108416,   // Dark Pact
+  6789,     // Mortal Coil
+
+  // ── Warrior ──
+  871,      // Shield Wall
+  1160,     // Demoralizing Shout
+  12975,    // Last Stand
+  184364,   // Enraged Regeneration
+  97462,    // Rallying Cry (group)
+  23920,    // Spell Reflection
 ]);
 
 const INTERRUPT_SPELLS = new Set([
@@ -840,7 +915,6 @@ class CombatLogRunBuilder extends EventEmitter {
     console.log(`[RunBuilder] Payload: ${finalSegments.length} segments, ${totalInts} interrupts, ${totalDefs} defensives, ${totalECs} enemy casts, ${totalDeaths} deaths, ${totalBuckets} damage buckets`);
     console.log(`[RunBuilder] Lines processed: ${this.lineCount}, events matched: ${this.eventCount}`);
 
-    const partyMembers = run.partyMembers || [];
     const uploaderName = (partyMembers[0] && partyMembers[0].name) || "Unknown";
 
     return {
