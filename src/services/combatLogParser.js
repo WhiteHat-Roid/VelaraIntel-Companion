@@ -32,43 +32,93 @@
 
 // ─── Spell allowlists ─────────────────────────────────────────────────────────
 
+// Flat defensive CD list — matches ALWAYS_TRACK + SPEC_CONDITIONAL from combatLogRunBuilder.js
+// Parser doesn't do spec-aware filtering (no per-player spec context here).
 const DEFENSIVE_CD_SPELLS = new Set([
-  // Death Knight
-  48707,  // Anti-Magic Shell
-  49028,  // Dancing Rune Weapon
-  48792,  // Icebound Fortitude
-  // Druid
-  22812,  // Barkskin
-  61336,  // Survival Instincts
-  // Evoker
-  374348, // Obsidian Scales
-  // Hunter
-  186265, // Aspect of the Turtle
-  // Mage
-  45438,  // Ice Block
-  // Monk
-  122278, // Dampen Harm
-  116849, // Life Cocoon (external)
-  // Paladin
-  642,    // Divine Shield
-  498,    // Divine Protection
-  31850,  // Ardent Defender
-  86659,  // Guardian of Ancient Kings
-  // Priest
-  47788,  // Guardian Spirit (external)
-  33206,  // Pain Suppression (external)
-  // Rogue
-  31224,  // Cloak of Shadows
-  5277,   // Evasion
-  // Shaman
-  108271, // Astral Shift
-  // Warrior
-  871,    // Shield Wall
-  1160,   // Demoralizing Shout
-  12975,  // Last Stand
-  // Warlock
-  108416, // Dark Pact
-  6789,   // Mortal Coil
+  // ── Death Knight ──
+  48792,    // Icebound Fortitude (3min)
+  55233,    // Vampiric Blood (1.5min)
+  49028,    // Dancing Rune Weapon (2min)
+  51052,    // Anti-Magic Zone (2min)
+  49039,    // Lichborne (2min)
+
+  // ── Demon Hunter ──
+  198589,   // Blur (1min)
+  196718,   // Darkness (3min)
+  196555,   // Netherwalk (3min)
+  187827,   // Metamorphosis (3-4min)
+  204021,   // Fiery Brand (1min)
+
+  // ── Druid ──
+  22812,    // Barkskin (45s — core druid defensive)
+  61336,    // Survival Instincts (3min)
+  102342,   // Ironbark (1.5min, external)
+  22842,    // Frenzied Regeneration (spec-conditional in RunBuilder)
+  102558,   // Incarnation: Guardian of Ursoc (spec-conditional in RunBuilder)
+  319454,   // Heart of the Wild (spec-conditional in RunBuilder)
+
+  // ── Evoker ──
+  374348,   // Obsidian Scales (2.5min)
+  374227,   // Zephyr (2min)
+  370960,   // Emerald Communion (3min)
+
+  // ── Hunter ──
+  186265,   // Aspect of the Turtle (3min)
+  109304,   // Exhilaration (2min)
+
+  // ── Mage ──
+  45438,    // Ice Block (4min)
+  342245,   // Alter Time (1min)
+  55342,    // Mirror Image (2min)
+
+  // ── Monk ──
+  115203,   // Fortifying Brew (3min)
+  122278,   // Dampen Harm (2min)
+  122783,   // Diffuse Magic (1.5min)
+  115176,   // Zen Meditation (5min)
+  116849,   // Life Cocoon (2min, external)
+  325197,   // Invoke Chi-Ji, the Red Crane (3min, Mistweaver)
+  322118,   // Invoke Yu'lon, the Jade Serpent (3min, Mistweaver)
+
+  // ── Paladin ──
+  642,      // Divine Shield (5min)
+  498,      // Divine Protection (1min)
+  31850,    // Ardent Defender (2min)
+  86659,    // Guardian of Ancient Kings (5min)
+  633,      // Lay on Hands (10min, external)
+  1022,     // Blessing of Protection (5min, external)
+  6940,     // Blessing of Sacrifice (1min, external)
+  204018,   // Blessing of Spellwarding (3min, external)
+
+  // ── Priest ──
+  47788,    // Guardian Spirit (3min, external)
+  33206,    // Pain Suppression (3min, external)
+  19236,    // Desperate Prayer (1.5min)
+  62618,    // Power Word: Barrier (3min, group)
+  271466,   // Luminous Barrier (3min, Disc)
+  15286,    // Vampiric Embrace (2min, Shadow)
+  64843,    // Divine Hymn (3min, Holy)
+  47585,    // Dispersion (2min, Shadow)
+
+  // ── Rogue ──
+  31224,    // Cloak of Shadows (2min)
+  5277,     // Evasion (2min)
+
+  // ── Shaman ──
+  108271,   // Astral Shift (1.5min)
+  98008,    // Spirit Link Totem (3min, group)
+  108280,   // Healing Tide Totem (3min, group)
+
+  // ── Warlock ──
+  104773,   // Unending Resolve (3min)
+  108416,   // Dark Pact (1min)
+
+  // ── Warrior ──
+  871,      // Shield Wall (3min)
+  12975,    // Last Stand (3min)
+  184364,   // Enraged Regeneration (2min, Fury)
+  97462,    // Rallying Cry (3min, group)
+  118038,   // Die by the Sword (3min, Arms/Fury)
 ]);
 
 const INTERRUPT_SPELLS = new Set([
@@ -590,6 +640,7 @@ function parseCombatLog({ run, combatLogLines, partyGuids = [] }) {
 
     const spellId   = parseInt(fields[9],  10) || 0;
     const spellName = (fields[10] || "").replace(/"/g, "");
+    const spellSchool = fields[11] || "0";
     if (!spellId) return;
 
     const seg     = getSegment(segmentId);
@@ -605,6 +656,7 @@ function parseCombatLog({ run, combatLogLines, partyGuids = [] }) {
       npcName            : sourceName || null,
       spellId,
       spellName,
+      spellSchool,
       castOutcome        : event === "SPELL_CAST_SUCCESS" ? "success" : "casting",
       interruptAttempted : false,
     });
