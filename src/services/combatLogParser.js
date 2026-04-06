@@ -379,6 +379,23 @@ function parseCombatLog({ run, combatLogLines, partyGuids = [] }) {
     return segments.find(s => s.segmentId === segmentId) || null;
   }
 
+  function extractTopSpells(hits, count) {
+    const spellMap = new Map();
+    for (const h of hits) {
+      const key = h.spellId || 0;
+      if (!spellMap.has(key)) {
+        spellMap.set(key, { spellId: h.spellId, spellName: h.spellName, school: h.school, totalDamage: 0, hitCount: 0 });
+      }
+      const entry = spellMap.get(key);
+      entry.totalDamage += h.amount;
+      entry.hitCount++;
+    }
+    return [...spellMap.values()]
+      .sort((a, b) => b.totalDamage - a.totalDamage)
+      .slice(0, count)
+      .map(s => ({ spellId: s.spellId, spellName: s.spellName, school: s.school, totalDamage: s.totalDamage, hitCount: s.hitCount }));
+  }
+
   function ensureBucket(segData, seg, bucketIdx) {
     if (!segData.buckets.has(bucketIdx)) {
       const bucketStartTs = seg.startTs + bucketIdx * DAMAGE_BUCKET_MS;
@@ -396,6 +413,7 @@ function parseCombatLog({ run, combatLogLines, partyGuids = [] }) {
         partyOverhealing       : 0,
         tankOverhealing        : 0,
         deathCountInBucket     : 0,
+        byPlayer               : {},
       });
     }
     return segData.buckets.get(bucketIdx);
@@ -538,6 +556,18 @@ function parseCombatLog({ run, combatLogLines, partyGuids = [] }) {
       if (role === "tank")   bucket.tankDamageTaken   += amount;
       if (role === "healer") bucket.healerDamageTaken  += amount;
       if (role === "dps")    bucket.dpsDamageTaken     += amount;
+
+      // Per-player damage tracking
+      if (!bucket.byPlayer[destGuid]) {
+        bucket.byPlayer[destGuid] = { guid: destGuid, damage: 0, topHits: [] };
+      }
+      const playerBucket = bucket.byPlayer[destGuid];
+      playerBucket.damage += amount;
+      playerBucket.topHits.push({ spellId, spellName, amount, school });
+      if (playerBucket.topHits.length > 10) {
+        playerBucket.topHits.sort((a, b) => b.amount - a.amount);
+        playerBucket.topHits = playerBucket.topHits.slice(0, 10);
+      }
     }
 
     // ── Spike detection (hybrid threshold — ChatGPT approved) ──────────────────
@@ -836,6 +866,11 @@ function parseCombatLog({ run, combatLogLines, partyGuids = [] }) {
         partyOverhealing       : b.partyOverhealing,
         tankOverhealing        : b.tankOverhealing,
         deathCountInBucket     : b.deathCountInBucket,
+        byPlayer               : Object.values(b.byPlayer).map(p => ({
+          guid: p.guid,
+          damage: p.damage,
+          topSpells: extractTopSpells(p.topHits, 3),
+        })),
       }));
 
     enrichedSegments.push({
