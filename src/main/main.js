@@ -1014,6 +1014,12 @@ function startCombatLogWatcher() {
   });
 
   runBuilder.on("keyEnd", (payload) => {
+    // Safety: late-load auth characters if race condition left the array empty
+    if (runBuilder._authCharacters.length === 0 && velaraAuth.isLinked && velaraAuth.characters.length > 0) {
+      runBuilder._authCharacters = velaraAuth.characters;
+      console.log(`[RunBuilder] Late-loaded ${velaraAuth.characters.length} auth characters`);
+    }
+
     lastCompletedPayload = payload;
     broadcast("run-completed", payload);
     broadcastStatus("Key completed: " + payload.run.dungeonName + " +" + payload.run.keyLevel, "info");
@@ -1352,7 +1358,7 @@ function setupIPC() {
   ipcMain.on("minimize-dashboard", () => { if (dashboardWindow) dashboardWindow.minimize(); });
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   console.log(`[Velara] Companion v${app.getVersion()} — build ${BUILD_TIMESTAMP}`);
   if (!store.get("wowPath")) {
     const detected = detectWowPath();
@@ -1364,7 +1370,7 @@ app.whenReady().then(() => {
   }
   ensureClientId();
   setupIPC();
-  setupUploader();
+  await setupUploader();
   createTray();
 
   const hotkey = store.get("hotkey");

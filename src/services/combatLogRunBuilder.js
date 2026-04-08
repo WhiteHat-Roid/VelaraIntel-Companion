@@ -9,100 +9,154 @@ const { EventEmitter } = require("events");
 
 // ─── Spell allowlists (same as combatLogParser.js) ─────────────────────────
 
-const DEFENSIVE_CD_SPELLS = new Set([
+// ─── Defensive CD Tracking — Spec-Aware ─────────────────────────────────────
+// Rule: Track meaningful defensive decisions only. 2min+ CD as general threshold.
+// Rotational mitigation (Ignore Pain, Iron Fur, Shield of the Righteous, Demon Spikes) = NOT tracked.
+// Short-CD absorbs (Ice Barrier, Crimson Vial) = NOT tracked.
+// Exception: Feint IS tracked despite short CD — it's the primary Rogue M+ defensive.
+// Some spells are spec-conditional (e.g., Frenzied Regen is rotational for Guardian but defensive for others).
+
+const ALWAYS_TRACK_DEFENSIVES = new Set([
   // ── Death Knight ──
-  48707,    // Anti-Magic Shell
-  49028,    // Dancing Rune Weapon
-  48792,    // Icebound Fortitude
-  51052,    // Anti-Magic Zone
-  49039,    // Lichborne
-  55233,    // Vampiric Blood
+  48707,    // Anti-Magic Shell (1min)
+  48792,    // Icebound Fortitude (3min)
+  55233,    // Vampiric Blood (1.5min)
+  49028,    // Dancing Rune Weapon (2min)
+  51052,    // Anti-Magic Zone (2min)
+  49039,    // Lichborne (2min)
 
   // ── Demon Hunter ──
-  198589,   // Blur
-  196718,   // Darkness
-  196555,   // Netherwalk
-  187827,   // Metamorphosis (Havoc — provides Leech)
-  203720,   // Demon Spikes (Vengeance)
-  204021,   // Fiery Brand (Vengeance)
+  198589,   // Blur (1min) — short but DH's only personal DR
+  196718,   // Darkness (3min)
+  196555,   // Netherwalk (3min)
+  187827,   // Metamorphosis (3-4min)
+  204021,   // Fiery Brand (1min) — important tank CD
 
   // ── Druid ──
-  22812,    // Barkskin
-  61336,    // Survival Instincts
-  102342,   // Ironbark (external — cast on ally)
-  108238,   // Renewal
-  22842,    // Frenzied Regeneration (Guardian)
+  61336,    // Survival Instincts (3min)
+  102342,   // Ironbark (1.5min, external)
 
   // ── Evoker ──
-  374348,   // Obsidian Scales
-  374227,   // Zephyr
-  370960,   // Emerald Communion (Preservation)
+  374348,   // Obsidian Scales (2.5min)
+  374227,   // Zephyr (2min)
+  370960,   // Emerald Communion (3min)
 
   // ── Hunter ──
-  186265,   // Aspect of the Turtle
-  109304,   // Exhilaration
-  388035,   // Fortitude of the Bear (external)
+  186265,   // Aspect of the Turtle (3min)
+  109304,   // Exhilaration (2min)
 
   // ── Mage ──
-  45438,    // Ice Block
-  342245,   // Alter Time
-  55342,    // Mirror Image
-  235450,   // Prismatic Barrier (Arcane)
-  11426,    // Ice Barrier (Frost)
-  235313,   // Blazing Barrier (Fire)
+  45438,    // Ice Block (4min)
+  342245,   // Alter Time (1min) — snap back, meaningful decision
+  55342,    // Mirror Image (2min)
 
   // ── Monk ──
-  122278,   // Dampen Harm
-  116849,   // Life Cocoon (external)
-  115203,   // Fortifying Brew
-  122783,   // Diffuse Magic
-  115176,   // Zen Meditation
+  115203,   // Fortifying Brew (3min)
+  122278,   // Dampen Harm (2min)
+  122783,   // Diffuse Magic (1.5min)
+  115176,   // Zen Meditation (5min)
+  116849,   // Life Cocoon (2min, external)
+  325197,   // Invoke Chi-Ji, the Red Crane (3min, Mistweaver)
+  322118,   // Invoke Yu'lon, the Jade Serpent (3min, Mistweaver)
 
   // ── Paladin ──
-  642,      // Divine Shield (Bubble)
-  498,      // Divine Protection
-  31850,    // Ardent Defender
-  86659,    // Guardian of Ancient Kings
-  633,      // Lay on Hands (external)
-  1022,     // Blessing of Protection (external)
-  6940,     // Blessing of Sacrifice (external)
+  642,      // Divine Shield (5min)
+  31850,    // Ardent Defender (2min)
+  86659,    // Guardian of Ancient Kings (5min)
+  633,      // Lay on Hands (10min, external)
+  1022,     // Blessing of Protection (5min, external)
+  6940,     // Blessing of Sacrifice (1min, external)
+  204018,   // Blessing of Spellwarding (3min, external)
 
   // ── Priest ──
-  47788,    // Guardian Spirit (external)
-  33206,    // Pain Suppression (external)
-  19236,    // Desperate Prayer
-  62618,    // Power Word: Barrier (external/group)
-  271466,   // Luminous Barrier (Disc)
+  47788,    // Guardian Spirit (3min, external)
+  33206,    // Pain Suppression (3min, external)
+  62618,    // Power Word: Barrier (3min, group)
+  271466,   // Luminous Barrier (3min, Disc)
+  15286,    // Vampiric Embrace (2min, Shadow)
+  64843,    // Divine Hymn (3min, Holy)
+  47585,    // Dispersion (2min, Shadow)
 
   // ── Rogue ──
-  31224,    // Cloak of Shadows
-  5277,     // Evasion
-  1966,     // Feint
-  185311,   // Crimson Vial
+  31224,    // Cloak of Shadows (2min)
+  5277,     // Evasion (2min)
+  1966,     // Feint (15s) — short CD but primary Rogue M+ defensive
 
   // ── Shaman ──
-  108271,   // Astral Shift
-  98008,    // Spirit Link Totem (group)
-  108280,   // Healing Tide Totem (group)
+  108271,   // Astral Shift (1.5min)
+  98008,    // Spirit Link Totem (3min, group)
+  108280,   // Healing Tide Totem (3min, group)
 
   // ── Warlock ──
-  104773,   // Unending Resolve
-  108416,   // Dark Pact
-  6789,     // Mortal Coil
+  104773,   // Unending Resolve (3min)
+  108416,   // Dark Pact (1min)
 
   // ── Warrior ──
-  871,      // Shield Wall
-  1160,     // Demoralizing Shout
-  12975,    // Last Stand
-  184364,   // Enraged Regeneration
-  97462,    // Rallying Cry (group)
-  23920,    // Spell Reflection
+  871,      // Shield Wall (3min)
+  12975,    // Last Stand (3min)
+  184364,   // Enraged Regeneration (2min, Fury)
+  97462,    // Rallying Cry (3min, group)
+  118038,   // Die by the Sword (3min, Arms/Fury)
 ]);
+
+// Spells that are only tracked for SPECIFIC specs
+// Key = spell ID, Value = { track: Set of spec IDs to track, OR exclude: Set of spec IDs to NOT track }
+const SPEC_CONDITIONAL_DEFENSIVES = {
+  // Frenzied Regeneration: track for Balance(102), Feral(103), Resto(105) — NOT Guardian(104)
+  22842:  { exclude: new Set([104]) },
+
+  // Barkskin: track for all druid specs — 45s CD but core druid defensive, keep it
+  22812:  { track: null },  // null = always track (same as ALWAYS_TRACK)
+
+  // Incarnation: Guardian of Ursoc: track for Guardian(104) ONLY
+  102558: { track: new Set([104]) },
+
+  // Heart of the Wild: track for Balance(102), Feral(103), Resto(105) — NOT Guardian(104)
+  319454: { exclude: new Set([104]) },
+
+  // Divine Protection: track for all paladin specs — 1min but meaningful
+  498:    { track: null },
+
+  // Desperate Prayer: track for all priest specs — 1.5min self-heal
+  19236:  { track: null },
+};
+
+/**
+ * Check if a defensive spell should be tracked for a given spec.
+ * @param {number} spellId
+ * @param {number|null} specId - player's spec ID from COMBATANT_INFO (null if unknown)
+ * @returns {boolean}
+ */
+function shouldTrackDefensive(spellId, specId) {
+  // Check always-track list first
+  if (ALWAYS_TRACK_DEFENSIVES.has(spellId)) return true;
+
+  // Check spec-conditional list
+  const cond = SPEC_CONDITIONAL_DEFENSIVES[spellId];
+  if (!cond) return false;
+
+  // If track is null, always track
+  if (cond.track === null) return true;
+
+  // If we don't know the spec, track it (benefit of the doubt)
+  if (specId == null || specId === 0) return true;
+
+  // If there's an exclude list, track UNLESS spec is excluded
+  if (cond.exclude) return !cond.exclude.has(specId);
+
+  // If there's a track list, only track if spec is in the list
+  if (cond.track) return cond.track.has(specId);
+
+  return false;
+}
 
 const INTERRUPT_SPELLS = new Set([
   47528, 183752, 78675, 106839, 351338, 147362, 187707,
   2139, 116705, 96231, 15487, 1766, 57994, 6552, 119910,
 ]);
+
+const FEIGN_DEATH_SPELL_ID = 5384;
+const FEIGN_DEATH_LOOKAHEAD_MS = 15000; // 15 seconds — matches WCL's approach
 
 // ─── Dungeon lookup ────────────────────────────────────────────────────────
 
@@ -206,6 +260,7 @@ const MIN_FIELDS = {
   "SPELL_INTERRUPT": 14,
   "SPELL_CAST_SUCCESS": 12,
   "SPELL_CAST_START": 12,
+  "SPELL_AURA_APPLIED": 12,
   "UNIT_DIED": 9,
 };
 
@@ -286,6 +341,7 @@ class CombatLogRunBuilder extends EventEmitter {
     this.guidToClass     = new Map();
     this.guidToRole      = new Map();
     this.guidToSpec      = new Map();
+    this.guidToSpecId    = new Map();  // GUID → numeric spec ID
     this.guidToName      = new Map();  // GUID → "Name-Realm"
     this.damageBuffers   = new Map();  // per-player pre-death damage
     this.playerDamageTaken = new Map();  // GUID → total damage taken
@@ -294,8 +350,17 @@ class CombatLogRunBuilder extends EventEmitter {
     this.segCounters     = { death: 0, cd: 0, int: 0, ec: 0 };
     this.lastCreatureDamageTs = 0;  // Last time ANY creature dealt or received damage
     this.knownInterruptibleSpells = new Map();  // spellId → { spellId, spellName, npcId, npcName, count }
+    this._defensiveBuffer = [];  // buffered defensives when no segment is open
+    this._pendingHunterDeaths = []; // deferred deaths awaiting lookahead confirmation
+    this._authCharacters = [];     // character list from VelaraAuth (for GUID-based identity)
+    this._feignDeathCasts = new Map(); // GUID → last Feign Death cast timestamp
+    this.guidToTalents   = new Map();  // GUID → raw talent data from COMBATANT_INFO
+    this.guidToStats     = new Map();  // GUID → parsed stats object from COMBATANT_INFO
     this.lineCount       = 0;
     this.eventCount      = 0;
+    // setAuthCharacters — called from main.js with VelaraAuth character list
+    // Enables combat log GUID matching for uploader identity
+    // uploaderIdentity is set externally from SavedVariables — preserve across reset
   }
 
   // Get player name for a GUID
@@ -346,6 +411,20 @@ class CombatLogRunBuilder extends EventEmitter {
       deathBucketSecs: [],  // which seconds had deaths
     };
     this.segCounters = { death: 0, cd: 0, int: 0, ec: 0 };
+
+    // Flush buffered defensives cast within 3s before segment opened
+    const cutoff = ts - 3000;
+    for (const buf of this._defensiveBuffer) {
+      if (buf.ts >= cutoff) {
+        console.log(`[RunBuilder] DEFENSIVE RECOVERED from buffer: ${buf.name} cast ${buf.spellName} (${buf.spellId}) ${ts - buf.ts}ms before segment`);
+        this.currentSeg.defensives.push({
+          ts: buf.ts, offsetMs: buf.ts - ts,  // negative offset = before pull
+          spellName: buf.spellName, spellId: buf.spellId,
+          name: buf.name, class: buf.cls, role: buf.role,
+        });
+      }
+    }
+    this._defensiveBuffer = [];
   }
 
   _closeSeg(ts) {
@@ -356,6 +435,80 @@ class CombatLogRunBuilder extends EventEmitter {
     this.currentSeg = null;
     this.segments.push(seg);
     this.lastCreatureDamageTs = 0;
+  }
+
+  /**
+   * Check pending hunter deaths against lookahead window.
+   * Called every line to check if any pending deaths should be
+   * confirmed (real death) or suppressed (Feign Death).
+   */
+  _resolvePendingDeaths(ts, fields) {
+    if (this._pendingHunterDeaths.length === 0) return;
+
+    const event = fields ? fields[0] : "";
+    const sourceGuid = fields ? (fields[1] || "") : "";
+
+    // Activity events that prove the player is alive
+    const activityEvents = new Set([
+      "SPELL_CAST_SUCCESS", "SPELL_DAMAGE", "RANGE_DAMAGE",
+      "SWING_DAMAGE", "SPELL_HEAL", "SPELL_PERIODIC_HEAL",
+      "SPELL_PERIODIC_DAMAGE", "SPELL_CAST_START",
+    ]);
+
+    const resolved = [];
+
+    for (let i = 0; i < this._pendingHunterDeaths.length; i++) {
+      const pending = this._pendingHunterDeaths[i];
+      const elapsed = ts - pending.ts;
+
+      // Check if this hunter showed activity (they're alive → Feign Death)
+      if (activityEvents.has(event) && isPlayerGuid(sourceGuid) && sourceGuid === pending.destGuid && elapsed > 0) {
+        // Player is alive! This was Feign Death.
+        console.log(`[RunBuilder] FEIGN DEATH suppressed for ${pending.deathData.name} (activity ${event} at +${elapsed}ms)`);
+        resolved.push(i);
+        continue;
+      }
+
+      // Check if lookahead window expired (15 seconds with no activity → real death)
+      if (elapsed > FEIGN_DEATH_LOOKAHEAD_MS) {
+        this._finalizePendingDeath(pending);
+        console.log(`[RunBuilder] HUNTER DEATH CONFIRMED (no activity in ${FEIGN_DEATH_LOOKAHEAD_MS}ms): ${pending.deathData.name}`);
+        resolved.push(i);
+        continue;
+      }
+    }
+
+    // Remove resolved entries (iterate in reverse to preserve indices)
+    for (let i = resolved.length - 1; i >= 0; i--) {
+      this._pendingHunterDeaths.splice(resolved[i], 1);
+    }
+  }
+
+  /**
+   * Finalize a pending hunter death as a REAL death.
+   * Finds the correct segment and pushes the death data.
+   */
+  _finalizePendingDeath(pending) {
+    // Find the segment this death belongs to
+    const seg = this.currentSeg && this.currentSeg.segmentId === pending.segmentId
+      ? this.currentSeg
+      : this.segments.find(s => s.segmentId === pending.segmentId);
+
+    if (!seg) {
+      console.warn(`[RunBuilder] Could not find segment ${pending.segmentId} for pending death — discarding`);
+      return;
+    }
+
+    // Assign deathId and firstDeathInPull now
+    this.segCounters.death++;
+    const deathId = (this.run ? this.run.runId : "unk") + "-" + seg.segmentId + "-d" + this.segCounters.death;
+    pending.deathData.deathId = deathId;
+    pending.deathData.firstDeathInPull = seg.deaths.length === 0;
+
+    seg.deaths.push(pending.deathData);
+
+    const deathSec = Math.floor((pending.ts - pending.segStartTs) / 1000);
+    seg.deathBucketSecs.push(deathSec);
   }
 
   _addDmg(ts, amount) {
@@ -394,6 +547,9 @@ class CombatLogRunBuilder extends EventEmitter {
     const fields = splitFields(body);
     const event  = fields[0];
 
+    // ── Resolve pending hunter deaths (Feign Death lookahead) ────────
+    this._resolvePendingDeaths(ts, fields);
+
     // Fault tolerance: check minimum field count
     const minFields = MIN_FIELDS[event];
     if (minFields !== undefined && fields.length < minFields) {
@@ -428,6 +584,14 @@ class CombatLogRunBuilder extends EventEmitter {
         this.bossEncounters.push({ ...this.openBoss, endTs: ts, success: 0 });
         this.openBoss = null;
       }
+
+      // Finalize any remaining pending hunter deaths (no more lines to check)
+      for (const pending of this._pendingHunterDeaths) {
+        this._finalizePendingDeath(pending);
+        console.log(`[RunBuilder] HUNTER DEATH CONFIRMED (key ended): ${pending.deathData.name}`);
+      }
+      this._pendingHunterDeaths = [];
+
       const payload = this._buildPayload(success, timeMs, keyLevel);
       console.log(`[RunBuilder] KEY END: ${this.run.dungeonName} +${keyLevel} success=${success} time=${timeMs}ms segs=${this.segments.length}`);
       this.inKey = false;
@@ -462,8 +626,8 @@ class CombatLogRunBuilder extends EventEmitter {
     }
 
     // ── COMBATANT_INFO — party member data ─────────────────────────────
-    // PRIVACY: We extract GUID + spec ID only. Talent trees, item levels,
-    // gear data are intentionally ignored and never stored.
+    // We extract GUID, spec ID, and raw talent fields.
+    // Item levels and gear data are intentionally ignored and never stored.
     // Spec ID is the AUTHORITATIVE source for class, spec, and role.
     if (event === "COMBATANT_INFO") {
       const guid = fields[1] || "";
@@ -480,6 +644,7 @@ class CombatLogRunBuilder extends EventEmitter {
           this.guidToClass.set(guid, specInfo.class);
           this.guidToRole.set(guid, specInfo.role);
           this.guidToSpec.set(guid, specInfo.spec);
+          this.guidToSpecId.set(guid, specId);
           console.log(`[RunBuilder] COMBATANT_INFO: ${specInfo.class} ${specInfo.spec} (${specInfo.role}) specId=${specId}`);
         } else {
           // Unknown spec ID — register with UNKNOWN, spell inference will try later
@@ -494,6 +659,52 @@ class CombatLogRunBuilder extends EventEmitter {
 
         // Mark as confirmed via COMBATANT_INFO (highest tier)
         this.confirmedPartyGuids.add(guid);
+
+        // ── Stat capture from COMBATANT_INFO (fields 3-23) ──────────────
+        // Format: [0]event, [1]GUID, [2]Faction, [3]Str, [4]Agi, [5]Sta,
+        //         [6]Int, [7]Dodge, [8]Parry, [9]Block, [10]CritM, [11]CritR,
+        //         [12]CritS, [13]Speed, [14]Lifesteal, [15]HasteM, [16]HasteR,
+        //         [17]HasteS, [18]Avoidance, [19]Mastery, [20]VersDmg,
+        //         [21]VersHeal, [22]VersDR, [23]Armor, [24]???, [25]SpecID
+        // Verified against Midnight (TWW) combat logs — field[2] is Faction flag.
+        try {
+          const stats = {
+            strength:       parseInt(fields[3], 10) || 0,
+            agility:        parseInt(fields[4], 10) || 0,
+            stamina:        parseInt(fields[5], 10) || 0,
+            intellect:      parseInt(fields[6], 10) || 0,
+            dodge:          parseInt(fields[7], 10) || 0,
+            parry:          parseInt(fields[8], 10) || 0,
+            block:          parseInt(fields[9], 10) || 0,
+            critMelee:      parseInt(fields[10], 10) || 0,
+            critRanged:     parseInt(fields[11], 10) || 0,
+            critSpell:      parseInt(fields[12], 10) || 0,
+            speed:          parseInt(fields[13], 10) || 0,
+            lifesteal:      parseInt(fields[14], 10) || 0,
+            hasteMelee:     parseInt(fields[15], 10) || 0,
+            hasteRanged:    parseInt(fields[16], 10) || 0,
+            hasteSpell:     parseInt(fields[17], 10) || 0,
+            avoidance:      parseInt(fields[18], 10) || 0,
+            mastery:        parseInt(fields[19], 10) || 0,
+            versatilityDmg: parseInt(fields[20], 10) || 0,
+            versatilityHeal:parseInt(fields[21], 10) || 0,
+            versatilityDR:  parseInt(fields[22], 10) || 0,
+            armor:          parseInt(fields[23], 10) || 0,
+          };
+          this.guidToStats.set(guid, stats);
+        } catch (err) {
+          console.warn(`[RunBuilder] Stat capture failed for ${guid}: ${err.message}`);
+        }
+
+        // ── Talent capture (raw — Season 2 will parse and display) ──────
+        try {
+          const rawTalentFields = fields.slice(26);
+          if (rawTalentFields.length > 0) {
+            this.guidToTalents.set(guid, rawTalentFields.join(","));
+          }
+        } catch (err) {
+          console.warn(`[RunBuilder] Talent capture failed for ${guid}: ${err.message}`);
+        }
       }
       return null;
     }
@@ -501,13 +712,15 @@ class CombatLogRunBuilder extends EventEmitter {
     // ── Segment management via NPC tracking + damage gap safety net ────
     const isDamage = event === "SWING_DAMAGE" || event === "SPELL_DAMAGE" ||
                      event === "SPELL_PERIODIC_DAMAGE" || event === "RANGE_DAMAGE";
+    const isEnvironmental = event === "ENVIRONMENTAL_DAMAGE";
     const isHeal   = event === "SPELL_HEAL" || event === "SPELL_PERIODIC_HEAL";
     const isCast   = event === "SPELL_CAST_SUCCESS";
     const isCastStart = event === "SPELL_CAST_START";
+    const isAuraApplied = event === "SPELL_AURA_APPLIED";
     const isDied   = event === "UNIT_DIED";
     const isInterrupt = event === "SPELL_INTERRUPT";
 
-    if (!isDamage && !isHeal && !isCast && !isCastStart && !isDied && !isInterrupt) return null;
+    if (!isDamage && !isEnvironmental && !isHeal && !isCast && !isCastStart && !isAuraApplied && !isDied && !isInterrupt) return null;
 
     const sourceGuid = fields[1] || "";
     const sourceName = (fields[2] || "").replace(/"/g, "");
@@ -547,10 +760,68 @@ class CombatLogRunBuilder extends EventEmitter {
     if (isPlayerGuid(sourceGuid) && isCast) {
       const spellId = parseInt(fields[9], 10) || 0;
       this._detectClassFromSpell(sourceGuid, spellId);
+
+      // Track Feign Death casts for death suppression
+      if (spellId === FEIGN_DEATH_SPELL_ID && isPlayerGuid(sourceGuid)) {
+        this._feignDeathCasts.set(sourceGuid, ts);
+      }
     }
 
     // ── UNIT_DIED — player death tracking ──────────────────────────────
+    // Feign Death (spell 5384) triggers a real UNIT_DIED event for hunters.
+    // For hunters: defer the death and look ahead for activity (WCL approach).
+    // For non-hunters: record immediately as before.
     if (isDied && isPlayerGuid(destGuid)) {
+      const playerClass = this.guidToClass.get(destGuid) || "UNKNOWN";
+
+      if (playerClass === "HUNTER") {
+        // Check lookback: did this hunter cast Feign Death within 2s?
+        const feignTs = this._feignDeathCasts.get(destGuid) || 0;
+        const likelyFeign = (ts - feignTs) < 2000;
+
+        // Defer this death — collect all the data we'd normally record
+        if (!this.currentSeg) this._openSeg(ts);
+        const seg = this.currentSeg;
+        const buf = this._getDmgBuf(destGuid);
+        const cutoff = ts - PRE_DEATH_WINDOW_MS;
+        const window = buf.filter(h => h.ts >= cutoff);
+        const preDeathHits = window.slice(-PRE_DEATH_HIT_MAX).map(h => ({
+          normalizedTs: h.ts, offsetMs: h.ts - seg.startTs,
+          spellId: h.spellId, spellName: h.spellName, amount: h.amount, overkill: h.overkill,
+          sourceNpcId: h.sourceNpcId, sourceNpcName: h.sourceNpcName,
+        }));
+        const kb = [...window].reverse().find(h => h.overkill > 0) || window[window.length - 1] || null;
+        const isEnvDeath = kb && kb.isEnvironmental === true;
+        const envType = isEnvDeath ? (kb.envType || "Environmental") : null;
+
+        this._pendingHunterDeaths.push({
+          ts,
+          destGuid,
+          segmentId: seg.segmentId,
+          segStartTs: seg.startTs,
+          likelyFeign,
+          deathData: {
+            segmentId: seg.segmentId, deathTs: ts,
+            offsetMs: ts - seg.startTs,
+            name: this.guidToName.get(destGuid) || "Unknown",
+            class: playerClass,
+            role: this.guidToRole.get(destGuid) || "unknown",
+            firstDeathInPull: false, // will be set when finalized
+            killingBlow: kb ? { spellName: kb.spellName, amount: kb.amount } : null,
+            isEnvironmental: isEnvDeath || false,
+            environmentalType: envType,
+            preDeathHits: preDeathHits.map(h => ({
+              offsetMs: h.offsetMs, amount: h.amount,
+              spellName: h.spellName, sourceNpcName: h.sourceNpcName,
+            })),
+          },
+        });
+
+        console.log(`[RunBuilder] HUNTER DEATH DEFERRED: ${this.guidToName.get(destGuid) || "Unknown"} at ${ts} (likelyFeign=${likelyFeign})`);
+        return null;
+      }
+
+      // ── Non-hunter: record death immediately (EXISTING LOGIC — DO NOT CHANGE) ──
       if (!this.currentSeg) this._openSeg(ts);
       this.segCounters.death++;
       const seg = this.currentSeg;
@@ -566,6 +837,9 @@ class CombatLogRunBuilder extends EventEmitter {
       }));
       const kb = [...window].reverse().find(h => h.overkill > 0) || window[window.length - 1] || null;
 
+      const isEnvDeath = kb && kb.isEnvironmental === true;
+      const envType = isEnvDeath ? (kb.envType || "Environmental") : null;
+
       seg.deaths.push({
         deathId, segmentId: seg.segmentId, deathTs: ts,
         offsetMs: ts - seg.startTs,
@@ -574,6 +848,8 @@ class CombatLogRunBuilder extends EventEmitter {
         role: this.guidToRole.get(destGuid) || "unknown",
         firstDeathInPull: seg.deaths.length === 0,
         killingBlow: kb ? { spellName: kb.spellName, amount: kb.amount } : null,
+        isEnvironmental: isEnvDeath || false,
+        environmentalType: envType,
         preDeathHits: preDeathHits.map(h => ({
           offsetMs: h.offsetMs, amount: h.amount,
           spellName: h.spellName, sourceNpcName: h.sourceNpcName,
@@ -602,7 +878,7 @@ class CombatLogRunBuilder extends EventEmitter {
 
       this.currentSeg.interrupts.push({
         ts, offsetMs: ts - this.currentSeg.startTs,
-        spellName,
+        spellId, spellName,
         sourceName: this.guidToName.get(sourceGuid) || "Unknown",
         sourceClass: this.guidToClass.get(sourceGuid) || "UNKNOWN",
         sourceRole: this.guidToRole.get(sourceGuid) || "unknown",
@@ -666,6 +942,28 @@ class CombatLogRunBuilder extends EventEmitter {
       return null;
     }
 
+    // ── ENVIRONMENTAL_DAMAGE (fall damage, lava, drowning, etc.) ────────
+    // No spell prefix (like SWING_DAMAGE). Advanced info block at field 9.
+    // envType is at suffix start, amount at suffix+1, overkill at suffix+2.
+    if (isEnvironmental && isPlayerGuid(destGuid)) {
+      const envAdvStart = 9;
+      const envHasAdv = hasAdvancedInfo(fields, envAdvStart);
+      const envSuffixStart = envHasAdv ? envAdvStart + ADVANCED_INFO_FIELD_COUNT : envAdvStart;
+      const envType = (fields[envSuffixStart] || "").replace(/"/g, "").trim();
+      const amount   = parseInt(fields[envSuffixStart + 1], 10) || 0;
+      const overkill = parseInt(fields[envSuffixStart + 2], 10) || 0;
+
+      if (amount > 0) {
+        this._pushDmgBuf(destGuid, {
+          ts, spellId: 0, spellName: envType || "Environmental",
+          amount, overkill,
+          sourceNpcId: null, sourceNpcName: "Environment",
+          isEnvironmental: true, envType: envType || "Unknown",
+        });
+      }
+      return null;
+    }
+
     // ── Healing (dynamic suffix detection for advanced combat log) ──────
     if (isHeal) {
       // Heal suffix: spell prefix at fields 9-11, check for advanced info at field 12
@@ -692,20 +990,39 @@ class CombatLogRunBuilder extends EventEmitter {
       return null;
     }
 
-    // ── Player cast — check for defensive CDs ──────────────────────────
-    if (isCast && isPlayerGuid(sourceGuid) && this.currentSeg) {
+    // ── Player cast/aura — check for defensive CDs (spec-aware) ─────────
+    if ((isCast || isAuraApplied) && isPlayerGuid(sourceGuid)) {
       const spellId = parseInt(fields[9], 10) || 0;
       const spellName = (fields[10] || "").replace(/"/g, "");
-      if (DEFENSIVE_CD_SPELLS.has(spellId)) {
-        this.currentSeg.defensives.push({
-          ts, offsetMs: ts - this.currentSeg.startTs,
-          spellName,
-          name: this.guidToName.get(sourceGuid) || "Unknown",
-          class: this.guidToClass.get(sourceGuid) || "UNKNOWN",
-          role: this.guidToRole.get(sourceGuid) || "unknown",
-        });
+
+      // Look up player's spec for spec-aware defensive tracking
+      const playerSpecId = this.guidToSpecId.get(sourceGuid) || null;
+
+      if (shouldTrackDefensive(spellId, playerSpecId)) {
+        const playerName = this.guidToName.get(sourceGuid) || "Unknown";
+        const playerClass = this.guidToClass.get(sourceGuid) || "UNKNOWN";
+        const playerRole = this.guidToRole.get(sourceGuid) || "unknown";
+
+        if (!this.currentSeg) {
+          // No active segment — buffer for next segment open
+          console.warn(`[RunBuilder] DEFENSIVE DROPPED (no segment): ${playerName} cast ${spellName} (${spellId}) via ${event}`);
+          this._defensiveBuffer.push({ ts, spellId, spellName, sourceGuid, name: playerName, cls: playerClass, role: playerRole });
+        } else {
+          // Dedup: skip if same spell+player within 1s (prevents CAST_SUCCESS + AURA_APPLIED double-count)
+          const isDupe = this.currentSeg.defensives.some(d =>
+            d.spellName === spellName && d.name === playerName &&
+            Math.abs(d.ts - ts) < 1000
+          );
+          if (!isDupe) {
+            this.currentSeg.defensives.push({
+              ts, offsetMs: ts - this.currentSeg.startTs,
+              spellName, spellId,
+              name: playerName, class: playerClass, role: playerRole,
+            });
+          }
+        }
       }
-      return null;
+      if (isCast) return null;
     }
 
     // ── Enemy cast start (capped at 30 per segment, hostile only) ────────
@@ -717,7 +1034,7 @@ class CombatLogRunBuilder extends EventEmitter {
         if (spellId > 0) {
           this.currentSeg.enemyCasts.push({
             ts, offsetMs: ts - this.currentSeg.startTs,
-            npcName: sourceName || null, spellName,
+            npcName: sourceName || null, spellId, spellName,
           });
         }
       }
@@ -752,7 +1069,7 @@ class CombatLogRunBuilder extends EventEmitter {
       const defClassMap = {
         48707: "DEATHKNIGHT", 49028: "DEATHKNIGHT", 48792: "DEATHKNIGHT",
         22812: "DRUID", 61336: "DRUID", 374348: "EVOKER", 186265: "HUNTER",
-        45438: "MAGE", 122278: "MONK", 116849: "MONK",
+        45438: "MAGE", 122278: "MONK", 116849: "MONK", 325197: "MONK", 322118: "MONK",
         642: "PALADIN", 498: "PALADIN", 31850: "PALADIN", 86659: "PALADIN",
         47788: "PRIEST", 33206: "PRIEST", 31224: "ROGUE", 5277: "ROGUE",
         108271: "SHAMAN", 871: "WARRIOR", 1160: "WARRIOR", 12975: "WARRIOR",
@@ -766,7 +1083,7 @@ class CombatLogRunBuilder extends EventEmitter {
     // Only set role if still "unknown" AND not confirmed by COMBATANT_INFO
     if (this.guidToRole.get(guid) === "unknown") {
       // Only use HEALER-ONLY spells for role inference (these are truly spec-specific)
-      if ([47788, 33206, 116849].includes(spellId)) this.guidToRole.set(guid, "healer");
+      if ([47788, 33206, 116849, 325197, 322118].includes(spellId)) this.guidToRole.set(guid, "healer");
       // Do NOT infer tank from Shield Wall/Last Stand/etc — all warrior specs use these
       // Tank role should only come from COMBATANT_INFO or post-run heuristic
     }
@@ -903,6 +1220,9 @@ class CombatLogRunBuilder extends EventEmitter {
         class: cls !== "UNKNOWN" && cls !== "DETECTED" ? cls : "UNKNOWN",
         role: this.guidToRole.get(guid) || "unknown",
         spec: this.guidToSpec.get(guid) || "",
+        specId: this.guidToSpecId.get(guid) || 0,
+        talents: this.guidToTalents.get(guid) || null,
+        stats: this.guidToStats.get(guid) || null,
       });
     }
 
@@ -915,7 +1235,62 @@ class CombatLogRunBuilder extends EventEmitter {
     console.log(`[RunBuilder] Payload: ${finalSegments.length} segments, ${totalInts} interrupts, ${totalDefs} defensives, ${totalECs} enemy casts, ${totalDeaths} deaths, ${totalBuckets} damage buckets`);
     console.log(`[RunBuilder] Lines processed: ${this.lineCount}, events matched: ${this.eventCount}`);
 
-    const uploaderName = (partyMembers[0] && partyMembers[0].name) || "Unknown";
+    // Identity resolution priority:
+    // 1. Combat log GUID match against authenticated character list (bulletproof)
+    // 2. Addon SavedVariables uploaderIdentity (fixed in v0.8.9)
+    // 3. First party member (fallback)
+    let uploaderName = "Unknown";
+    let identitySource = "unknown";
+    let playerObj = partyMembers[0] || { name: "Unknown", class: "UNKNOWN", role: "dps" };
+    let otherMembers = partyMembers.slice(1);
+
+    // Priority 1: GUID match — check if any party member name matches an auth character
+    if (this._authCharacters.length > 0) {
+      for (let i = 0; i < partyMembers.length; i++) {
+        const pm = partyMembers[i];
+        const matched = this._authCharacters.find(c =>
+          c.fullName === pm.name ||
+          c.characterName === pm.name ||
+          (pm.name && pm.name.startsWith(c.fullName + "-"))
+        );
+        if (matched) {
+          playerObj = pm;
+          otherMembers = partyMembers.filter((_, idx) => idx !== i);
+          uploaderName = matched.fullName || pm.name;
+          identitySource = "combat_log_guid_match";
+          console.log(`[RunBuilder] GUID identity match: ${pm.name} → ${matched.fullName} (${matched.class})`);
+          break;
+        }
+      }
+    }
+
+    // Priority 2: SavedVariables identity
+    if (identitySource === "unknown" && this.uploaderIdentity) {
+      uploaderName = this.uploaderIdentity;
+      identitySource = "saved_variables";
+      const uploaderIndex = partyMembers.findIndex(pm =>
+        pm.name === this.uploaderIdentity ||
+        pm.name.startsWith(this.uploaderIdentity + "-")
+      );
+      if (uploaderIndex >= 0) {
+        playerObj = partyMembers[uploaderIndex];
+        otherMembers = partyMembers.filter((_, i) => i !== uploaderIndex);
+        console.log(`[RunBuilder] SV identity match: ${playerObj.name} (${playerObj.class} ${playerObj.spec} ${playerObj.role})`);
+      } else {
+        console.warn(`[RunBuilder] SV identity "${this.uploaderIdentity}" not found in party list — using first player`);
+      }
+    }
+
+    // Priority 3: fallback to first party member
+    if (identitySource === "unknown") {
+      uploaderName = playerObj.name || "Unknown";
+      identitySource = "fallback";
+    }
+
+    // Attach Blizzard talent export string to the uploader's player object
+    if (this.playerTalentString) {
+      playerObj.talentString = this.playerTalentString;
+    }
 
     return {
       addon: "VelaraIntel",
@@ -925,6 +1300,7 @@ class CombatLogRunBuilder extends EventEmitter {
         clientId: this.clientId || "unknown",
         characterName: uploaderName,
         fullName: uploaderName,
+        identitySource: identitySource,
       },
       clockOffsetMs: 0,
       clockSyncConfidence: "high",
@@ -955,8 +1331,8 @@ class CombatLogRunBuilder extends EventEmitter {
           hasDefensives: totalDefs > 0,
           hasEncounterData: this.bossEncounters.length > 0,
         },
-        player: partyMembers[0] || { name: "Unknown", class: "UNKNOWN", role: "dps" },
-        partyMembers: partyMembers.slice(1),
+        player: playerObj,
+        partyMembers: otherMembers,
         combatSegments: finalSegments,
         bossEncounters: this.bossEncounters,
         completionResult: { medal: success > 0 ? 1 : 0, timeMs, money: 0 },
