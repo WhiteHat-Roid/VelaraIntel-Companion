@@ -32,6 +32,8 @@ const { CombatLogWatcher } = require("../services/combatLogWatcher");
 const { CombatLogParser, parseCombatLog } = require("../services/combatLogParser");
 const { CombatLogRunBuilder } = require("../services/combatLogRunBuilder");
 const { RunAssembler }     = require("../services/runAssembler");
+const { VelaraAuth }      = require("../services/velaraAuth");
+const { CombatLogScanner } = require("../services/combatLogScanner");
 const fs = require("fs");
 
 const store = new Store({
@@ -145,6 +147,9 @@ function startWowPoll() {
         rescanCombatLog();
       }
 
+      // Check for version updates and write to SavedVariables
+      checkAndWriteVersions();
+
       // Start 30-second periodic re-scan for new log files
       startLogRescanTimer();
     } else if (!running && wowDetected) {
@@ -171,7 +176,9 @@ let combatLogParser  = null;
 let runBuilder       = null;  // Module-scope so WoW poll can check inKey / reset
 let runAssembler     = null;
 let apiUploader      = null;
+const velaraAuth     = new VelaraAuth(store);
 let lastKnownRunId   = null;
+let lastKnownUploaderIdentity = null;
 let lastActiveRunId  = null;
 let cachedActiveRun  = null;  // In-memory copy of _activeRun for key-end upload
 let logRescanTimer   = null;  // 30-second periodic combat log re-scan
@@ -209,6 +216,82 @@ function getSavedVarsPath() {
   const account = store.get("accountName");
   if (!wowPath || !account) return null;
   return path.join(wowPath, "WTF", "Account", account, "SavedVariables", "VelaraIntel.lua");
+}
+
+// ── Version check — fetch latest versions from API, write to SavedVariables ──
+async function checkAndWriteVersions() {
+  const svPath = getSavedVarsPath();
+  if (!svPath || !fs.existsSync(svPath)) return;
+
+  try {
+    const https = require("https");
+    const data = await new Promise((resolve, reject) => {
+      https.get("https://api.velaraintel.com/v1/versions", (res) => {
+        let body = "";
+        res.on("data", c => body += c);
+        res.on("end", () => {
+          try { resolve(JSON.parse(body)); } catch { reject(new Error("Parse error")); }
+        });
+      }).on("error", reject);
+    });
+
+    if (!data.ok) return;
+
+    let content = fs.readFileSync(svPath, "utf8");
+
+    // Write/update _latestAddonVersion
+    if (content.includes("_latestAddonVersion")) {
+      content = content.replace(
+        /\["_latestAddonVersion"\]\s*=\s*"[^"]*"/,
+        `["_latestAddonVersion"] = "${data.addonVersion}"`
+      );
+    } else {
+      content = content.replace(
+        /^(VelaraIntelDB\s*=\s*\{)/m,
+        `$1\n\t["_latestAddonVersion"] = "${data.addonVersion}",`
+      );
+    }
+
+    // Write/update _latestCompanionVersion
+    if (content.includes("_latestCompanionVersion")) {
+      content = content.replace(
+        /\["_latestCompanionVersion"\]\s*=\s*"[^"]*"/,
+        `["_latestCompanionVersion"] = "${data.companionVersion}"`
+      );
+    } else {
+      content = content.replace(
+        /^(VelaraIntelDB\s*=\s*\{)/m,
+        `$1\n\t["_latestCompanionVersion"] = "${data.companionVersion}",`
+      );
+    }
+
+    // Write/update _companionVersion (the running companion's own version)
+    const currentCompVersion = app.getVersion();
+    if (content.includes("_companionVersion")) {
+      content = content.replace(
+        /\["_companionVersion"\]\s*=\s*"[^"]*"/,
+        `["_companionVersion"] = "${currentCompVersion}"`
+      );
+    } else {
+      content = content.replace(
+        /^(VelaraIntelDB\s*=\s*\{)/m,
+        `$1\n\t["_companionVersion"] = "${currentCompVersion}",`
+      );
+    }
+
+    // Mark companion as linked
+    if (!content.includes("_companionLinked")) {
+      content = content.replace(
+        /^(VelaraIntelDB\s*=\s*\{)/m,
+        `$1\n\t["_companionLinked"] = true,`
+      );
+    }
+
+    fs.writeFileSync(svPath, content, "utf8");
+    console.log(`[Versions] Updated SV: addon=${data.addonVersion} companion=${data.companionVersion}`);
+  } catch (err) {
+    console.error("[Versions] Failed to check/write versions:", err.message);
+  }
 }
 
 function getCombatLogPath() {
@@ -528,7 +611,7 @@ function enrichPayloadWithCombatLog(payload, latest) {
 function createDashboard() {
   if (dashboardWindow) { dashboardWindow.show(); dashboardWindow.focus(); return; }
   dashboardWindow = new BrowserWindow({
-    width: 480, height: 560, frame: false, resizable: false,
+    width: 580, height: 680, minWidth: 520, minHeight: 580, frame: false, resizable: true,
     backgroundColor: "#080A0C", show: false,
     webPreferences: {
       preload: path.join(__dirname, "preload-dashboard.js"),
@@ -649,6 +732,23 @@ function startSVWatcher() {
       const parsed = parser.parse(content);
       if (!parsed || !parsed.VelaraIntelDB) return;
       const db = parsed.VelaraIntelDB;
+
+      // Extract uploader identity from SavedVariables
+      const uploaderIdentity = db.uploaderIdentity || null;
+      if (uploaderIdentity) {
+        console.log(`[SV] Uploader identity: ${uploaderIdentity}`);
+        if (runBuilder) {
+          runBuilder.uploaderIdentity = uploaderIdentity;
+        }
+        lastKnownUploaderIdentity = uploaderIdentity;
+      }
+
+      // Extract player talent string from SavedVariables
+      const playerTalentString = db.playerTalentString || null;
+      if (playerTalentString && runBuilder) {
+        runBuilder.playerTalentString = playerTalentString;
+        console.log(`[SV] Player talent string captured (${playerTalentString.length} chars)`);
+      }
 
       if (db._activeRun && db._activeRun.runId) {
         const ar = db._activeRun;
@@ -901,6 +1001,11 @@ function startCombatLogWatcher() {
   // Upload ONLY happens when user presses GO in the dashboard — never automatically
   runBuilder = new CombatLogRunBuilder();
   runBuilder.clientId = ensureClientId();
+  if (lastKnownUploaderIdentity) runBuilder.uploaderIdentity = lastKnownUploaderIdentity;
+  // Pass auth characters for GUID-based identity matching
+  if (velaraAuth.isLinked && velaraAuth.characters.length > 0) {
+    runBuilder._authCharacters = velaraAuth.characters;
+  }
   let lastCompletedPayload = null;
 
   runBuilder.on("keyStart", (run) => {
@@ -1023,9 +1128,15 @@ function startCombatLogWatcher() {
   }
 }
 
-function setupUploader() {
+async function setupUploader() {
   const clientId = ensureClientId();
   apiUploader    = new ApiUploader(clientId);
+  // Wire auth token into uploader if companion is linked
+  if (velaraAuth.isLinked) {
+    await velaraAuth.initialize();
+    apiUploader.setAuthToken(velaraAuth.getAuthToken());
+    console.log(`[VelaraAuth] Companion linked as ${velaraAuth.displayName || velaraAuth.userId} (${velaraAuth.characters.length} chars)`);
+  }
   runAssembler   = new RunAssembler({
     onReady: async (payload) => {
       // RunAssembler NO LONGER uploads. Only the GO button and Upload A Log upload.
@@ -1037,6 +1148,48 @@ function setupUploader() {
 }
 
 function setupIPC() {
+  // ── Velara Auth IPC handlers ──────────────────────────────────────
+  ipcMain.handle("get-auth-status", () => ({
+    isLinked: velaraAuth.isLinked,
+    userId: velaraAuth.userId,
+    displayName: velaraAuth.displayName,
+    characterCount: velaraAuth.characters.length,
+  }));
+
+  ipcMain.handle("link-companion", async (_, code) => {
+    try {
+      const data = await velaraAuth.linkWithCode(code);
+      if (apiUploader) apiUploader.setAuthToken(velaraAuth.getAuthToken());
+      return { ok: true, displayName: data.displayName, characterCount: (data.characters || []).length };
+    } catch (err) {
+      return { ok: false, error: err.message };
+    }
+  });
+
+  ipcMain.handle("unlink-companion", () => {
+    velaraAuth.unlink();
+    if (apiUploader) apiUploader.setAuthToken(null);
+    return { ok: true };
+  });
+
+  // ── Scan for missed runs IPC ───────────────────────────────────────
+  ipcMain.handle("scan-missed-runs", async () => {
+    const logPath = getCombatLogPath();
+    if (!logPath) return { ok: false, error: "Combat log path not configured" };
+    const scanner = new CombatLogScanner({
+      uploader: apiUploader,
+      velaraAuth,
+      uploadedRunIds: apiUploader ? apiUploader.uploadedKeys : new Set(),
+      onProgress: (msg, type) => {
+        broadcastStatus(msg, type === "err" ? "err" : type === "ok" ? "ok" : "info");
+        broadcast("scan-progress", { message: msg, type });
+      },
+    });
+    const result = await scanner.scanFile(logPath);
+    broadcast("scan-complete", result);
+    return { ok: true, ...result };
+  });
+
   ipcMain.handle("get-build-info", () => ({
     version: app.getVersion(),
     buildTimestamp: BUILD_TIMESTAMP,
@@ -1134,6 +1287,9 @@ function setupIPC() {
       broadcastStatus("Parsing " + lines.length + " lines from " + path.basename(filePath) + "...", "info");
 
       const builder = new CombatLogRunBuilder();
+      if (velaraAuth.isLinked && velaraAuth.characters.length > 0) {
+        builder._authCharacters = velaraAuth.characters;
+      }
       const runs = [];
 
       builder.on("keyEnd", (payload) => {
@@ -1225,6 +1381,23 @@ app.whenReady().then(() => {
     startCombatLogWatcher();
     watchersStarted = true;
     startLogRescanTimer();
+    // Auto-scan for missed runs on startup (delayed to let everything initialize)
+    setTimeout(async () => {
+      const logPath = getCombatLogPath();
+      if (logPath && apiUploader) {
+        console.log("[Velara] Auto-scanning combat log for missed runs...");
+        const scanner = new CombatLogScanner({
+          uploader: apiUploader,
+          velaraAuth,
+          uploadedRunIds: apiUploader.uploadedKeys,
+          onProgress: (msg, type) => broadcastStatus(msg, type === "err" ? "err" : "info"),
+        });
+        const result = await scanner.scanFile(logPath);
+        if (result.uploaded > 0) {
+          broadcastStatus(`Auto-scan: uploaded ${result.uploaded} missed run(s)`, "ok");
+        }
+      }
+    }, 5000);
   } else {
     console.log("[Velara] WoW not running — waiting in tray (poll every 10s)");
     // Create dashboard hidden so tray double-click can show it manually
