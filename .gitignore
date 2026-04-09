@@ -9,3 +9,5 @@ dist/
 *.cert
 config.json
 .claude/
+# Stale worktree name-clash artifacts
+*Name clash*
