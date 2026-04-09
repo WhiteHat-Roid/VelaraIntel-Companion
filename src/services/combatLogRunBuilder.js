@@ -150,6 +150,43 @@ function shouldTrackDefensive(spellId, specId) {
   return false;
 }
 
+// ── Racial Abilities — tracked separately from defensives ───────────────
+// Strategic racial cooldowns used in M+ for survivability, damage, or utility.
+// They indicate race AND provide tactical intelligence.
+const RACIAL_ABILITIES = new Map([
+  // ── Alliance ──
+  [20594,  { race: "Dwarf",           name: "Stoneform",         type: "cleanse_defensive" }],
+  [265221, { race: "Dark Iron Dwarf",  name: "Fireblood",         type: "cleanse_offensive" }],
+  [58984,  { race: "Night Elf",        name: "Shadowmeld",        type: "combat_drop" }],
+  [256948, { race: "Void Elf",         name: "Spatial Rift",      type: "mobility" }],
+  [259930, { race: "Kul Tiran",        name: "Haymaker",          type: "cc" }],
+  [312924, { race: "Mechagnome",       name: "Hyper Organic Light Originator", type: "emergency_heal" }],
+  [28880,  { race: "Draenei",          name: "Gift of the Naaru", type: "heal" }],
+  [255654, { race: "Lightforged Draenei", name: "Light's Judgment", type: "damage" }],
+  [69070,  { race: "Goblin",           name: "Rocket Jump",       type: "mobility" }],
+  // ── Horde ──
+  [20572,  { race: "Orc",             name: "Blood Fury",        type: "offensive" }],
+  [26297,  { race: "Troll",           name: "Berserking",        type: "offensive" }],
+  [33697,  { race: "Orc",             name: "Blood Fury",        type: "offensive" }],
+  [33702,  { race: "Orc",             name: "Blood Fury",        type: "offensive" }],
+  [7744,   { race: "Undead",          name: "Will of the Forsaken", type: "cleanse" }],
+  [20549,  { race: "Tauren",          name: "War Stomp",         type: "cc" }],
+  [69179,  { race: "Goblin",          name: "Rocket Barrage",    type: "damage" }],
+  [255661, { race: "Highmountain Tauren", name: "Bull Rush",     type: "cc" }],
+  [260364, { race: "Nightborne",      name: "Arcane Pulse",      type: "damage" }],
+  [274738, { race: "Mag'har Orc",     name: "Ancestral Call",    type: "offensive" }],
+  [291944, { race: "Zandalari Troll", name: "Regeneratin'",      type: "heal" }],
+  [312411, { race: "Vulpera",         name: "Bag of Tricks",     type: "damage" }],
+  // ── Neutral ──
+  [107079, { race: "Pandaren",        name: "Quaking Palm",      type: "cc" }],
+  // ── Dracthyr (Evoker-only race) ──
+  [368970, { race: "Dracthyr",        name: "Tail Swipe",        type: "cc" }],
+  [357214, { race: "Dracthyr",        name: "Wing Buffet",       type: "knockback" }],
+  // ── Earthen (TWW) ──
+  [446280, { race: "Earthen",         name: "Azerite Surge",     type: "damage" }],
+  [448849, { race: "Earthen",         name: "Wide-Eyed Wonder",  type: "utility" }],
+]);
+
 const INTERRUPT_SPELLS = new Set([
   47528, 183752, 78675, 106839, 351338, 147362, 187707,
   2139, 116705, 96231, 15487, 1766, 57994, 6552, 119910,
@@ -356,6 +393,8 @@ class CombatLogRunBuilder extends EventEmitter {
     this._feignDeathCasts = new Map(); // GUID → last Feign Death cast timestamp
     this.guidToTalents   = new Map();  // GUID → raw talent data from COMBATANT_INFO
     this.guidToStats     = new Map();  // GUID → parsed stats object from COMBATANT_INFO
+    this.guidToRace      = new Map();  // GUID → race name (from auth characters or racial spell inference)
+    this.guidToFaction   = new Map();  // GUID → "Alliance" or "Horde"
     this.lineCount       = 0;
     this.eventCount      = 0;
     // setAuthCharacters — called from main.js with VelaraAuth character list
@@ -990,6 +1029,31 @@ class CombatLogRunBuilder extends EventEmitter {
       return null;
     }
 
+    // ── Racial ability tracking (separate from defensives) ──────────────
+    if (isCast && isPlayerGuid(sourceGuid)) {
+      const racialSpellId = parseInt(fields[9], 10) || 0;
+      const racialInfo = RACIAL_ABILITIES.get(racialSpellId);
+      if (racialInfo) {
+        const playerName = this.guidToName.get(sourceGuid) || "Unknown";
+        // Infer race from the racial ability used
+        this.guidToRace.set(sourceGuid, racialInfo.race);
+
+        // Store the racial cast in the current segment
+        if (this.currentSeg) {
+          if (!this.currentSeg.racialCasts) this.currentSeg.racialCasts = [];
+          this.currentSeg.racialCasts.push({
+            ts, offsetMs: ts - this.currentSeg.startTs,
+            spellName: racialInfo.name, spellId: racialSpellId,
+            name: playerName,
+            class: this.guidToClass.get(sourceGuid) || "UNKNOWN",
+            role: this.guidToRole.get(sourceGuid) || "unknown",
+            race: racialInfo.race,
+            racialType: racialInfo.type,
+          });
+        }
+      }
+    }
+
     // ── Player cast/aura — check for defensive CDs (spec-aware) ─────────
     if ((isCast || isAuraApplied) && isPlayerGuid(sourceGuid)) {
       const spellId = parseInt(fields[9], 10) || 0;
@@ -1169,6 +1233,7 @@ class CombatLogRunBuilder extends EventEmitter {
         damageBuckets: buckets,
         interrupts: seg.interrupts,
         defensives: seg.defensives,
+        racialCasts: seg.racialCasts || [],
         enemyCasts: seg.enemyCasts,
       };
     });
@@ -1223,7 +1288,38 @@ class CombatLogRunBuilder extends EventEmitter {
         specId: this.guidToSpecId.get(guid) || 0,
         talents: this.guidToTalents.get(guid) || null,
         stats: this.guidToStats.get(guid) || null,
+        race: this.guidToRace.get(guid) || null,
+        faction: this.guidToFaction.get(guid) || null,
       });
+    }
+
+    // Enrich party members with race from auth characters (Blizzard API data)
+    if (this._authCharacters.length > 0) {
+      for (const pm of partyMembers) {
+        if (!pm.race) {
+          const matched = this._authCharacters.find(c =>
+            c.fullName === pm.name ||
+            c.characterName === pm.name ||
+            (pm.name && pm.name.startsWith(c.fullName + "-"))
+          );
+          if (matched && matched.race) {
+            pm.race = matched.race;
+            pm.faction = matched.faction || null;
+          }
+        }
+      }
+    }
+
+    // Also try racial spell inference for unmatched players
+    for (const pm of partyMembers) {
+      if (!pm.race) {
+        for (const [guid, name] of this.guidToName) {
+          if (name === pm.name && this.guidToRace.has(guid)) {
+            pm.race = this.guidToRace.get(guid);
+            break;
+          }
+        }
+      }
     }
 
     const totalInts  = finalSegments.reduce((s, seg) => s + seg.interrupts.length, 0);

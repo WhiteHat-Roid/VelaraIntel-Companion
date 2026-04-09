@@ -693,7 +693,6 @@ function createTray() {
   tray.setToolTip("Velara Intelligence Companion");
   tray.setContextMenu(Menu.buildFromTemplate([
     { label: "Show Dashboard", click: () => createDashboard()  },
-    { label: "Toggle Overlay", click: () => toggleOverlay()    },
     { type: "separator" },
     { label: "Quit", click: forceQuit },
   ]));
@@ -1229,10 +1228,11 @@ function setupIPC() {
       setAutoStart(settings.startMinimized);
     }
 
-    if (settings.hotkey) {
-      globalShortcut.unregisterAll();
-      globalShortcut.register(settings.hotkey, toggleOverlay);
-    }
+    // Overlay disabled in v1.3.3 — hotkey registration removed
+    // if (settings.hotkey) {
+    //   globalShortcut.unregisterAll();
+    //   globalShortcut.register(settings.hotkey, toggleOverlay);
+    // }
     if (needsRestart) { startSVWatcher(); startCombatLogWatcher(); }
     return { ok: true };
   });
@@ -1373,8 +1373,9 @@ app.whenReady().then(async () => {
   await setupUploader();
   createTray();
 
-  const hotkey = store.get("hotkey");
-  if (hotkey) globalShortcut.register(hotkey, toggleOverlay);
+  // Overlay disabled in v1.3.3 — hotkey registration removed
+  // const hotkey = store.get("hotkey");
+  // if (hotkey) globalShortcut.register(hotkey, toggleOverlay);
 
   // Check if WoW is already running at startup
   const wowAlready = isRetailWowRunning();
@@ -1382,7 +1383,7 @@ app.whenReady().then(async () => {
     console.log("[Velara] WoW already running — launching full companion");
     wowDetected = true;
     createDashboard();
-    createOverlay();
+    // createOverlay();  // Overlay disabled in v1.3.3
     startSVWatcher();
     startCombatLogWatcher();
     watchersStarted = true;
