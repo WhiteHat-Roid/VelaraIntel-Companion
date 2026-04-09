@@ -62,3 +62,9 @@ VelaraIntel-Companion/
 │       └── dashboard.html    ← settings + dashboard
 └── COMPANION_SPEC.md
 ```
+
+## Support Velara Development
+
+Velara Intelligence is built by a solo student developer. If you find it useful, consider supporting development:
+
+[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/N4N31XJ31V)
