@@ -341,6 +341,18 @@ function splitFields(line) {
 
 function randHex(n) { return crypto.randomBytes(n).toString("hex"); }
 
+/**
+ * Generate a deterministic run ID from the key's identity fields.
+ * Same combat log data → same run_id every time → backend dedup works.
+ * Format: "mapId-epochSec-hash" where hash is first 8 chars of SHA-256.
+ */
+function _deterministicRunId(mapId, startTs, keyLevel) {
+  const epochSec = Math.floor(startTs / 1000);
+  const input = `${mapId}-${epochSec}-${keyLevel}`;
+  const hash = crypto.createHash("sha256").update(input).digest("hex").substring(0, 8);
+  return `${mapId}-${epochSec}-${hash}`;
+}
+
 // ── Advanced combat log detection ──────────────────────────────────────────
 // ADVANCED_LOG_ENABLED=1 inserts a 19-field info block after the spell prefix.
 // We detect it by checking if the field at the expected suffix start looks like
@@ -603,7 +615,7 @@ class CombatLogRunBuilder extends EventEmitter {
       this.reset();
       this.inKey = true;
       this.run = {
-        runId: mapId + "-" + Math.floor(ts / 1000) + "-" + randHex(2) + "-" + randHex(2),
+        runId: _deterministicRunId(mapId, ts, keyLevel),
         mapId, keyLevel, startTs: ts, finishTs: 0,
         dungeonName: DUNGEON_NAMES[mapId] || dungeonName || "Unknown",
       };
