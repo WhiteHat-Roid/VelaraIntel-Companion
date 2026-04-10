@@ -1292,6 +1292,7 @@ class CombatLogRunBuilder extends EventEmitter {
     const partyMembers = [];
     for (const [guid, cls] of this.guidToClass) {
       if (!isPlayerGuid(guid)) continue;
+      if (!this.confirmedPartyGuids.has(guid)) continue; // GUARD: must have COMBATANT_INFO
       partyMembers.push({
         name: this.guidToName.get(guid) || "Unknown",
         class: cls !== "UNKNOWN" && cls !== "DETECTED" ? cls : "UNKNOWN",
