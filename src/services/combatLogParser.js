@@ -876,7 +876,7 @@ function parseCombatLog({ run, combatLogLines, partyGuids = [] }) {
     enrichedSegments.push({
       segmentId      : seg.segmentId,
       deaths         : data.deaths,
-      cooldownEvents : data.cooldownEvents,
+      cooldownEvents : data.cooldownEvents.filter(cd => isPlayerGuid(cd.sourceGuid)),
       interrupts     : data.interrupts,
       enemyCasts     : data.enemyCasts,
       spikes         : data.spikes,
