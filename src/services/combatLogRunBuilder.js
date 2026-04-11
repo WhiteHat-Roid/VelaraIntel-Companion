@@ -460,6 +460,7 @@ class CombatLogRunBuilder extends EventEmitter {
       defensives: [],       // max ~10
       enemyCasts: [],       // capped at 30
       deathBucketSecs: [],  // which seconds had deaths
+      playerDamageDone: {}, // { playerGuid: totalDamage } — per-player DPS context
     };
     this.segCounters = { death: 0, cd: 0, int: 0, ec: 0 };
 
@@ -993,6 +994,29 @@ class CombatLogRunBuilder extends EventEmitter {
       return null;
     }
 
+    // ── Player damage DONE (to creatures) — per-segment tracking ────────
+    if (isDamage && isPlayerGuid(sourceGuid) && isCreatureGuid(destGuid)) {
+      if (this.currentSeg) {
+        let amount = 0;
+        if (event === "SWING_DAMAGE") {
+          const swingAdvStart = 9;
+          const swingHasAdv = hasAdvancedInfo(fields, swingAdvStart);
+          const swingSuffixStart = swingHasAdv ? swingAdvStart + ADVANCED_INFO_FIELD_COUNT : swingAdvStart;
+          amount = parseInt(fields[swingSuffixStart], 10) || 0;
+        } else {
+          const advStart = 12;
+          const hasAdv = hasAdvancedInfo(fields, advStart);
+          const suffixStart = hasAdv ? advStart + ADVANCED_INFO_FIELD_COUNT : advStart;
+          amount = parseInt(fields[suffixStart], 10) || 0;
+        }
+        if (amount > 0) {
+          this.currentSeg.playerDamageDone[sourceGuid] =
+            (this.currentSeg.playerDamageDone[sourceGuid] || 0) + amount;
+        }
+      }
+      return null;
+    }
+
     // ── ENVIRONMENTAL_DAMAGE (fall damage, lava, drowning, etc.) ────────
     // No spell prefix (like SWING_DAMAGE). Advanced info block at field 9.
     // envType is at suffix start, amount at suffix+1, overkill at suffix+2.
@@ -1107,10 +1131,11 @@ class CombatLogRunBuilder extends EventEmitter {
       if (this.currentSeg.enemyCasts.length < 30) {
         const spellId = parseInt(fields[9], 10) || 0;
         const spellName = (fields[10] || "").replace(/"/g, "");
+        const spellSchool = parseInt(fields[11], 10) || 0;
         if (spellId > 0) {
           this.currentSeg.enemyCasts.push({
             ts, offsetMs: ts - this.currentSeg.startTs,
-            npcName: sourceName || null, spellId, spellName,
+            npcName: sourceName || null, spellId, spellName, spellSchool,
           });
         }
       }
@@ -1185,6 +1210,11 @@ class CombatLogRunBuilder extends EventEmitter {
         prev.defensives.push(...seg.defensives);
         prev.enemyCasts.push(...seg.enemyCasts);
         prev.deathBucketSecs.push(...seg.deathBucketSecs);
+        // Merge playerDamageDone totals
+        prev.playerDamageDone = prev.playerDamageDone || {};
+        for (const [guid, dmg] of Object.entries(seg.playerDamageDone || {})) {
+          prev.playerDamageDone[guid] = (prev.playerDamageDone[guid] || 0) + dmg;
+        }
         // Merge damage/heal per second maps
         for (const [sec, dmg] of Object.entries(seg.dmgPerSec || {})) {
           const adjustedSec = parseInt(sec) + Math.floor((seg.startTs - prev.startTs) / 1000);
@@ -1247,6 +1277,11 @@ class CombatLogRunBuilder extends EventEmitter {
         defensives: seg.defensives,
         racialCasts: seg.racialCasts || [],
         enemyCasts: seg.enemyCasts,
+        playerDamageDone: Object.fromEntries(
+          Object.entries(seg.playerDamageDone || {}).map(([guid, dmg]) => [
+            this.guidToName.get(guid) || guid, dmg
+          ])
+        ),
       };
     });
 
@@ -1438,6 +1473,7 @@ class CombatLogRunBuilder extends EventEmitter {
           hasEnemyHealthSnapshots: false,
           hasEnemyPositions: false,
           hasDefensives: totalDefs > 0,
+          hasPlayerDamageDone: finalSegments.some(s => Object.keys(s.playerDamageDone || {}).length > 0),
           hasEncounterData: this.bossEncounters.length > 0,
         },
         player: playerObj,
