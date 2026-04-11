@@ -192,6 +192,92 @@ const INTERRUPT_SPELLS = new Set([
   2139, 116705, 96231, 15487, 1766, 57994, 6552, 119910,
 ]);
 
+// ── CC/Crowd Control spells — enemy abilities that incapacitate players ─────
+// Track when these are applied TO a player (SPELL_AURA_APPLIED where dest is player).
+// These answer: "Was the kicker CC'd when the dangerous cast went off?"
+const CC_SPELLS = new Map([
+  // ── Generic dungeon CC ──
+  // Stuns
+  [424888, { type: "stun",        name: "Thunderous Clap" }],
+  [424966, { type: "stun",        name: "Crushing Slam" }],
+  // Fears
+  [196748, { type: "fear",        name: "Terror" }],
+  [240443, { type: "fear",        name: "Burst of Fear" }],
+  // Silences
+  [196543, { type: "silence",     name: "Arcane Lockdown" }],
+  // Incapacitates
+  [118,    { type: "incapacitate", name: "Polymorph" }],
+  [6770,   { type: "incapacitate", name: "Sap" }],
+  // Disorients
+  [31661,  { type: "disorient",   name: "Dragon's Breath" }],
+  [207167, { type: "disorient",   name: "Blinding Sleet" }],
+  // Knockbacks
+  [132764, { type: "knockback",   name: "NPC Knockback" }],
+]);
+// NOTE: This is a STARTER list. We will expand it as we see real dungeon data.
+// The combat log also provides the spell name, so we capture ALL auras from
+// hostile creatures onto players — the CC_SPELLS map just tags the CC type.
+// Unknown hostile auras get type: "debuff".
+
+// ── Offensive Cooldowns — major DPS/group CDs ──────────────────────────────
+// Track SPELL_CAST_SUCCESS by players for these spells.
+// Answers: "Did the group use Lust on this pull? Did DPS pop CDs?"
+const OFFENSIVE_COOLDOWNS = new Map([
+  // ── Group-wide ──
+  [2825,   { name: "Bloodlust",          type: "group_offensive",  cd: 300 }],
+  [32182,  { name: "Heroism",            type: "group_offensive",  cd: 300 }],
+  [80353,  { name: "Time Warp",          type: "group_offensive",  cd: 300 }],
+  [264667, { name: "Primal Rage",        type: "group_offensive",  cd: 300 }],
+  [390386, { name: "Fury of the Aspects", type: "group_offensive", cd: 300 }],
+  // ── Death Knight ──
+  [47568,  { name: "Empower Rune Weapon", type: "personal_offensive", cd: 120 }],
+  [207289, { name: "Unholy Assault",      type: "personal_offensive", cd: 90 }],
+  [51271,  { name: "Pillar of Frost",     type: "personal_offensive", cd: 60 }],
+  [275699, { name: "Apocalypse",          type: "personal_offensive", cd: 75 }],
+  // ── Demon Hunter ──
+  [191427, { name: "Metamorphosis (Havoc)", type: "personal_offensive", cd: 240 }],
+  [258920, { name: "Immolation Aura",      type: "personal_offensive", cd: 30 }],
+  // ── Druid ──
+  [194223, { name: "Celestial Alignment",  type: "personal_offensive", cd: 180 }],
+  [106951, { name: "Berserk (Feral)",      type: "personal_offensive", cd: 180 }],
+  // ── Evoker ──
+  [375087, { name: "Dragonrage",           type: "personal_offensive", cd: 120 }],
+  // ── Hunter ──
+  [288613, { name: "Trueshot",             type: "personal_offensive", cd: 120 }],
+  [19574,  { name: "Bestial Wrath",        type: "personal_offensive", cd: 90 }],
+  [360952, { name: "Coordinated Assault",  type: "personal_offensive", cd: 120 }],
+  // ── Mage ──
+  [12472,  { name: "Icy Veins",            type: "personal_offensive", cd: 120 }],
+  [190319, { name: "Combustion",           type: "personal_offensive", cd: 120 }],
+  [365350, { name: "Arcane Surge",         type: "personal_offensive", cd: 90 }],
+  // ── Monk ──
+  [137639, { name: "Storm, Earth, and Fire", type: "personal_offensive", cd: 90 }],
+  [152173, { name: "Serenity",              type: "personal_offensive", cd: 90 }],
+  // ── Paladin ──
+  [31884,  { name: "Avenging Wrath",       type: "personal_offensive", cd: 120 }],
+  [231895, { name: "Crusade",              type: "personal_offensive", cd: 120 }],
+  // ── Priest ──
+  [10060,  { name: "Power Infusion",       type: "personal_offensive", cd: 120 }],
+  [228260, { name: "Void Eruption",        type: "personal_offensive", cd: 90 }],
+  // ── Rogue ──
+  [13750,  { name: "Adrenaline Rush",      type: "personal_offensive", cd: 180 }],
+  [121471, { name: "Shadow Blades",        type: "personal_offensive", cd: 180 }],
+  [360194, { name: "Deathmark",            type: "personal_offensive", cd: 120 }],
+  // ── Shaman ──
+  [114050, { name: "Ascendance",           type: "personal_offensive", cd: 180 }],
+  [191634, { name: "Stormkeeper",          type: "personal_offensive", cd: 60 }],
+  [51533,  { name: "Feral Spirit",         type: "personal_offensive", cd: 90 }],
+  // ── Warlock ──
+  [1122,   { name: "Summon Infernal",      type: "personal_offensive", cd: 180 }],
+  [111898, { name: "Grimoire: Felguard",   type: "personal_offensive", cd: 120 }],
+  [205180, { name: "Summon Darkglare",     type: "personal_offensive", cd: 120 }],
+  // ── Warrior ──
+  [107574, { name: "Avatar",              type: "personal_offensive", cd: 90 }],
+  [1719,   { name: "Recklessness",        type: "personal_offensive", cd: 90 }],
+  [227847, { name: "Bladestorm",          type: "personal_offensive", cd: 90 }],
+  [228920, { name: "Ravager",             type: "personal_offensive", cd: 90 }],
+]);
+
 const FEIGN_DEATH_SPELL_ID = 5384;
 const FEIGN_DEATH_LOOKAHEAD_MS = 15000; // 15 seconds — matches WCL's approach
 
@@ -461,6 +547,11 @@ class CombatLogRunBuilder extends EventEmitter {
       enemyCasts: [],       // capped at 30
       deathBucketSecs: [],  // which seconds had deaths
       playerDamageDone: {}, // { playerGuid: totalDamage } — per-player DPS context
+      playerHealingDone: {},  // { playerGuid: totalHealing } — per-player HPS context
+      playerHealingReceived: {}, // { playerGuid: totalHealing } — who got healed
+      playerDamageTakenSeg: {}, // { playerGuid: totalDmgTaken } — per-segment breakdown
+      ccEvents: [],           // CC/debuffs applied to players by enemies (capped at 50)
+      offensiveCDs: [],       // major offensive cooldowns used by players (capped at 30)
     };
     this.segCounters = { death: 0, cd: 0, int: 0, ec: 0 };
 
@@ -819,6 +910,28 @@ class CombatLogRunBuilder extends EventEmitter {
       }
     }
 
+    // ── Hostile aura applied to player (CC/debuff tracking) ─────────────
+    if (isAuraApplied && isPlayerGuid(destGuid) && isCreatureGuid(sourceGuid)) {
+      if (this.currentSeg && this.currentSeg.ccEvents.length < 50) {
+        const spellId = parseInt(fields[9], 10) || 0;
+        const spellName = (fields[10] || "").replace(/"/g, "");
+        if (spellId > 0) {
+          const ccInfo = CC_SPELLS.get(spellId);
+          this.currentSeg.ccEvents.push({
+            ts, offsetMs: ts - this.currentSeg.startTs,
+            spellId, spellName,
+            ccType: ccInfo ? ccInfo.type : "debuff",
+            targetName: this.guidToName.get(destGuid) || "Unknown",
+            targetClass: this.guidToClass.get(destGuid) || "UNKNOWN",
+            targetRole: this.guidToRole.get(destGuid) || "unknown",
+            sourceNpcName: sourceName || "Unknown",
+            sourceNpcId: npcIdFromGuid(sourceGuid),
+          });
+        }
+      }
+      // Do NOT return null — let it continue to other handlers
+    }
+
     // ── UNIT_DIED — player death tracking ──────────────────────────────
     // Feign Death (spell 5384) triggers a real UNIT_DIED event for hunters.
     // For hunters: defer the death and look ahead for activity (WCL approach).
@@ -990,6 +1103,12 @@ class CombatLogRunBuilder extends EventEmitter {
       // Accumulate damage taken per player for post-run role heuristic
       this.playerDamageTaken.set(destGuid, (this.playerDamageTaken.get(destGuid) || 0) + amount);
 
+      // Per-segment damage taken tracking
+      if (this.currentSeg && amount > 0) {
+        this.currentSeg.playerDamageTakenSeg[destGuid] =
+          (this.currentSeg.playerDamageTakenSeg[destGuid] || 0) + amount;
+      }
+
       this._addDmg(ts, amount);
       return null;
     }
@@ -1062,6 +1181,26 @@ class CombatLogRunBuilder extends EventEmitter {
           this._addHeal(ts, effective);
         }
       }
+
+      // ── Per-segment healing tracking ──────────────────────────────────
+      if (this.currentSeg) {
+        // Healing done by this player (source)
+        if (isPlayerGuid(sourceGuid)) {
+          const healAmt = (!isNaN(healAmount) && healAmount > 0) ? healAmount : 0;
+          if (healAmt > 0) {
+            this.currentSeg.playerHealingDone[sourceGuid] =
+              (this.currentSeg.playerHealingDone[sourceGuid] || 0) + healAmt;
+          }
+        }
+        // Healing received by this player (dest)
+        if (isPlayerGuid(destGuid)) {
+          const healAmt = (!isNaN(healAmount) && healAmount > 0) ? healAmount : 0;
+          if (healAmt > 0) {
+            this.currentSeg.playerHealingReceived[destGuid] =
+              (this.currentSeg.playerHealingReceived[destGuid] || 0) + healAmt;
+          }
+        }
+      }
       return null;
     }
 
@@ -1094,6 +1233,28 @@ class CombatLogRunBuilder extends EventEmitter {
     if ((isCast || isAuraApplied) && isPlayerGuid(sourceGuid)) {
       const spellId = parseInt(fields[9], 10) || 0;
       const spellName = (fields[10] || "").replace(/"/g, "");
+
+      // ── Offensive cooldown tracking ───────────────────────────────────
+      const offInfo = OFFENSIVE_COOLDOWNS.get(spellId);
+      if (offInfo && isCast) {
+        if (this.currentSeg && this.currentSeg.offensiveCDs.length < 30) {
+          // Dedup: skip if same spell+player within 1s
+          const isDupe = this.currentSeg.offensiveCDs.some(o =>
+            o.spellId === spellId && o.name === (this.guidToName.get(sourceGuid) || "Unknown") &&
+            Math.abs(o.ts - ts) < 1000
+          );
+          if (!isDupe) {
+            this.currentSeg.offensiveCDs.push({
+              ts, offsetMs: ts - this.currentSeg.startTs,
+              spellName: offInfo.name, spellId,
+              name: this.guidToName.get(sourceGuid) || "Unknown",
+              class: this.guidToClass.get(sourceGuid) || "UNKNOWN",
+              role: this.guidToRole.get(sourceGuid) || "unknown",
+              cdType: offInfo.type,
+            });
+          }
+        }
+      }
 
       // Look up player's spec for spec-aware defensive tracking
       const playerSpecId = this.guidToSpecId.get(sourceGuid) || null;
@@ -1215,6 +1376,26 @@ class CombatLogRunBuilder extends EventEmitter {
         for (const [guid, dmg] of Object.entries(seg.playerDamageDone || {})) {
           prev.playerDamageDone[guid] = (prev.playerDamageDone[guid] || 0) + dmg;
         }
+        // Merge playerHealingDone totals
+        prev.playerHealingDone = prev.playerHealingDone || {};
+        for (const [guid, heal] of Object.entries(seg.playerHealingDone || {})) {
+          prev.playerHealingDone[guid] = (prev.playerHealingDone[guid] || 0) + heal;
+        }
+        // Merge playerHealingReceived totals
+        prev.playerHealingReceived = prev.playerHealingReceived || {};
+        for (const [guid, heal] of Object.entries(seg.playerHealingReceived || {})) {
+          prev.playerHealingReceived[guid] = (prev.playerHealingReceived[guid] || 0) + heal;
+        }
+        // Merge playerDamageTakenSeg totals
+        prev.playerDamageTakenSeg = prev.playerDamageTakenSeg || {};
+        for (const [guid, dmg] of Object.entries(seg.playerDamageTakenSeg || {})) {
+          prev.playerDamageTakenSeg[guid] = (prev.playerDamageTakenSeg[guid] || 0) + dmg;
+        }
+        // Merge ccEvents and offensiveCDs arrays
+        prev.ccEvents = prev.ccEvents || [];
+        prev.ccEvents.push(...(seg.ccEvents || []));
+        prev.offensiveCDs = prev.offensiveCDs || [];
+        prev.offensiveCDs.push(...(seg.offensiveCDs || []));
         // Merge damage/heal per second maps
         for (const [sec, dmg] of Object.entries(seg.dmgPerSec || {})) {
           const adjustedSec = parseInt(sec) + Math.floor((seg.startTs - prev.startTs) / 1000);
@@ -1282,6 +1463,23 @@ class CombatLogRunBuilder extends EventEmitter {
             this.guidToName.get(guid) || guid, dmg
           ])
         ),
+        playerHealingDone: Object.fromEntries(
+          Object.entries(seg.playerHealingDone || {}).map(([guid, heal]) => [
+            this.guidToName.get(guid) || guid, heal
+          ])
+        ),
+        playerHealingReceived: Object.fromEntries(
+          Object.entries(seg.playerHealingReceived || {}).map(([guid, heal]) => [
+            this.guidToName.get(guid) || guid, heal
+          ])
+        ),
+        playerDamageTakenSeg: Object.fromEntries(
+          Object.entries(seg.playerDamageTakenSeg || {}).map(([guid, dmg]) => [
+            this.guidToName.get(guid) || guid, dmg
+          ])
+        ),
+        ccEvents: seg.ccEvents || [],
+        offensiveCDs: seg.offensiveCDs || [],
       };
     });
 
@@ -1474,6 +1672,10 @@ class CombatLogRunBuilder extends EventEmitter {
           hasEnemyPositions: false,
           hasDefensives: totalDefs > 0,
           hasPlayerDamageDone: finalSegments.some(s => Object.keys(s.playerDamageDone || {}).length > 0),
+          hasPlayerHealingDone: finalSegments.some(s => Object.keys(s.playerHealingDone || {}).length > 0),
+          hasPlayerHealingReceived: finalSegments.some(s => Object.keys(s.playerHealingReceived || {}).length > 0),
+          hasCCEvents: finalSegments.some(s => (s.ccEvents || []).length > 0),
+          hasOffensiveCDs: finalSegments.some(s => (s.offensiveCDs || []).length > 0),
           hasEncounterData: this.bossEncounters.length > 0,
         },
         player: playerObj,
