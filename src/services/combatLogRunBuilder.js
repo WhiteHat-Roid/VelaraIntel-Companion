@@ -16,109 +16,98 @@ const { EventEmitter } = require("events");
 // Exception: Feint IS tracked despite short CD — it's the primary Rogue M+ defensive.
 // Some spells are spec-conditional (e.g., Frenzied Regen is rotational for Guardian but defensive for others).
 
-const ALWAYS_TRACK_DEFENSIVES = new Set([
+const ALWAYS_TRACK_DEFENSIVES = new Map([
   // ── Death Knight ──
-  48707,    // Anti-Magic Shell (1min)
-  48792,    // Icebound Fortitude (3min)
-  55233,    // Vampiric Blood (1.5min)
-  49028,    // Dancing Rune Weapon (2min)
-  51052,    // Anti-Magic Zone (2min)
-  49039,    // Lichborne (2min)
+  [48707,  { name: "Anti-Magic Shell",       category: "defensive" }],
+  [48792,  { name: "Icebound Fortitude",     category: "defensive" }],
+  [55233,  { name: "Vampiric Blood",         category: "defensive" }],
+  [49028,  { name: "Dancing Rune Weapon",    category: "defensive" }],
+  [51052,  { name: "Anti-Magic Zone",        category: "defensive" }],
+  [49039,  { name: "Lichborne",              category: "defensive" }],
 
   // ── Demon Hunter ──
-  198589,   // Blur (1min) — short but DH's only personal DR
-  196718,   // Darkness (3min)
-  196555,   // Netherwalk (3min)
-  187827,   // Metamorphosis (3-4min)
-  204021,   // Fiery Brand (1min) — important tank CD
+  [198589, { name: "Blur",                   category: "defensive" }],
+  [196718, { name: "Darkness",               category: "defensive" }],
+  [196555, { name: "Netherwalk",             category: "defensive" }],
+  [187827, { name: "Metamorphosis (Veng)",   category: "defensive" }],
+  [204021, { name: "Fiery Brand",            category: "defensive" }],
 
   // ── Druid ──
-  61336,    // Survival Instincts (3min)
-  102342,   // Ironbark (1.5min, external)
+  [61336,  { name: "Survival Instincts",     category: "defensive" }],
+  [102342, { name: "Ironbark",               category: "external" }],
 
   // ── Evoker ──
-  374348,   // Obsidian Scales (2.5min)
-  374227,   // Zephyr (2min)
-  370960,   // Emerald Communion (3min)
+  [374348, { name: "Obsidian Scales",        category: "defensive" }],
+  [374227, { name: "Zephyr",                 category: "defensive" }],
+  [370960, { name: "Emerald Communion",      category: "defensive" }],
 
   // ── Hunter ──
-  186265,   // Aspect of the Turtle (3min)
-  109304,   // Exhilaration (2min)
+  [186265, { name: "Aspect of the Turtle",   category: "defensive" }],
+  [109304, { name: "Exhilaration",           category: "defensive" }],
 
   // ── Mage ──
-  45438,    // Ice Block (4min)
-  342245,   // Alter Time (1min) — snap back, meaningful decision
-  55342,    // Mirror Image (2min)
+  [45438,  { name: "Ice Block",              category: "defensive" }],
+  [342245, { name: "Alter Time",             category: "defensive" }],
+  [55342,  { name: "Mirror Image",           category: "defensive" }],
 
   // ── Monk ──
-  115203,   // Fortifying Brew (3min)
-  122278,   // Dampen Harm (2min)
-  122783,   // Diffuse Magic (1.5min)
-  115176,   // Zen Meditation (5min)
-  116849,   // Life Cocoon (2min, external)
-  325197,   // Invoke Chi-Ji, the Red Crane (3min, Mistweaver)
-  322118,   // Invoke Yu'lon, the Jade Serpent (3min, Mistweaver)
+  [115203, { name: "Fortifying Brew",        category: "defensive" }],
+  [122278, { name: "Dampen Harm",            category: "defensive" }],
+  [122783, { name: "Diffuse Magic",          category: "defensive" }],
+  [115176, { name: "Zen Meditation",         category: "defensive" }],
+  [116849, { name: "Life Cocoon",            category: "external" }],
+  [325197, { name: "Invoke Chi-Ji",          category: "external" }],
+  [322118, { name: "Invoke Yu'lon",          category: "external" }],
 
   // ── Paladin ──
-  642,      // Divine Shield (5min)
-  31850,    // Ardent Defender (2min)
-  86659,    // Guardian of Ancient Kings (5min)
-  633,      // Lay on Hands (10min, external)
-  1022,     // Blessing of Protection (5min, external)
-  6940,     // Blessing of Sacrifice (1min, external)
-  204018,   // Blessing of Spellwarding (3min, external)
+  [642,    { name: "Divine Shield",          category: "defensive" }],
+  [31850,  { name: "Ardent Defender",        category: "defensive" }],
+  [86659,  { name: "Guardian of Ancient Kings", category: "defensive" }],
+  [633,    { name: "Lay on Hands",           category: "external" }],
+  [1022,   { name: "Blessing of Protection", category: "external" }],
+  [6940,   { name: "Blessing of Sacrifice",  category: "external" }],
+  [204018, { name: "Blessing of Spellwarding", category: "external" }],
 
   // ── Priest ──
-  47788,    // Guardian Spirit (3min, external)
-  33206,    // Pain Suppression (3min, external)
-  62618,    // Power Word: Barrier (3min, group)
-  271466,   // Luminous Barrier (3min, Disc)
-  15286,    // Vampiric Embrace (2min, Shadow)
-  64843,    // Divine Hymn (3min, Holy)
-  47585,    // Dispersion (2min, Shadow)
+  [47788,  { name: "Guardian Spirit",        category: "external" }],
+  [33206,  { name: "Pain Suppression",       category: "external" }],
+  [62618,  { name: "Power Word: Barrier",    category: "external" }],
+  [271466, { name: "Luminous Barrier",       category: "external" }],
+  [15286,  { name: "Vampiric Embrace",       category: "defensive" }],
+  [64843,  { name: "Divine Hymn",            category: "external" }],
+  [47585,  { name: "Dispersion",             category: "defensive" }],
 
   // ── Rogue ──
-  31224,    // Cloak of Shadows (2min)
-  5277,     // Evasion (2min)
-  1966,     // Feint (15s) — short CD but primary Rogue M+ defensive
+  [31224,  { name: "Cloak of Shadows",       category: "defensive" }],
+  [5277,   { name: "Evasion",                category: "defensive" }],
+  [1966,   { name: "Feint",                  category: "defensive" }],
 
   // ── Shaman ──
-  108271,   // Astral Shift (1.5min)
-  98008,    // Spirit Link Totem (3min, group)
-  108280,   // Healing Tide Totem (3min, group)
+  [108271, { name: "Astral Shift",           category: "defensive" }],
+  [98008,  { name: "Spirit Link Totem",      category: "external" }],
+  [108280, { name: "Healing Tide Totem",     category: "external" }],
 
   // ── Warlock ──
-  104773,   // Unending Resolve (3min)
-  108416,   // Dark Pact (1min)
+  [104773, { name: "Unending Resolve",       category: "defensive" }],
+  [108416, { name: "Dark Pact",              category: "defensive" }],
 
   // ── Warrior ──
-  871,      // Shield Wall (3min)
-  12975,    // Last Stand (3min)
-  184364,   // Enraged Regeneration (2min, Fury)
-  97462,    // Rallying Cry (3min, group)
-  118038,   // Die by the Sword (3min, Arms/Fury)
+  [871,    { name: "Shield Wall",            category: "defensive" }],
+  [12975,  { name: "Last Stand",             category: "defensive" }],
+  [184364, { name: "Enraged Regeneration",   category: "defensive" }],
+  [97462,  { name: "Rallying Cry",           category: "external" }],
+  [118038, { name: "Die by the Sword",       category: "defensive" }],
 ]);
 
 // Spells that are only tracked for SPECIFIC specs
 // Key = spell ID, Value = { track: Set of spec IDs to track, OR exclude: Set of spec IDs to NOT track }
 const SPEC_CONDITIONAL_DEFENSIVES = {
-  // Frenzied Regeneration: track for Balance(102), Feral(103), Resto(105) — NOT Guardian(104)
-  22842:  { exclude: new Set([104]) },
-
-  // Barkskin: track for all druid specs — 45s CD but core druid defensive, keep it
-  22812:  { track: null },  // null = always track (same as ALWAYS_TRACK)
-
-  // Incarnation: Guardian of Ursoc: track for Guardian(104) ONLY
-  102558: { track: new Set([104]) },
-
-  // Heart of the Wild: track for Balance(102), Feral(103), Resto(105) — NOT Guardian(104)
-  319454: { exclude: new Set([104]) },
-
-  // Divine Protection: track for all paladin specs — 1min but meaningful
-  498:    { track: null },
-
-  // Desperate Prayer: track for all priest specs — 1.5min self-heal
-  19236:  { track: null },
+  22842:  { exclude: new Set([104]), category: "defensive" },  // Frenzied Regen
+  22812:  { track: null, category: "defensive" },              // Barkskin
+  102558: { track: new Set([104]), category: "defensive" },    // Incarnation: Guardian
+  319454: { exclude: new Set([104]), category: "utility" },    // Heart of the Wild
+  498:    { track: null, category: "defensive" },              // Divine Protection
+  19236:  { track: null, category: "defensive" },              // Desperate Prayer
 };
 
 /**
@@ -276,6 +265,21 @@ const OFFENSIVE_COOLDOWNS = new Map([
   [1719,   { name: "Recklessness",        type: "personal_offensive", cd: 90 }],
   [227847, { name: "Bladestorm",          type: "personal_offensive", cd: 90 }],
   [228920, { name: "Ravager",             type: "personal_offensive", cd: 90 }],
+]);
+
+// ── On-Use Trinkets — Season 1 Midnight ────────────────────────────────────
+// Tracked via SPELL_CAST_SUCCESS. Category determines where it shows up.
+// This list will be updated each season.
+const TRACKED_TRINKETS = new Map([
+  // ── Defensive Trinkets ──
+  // Add specific Season 1 defensive trinket spell IDs here as we identify them
+  // Example format:
+  // [SPELL_ID, { name: "Trinket Name", category: "trinket_defensive" }],
+
+  // ── Offensive Trinkets ──
+  // Add specific Season 1 offensive trinket spell IDs here as we identify them
+  // Example format:
+  // [SPELL_ID, { name: "Trinket Name", category: "trinket_offensive" }],
 ]);
 
 const FEIGN_DEATH_SPELL_ID = 5384;
@@ -564,6 +568,7 @@ class CombatLogRunBuilder extends EventEmitter {
           ts: buf.ts, offsetMs: buf.ts - ts,  // negative offset = before pull
           spellName: buf.spellName, spellId: buf.spellId,
           name: buf.name, class: buf.cls, role: buf.role,
+          category: buf.category || "defensive",
         });
       }
     }
@@ -1256,6 +1261,38 @@ class CombatLogRunBuilder extends EventEmitter {
         }
       }
 
+      // ── Trinket tracking ──────────────────────────────────────────────
+      const trinketInfo = TRACKED_TRINKETS.get(spellId);
+      if (trinketInfo && isCast) {
+        if (this.currentSeg) {
+          if (trinketInfo.category === "trinket_defensive") {
+            // Defensive trinkets go into defensives[] with trinket category
+            this.currentSeg.defensives.push({
+              ts, offsetMs: ts - this.currentSeg.startTs,
+              spellName: trinketInfo.name, spellId,
+              name: this.guidToName.get(sourceGuid) || "Unknown",
+              class: this.guidToClass.get(sourceGuid) || "UNKNOWN",
+              role: this.guidToRole.get(sourceGuid) || "unknown",
+              category: "trinket_defensive",
+            });
+          } else if (trinketInfo.category === "trinket_offensive") {
+            // Offensive trinkets go into offensiveCDs[]
+            if (this.currentSeg.offensiveCDs && this.currentSeg.offensiveCDs.length < 30) {
+              this.currentSeg.offensiveCDs.push({
+                ts, offsetMs: ts - this.currentSeg.startTs,
+                spellName: trinketInfo.name, spellId,
+                name: this.guidToName.get(sourceGuid) || "Unknown",
+                class: this.guidToClass.get(sourceGuid) || "UNKNOWN",
+                role: this.guidToRole.get(sourceGuid) || "unknown",
+                cdType: "trinket_offensive",
+              });
+            }
+          }
+        }
+        // Don't return — let it continue to other checks in case it's also
+        // in the defensive list (it shouldn't be, but safety first)
+      }
+
       // Look up player's spec for spec-aware defensive tracking
       const playerSpecId = this.guidToSpecId.get(sourceGuid) || null;
 
@@ -1263,11 +1300,14 @@ class CombatLogRunBuilder extends EventEmitter {
         const playerName = this.guidToName.get(sourceGuid) || "Unknown";
         const playerClass = this.guidToClass.get(sourceGuid) || "UNKNOWN";
         const playerRole = this.guidToRole.get(sourceGuid) || "unknown";
+        const defInfo = ALWAYS_TRACK_DEFENSIVES.get(spellId);
+        const condInfo = SPEC_CONDITIONAL_DEFENSIVES[spellId];
+        const category = defInfo ? defInfo.category : (condInfo ? condInfo.category : "defensive");
 
         if (!this.currentSeg) {
           // No active segment — buffer for next segment open
           console.warn(`[RunBuilder] DEFENSIVE DROPPED (no segment): ${playerName} cast ${spellName} (${spellId}) via ${event}`);
-          this._defensiveBuffer.push({ ts, spellId, spellName, sourceGuid, name: playerName, cls: playerClass, role: playerRole });
+          this._defensiveBuffer.push({ ts, spellId, spellName, sourceGuid, name: playerName, cls: playerClass, role: playerRole, category });
         } else {
           // Dedup: skip if same spell+player within 1s (prevents CAST_SUCCESS + AURA_APPLIED double-count)
           const isDupe = this.currentSeg.defensives.some(d =>
@@ -1279,6 +1319,7 @@ class CombatLogRunBuilder extends EventEmitter {
               ts, offsetMs: ts - this.currentSeg.startTs,
               spellName, spellId,
               name: playerName, class: playerClass, role: playerRole,
+              category,
             });
           }
         }
