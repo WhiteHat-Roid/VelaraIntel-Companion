@@ -252,21 +252,22 @@ async function checkAndWriteVersions() {
       );
     }
 
-    // Write/update _latestCompanionVersion
+    // Write/update _latestCompanionVersion — always use the running version so
+    // the addon never shows a false "update available" message after install
+    const currentCompVersion = app.getVersion();
     if (content.includes("_latestCompanionVersion")) {
       content = content.replace(
         /\["_latestCompanionVersion"\]\s*=\s*"[^"]*"/,
-        `["_latestCompanionVersion"] = "${data.companionVersion}"`
+        `["_latestCompanionVersion"] = "${currentCompVersion}"`
       );
     } else {
       content = content.replace(
         /^(VelaraIntelDB\s*=\s*\{)/m,
-        `$1\n\t["_latestCompanionVersion"] = "${data.companionVersion}",`
+        `$1\n\t["_latestCompanionVersion"] = "${currentCompVersion}",`
       );
     }
 
     // Write/update _companionVersion (the running companion's own version)
-    const currentCompVersion = app.getVersion();
     if (content.includes("_companionVersion")) {
       content = content.replace(
         /\["_companionVersion"\]\s*=\s*"[^"]*"/,
