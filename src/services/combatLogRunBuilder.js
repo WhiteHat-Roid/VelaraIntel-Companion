@@ -1334,7 +1334,7 @@ class CombatLogRunBuilder extends EventEmitter {
       if (this.currentSeg.enemyCasts.length < 30) {
         const spellId = parseInt(fields[9], 10) || 0;
         const spellName = (fields[10] || "").replace(/"/g, "");
-        const spellSchool = parseInt(fields[11], 10) || 0;
+        const spellSchool = parseInt(fields[11]) || 0; // WoW sends hex (0x1, 0x20) — no radix so parseInt auto-detects
         if (spellId > 0) {
           this.currentSeg.enemyCasts.push({
             ts, offsetMs: ts - this.currentSeg.startTs,
