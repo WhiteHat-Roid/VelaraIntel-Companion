@@ -6,6 +6,7 @@
 
 const crypto = require("crypto");
 const { EventEmitter } = require("events");
+const { version: COMPANION_VERSION } = require("../../package.json");
 
 // ─── Spell allowlists (same as combatLogParser.js) ─────────────────────────
 
@@ -1677,7 +1678,7 @@ class CombatLogRunBuilder extends EventEmitter {
 
     return {
       addon: "VelaraIntel",
-      v: "1.1.0",
+      v: COMPANION_VERSION,
       uploadTs: Date.now(),
       uploadedBy: {
         clientId: this.clientId || "unknown",
@@ -1699,8 +1700,8 @@ class CombatLogRunBuilder extends EventEmitter {
         runType: "private",
         runMode: "standard",
         privacyMode: "shareable",
-        addonVersion: "1.1.0",
-        exportVersion: "1.1.0",
+        addonVersion: COMPANION_VERSION,
+        exportVersion: COMPANION_VERSION,
         telemetryCapabilities: {
           hasCombatSegments: finalSegments.length > 0,
           hasEnemyRegistry: false,
