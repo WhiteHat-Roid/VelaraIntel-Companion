@@ -286,6 +286,19 @@ const TRACKED_TRINKETS = new Map([
 const FEIGN_DEATH_SPELL_ID = 5384;
 const FEIGN_DEATH_LOOKAHEAD_MS = 15000; // 15 seconds — matches WCL's approach
 
+// ── Consumables — healthstones, potions ───────────────────────────────────
+// Track SPELL_CAST_SUCCESS for these spells by players.
+// Spell names are also checked as fallback for potions with variable IDs.
+const CONSUMABLE_SPELL_IDS = new Set([
+  6262,    // Healthstone
+  431416,  // Algari Healing Potion
+  431418,  // Algari Mana Potion
+]);
+const CONSUMABLE_SPELL_NAMES = new Set([
+  "Healthstone", "Healing Potion", "Algari Healing Potion",
+  "Algari Mana Potion", "Dreamwalker's Healing Potion",
+]);
+
 // ─── Dungeon lookup ────────────────────────────────────────────────────────
 
 const DUNGEON_NAMES = {
@@ -557,6 +570,12 @@ class CombatLogRunBuilder extends EventEmitter {
       playerDamageTakenSeg: {}, // { playerGuid: totalDmgTaken } — per-segment breakdown
       ccEvents: [],           // CC/debuffs applied to players by enemies (capped at 50)
       offensiveCDs: [],       // major offensive cooldowns used by players (capped at 30)
+      // ── Week 2 data streams ──
+      dispels: [],              // SPELL_DISPEL/SPELL_STOLEN events (capped at 50)
+      damageTakenByAbility: {}, // { playerGuid: { spellName: { spellId, spellSchool, total, count, maxHit } } }
+      playerOverhealing: {},    // { playerGuid: { healing: total, overhealing: total } }
+      resurrections: [],        // SPELL_RESURRECT events (capped at 20)
+      consumablesUsed: [],      // healthstones, potions (capped at 30)
     };
     this.segCounters = { death: 0, cd: 0, int: 0, ec: 0 };
 
@@ -868,8 +887,10 @@ class CombatLogRunBuilder extends EventEmitter {
     const isAuraApplied = event === "SPELL_AURA_APPLIED";
     const isDied   = event === "UNIT_DIED";
     const isInterrupt = event === "SPELL_INTERRUPT";
+    const isDispel = event === "SPELL_DISPEL" || event === "SPELL_STOLEN";
+    const isResurrect = event === "SPELL_RESURRECT";
 
-    if (!isDamage && !isEnvironmental && !isHeal && !isCast && !isCastStart && !isAuraApplied && !isDied && !isInterrupt) return null;
+    if (!isDamage && !isEnvironmental && !isHeal && !isCast && !isCastStart && !isAuraApplied && !isDied && !isInterrupt && !isDispel && !isResurrect) return null;
 
     const sourceGuid = fields[1] || "";
     const sourceName = (fields[2] || "").replace(/"/g, "");
@@ -936,6 +957,54 @@ class CombatLogRunBuilder extends EventEmitter {
         }
       }
       // Do NOT return null — let it continue to other handlers
+    }
+
+    // ── SPELL_DISPEL / SPELL_STOLEN — dispel tracking ──────────────────
+    // Format: ...sourceGUID, sourceName, ..., destGUID, destName, ..., spellId, spellName, spellSchool, extraSpellId, extraSpellName, extraSpellSchool, auraType
+    if (isDispel && isPlayerGuid(sourceGuid)) {
+      if (this.currentSeg && this.currentSeg.dispels.length < 50) {
+        const spellId = parseInt(fields[9], 10) || 0;
+        const spellName = (fields[10] || "").replace(/"/g, "");
+        const spellSchool = parseInt(fields[11]) || 0;
+        // Extra spell fields (the debuff that was removed) — follow spell prefix
+        const advStart = 12;
+        const hasAdv = hasAdvancedInfo(fields, advStart);
+        const suffixStart = hasAdv ? advStart + ADVANCED_INFO_FIELD_COUNT : advStart;
+        const extraSpellId = parseInt(fields[suffixStart], 10) || 0;
+        const extraSpellName = (fields[suffixStart + 1] || "").replace(/"/g, "");
+        const extraSpellSchool = parseInt(fields[suffixStart + 2]) || 0;
+
+        this.currentSeg.dispels.push({
+          ts, offsetMs: ts - this.currentSeg.startTs,
+          sourceName: this.guidToName.get(sourceGuid) || sourceName || null,
+          sourceClass: this.guidToClass.get(sourceGuid) || null,
+          sourceRole: this.guidToRole.get(sourceGuid) || null,
+          targetName: this.guidToName.get(destGuid) || destName || null,
+          spellId, spellName,
+          removedSpellId: extraSpellId,
+          removedSpellName: extraSpellName,
+          removedSpellSchool: extraSpellSchool,
+          wasStolen: event === "SPELL_STOLEN",
+        });
+      }
+      return null;
+    }
+
+    // ── SPELL_RESURRECT — resurrection / battle rez tracking ────────────
+    if (isResurrect && isPlayerGuid(sourceGuid) && isPlayerGuid(destGuid)) {
+      if (this.currentSeg && this.currentSeg.resurrections.length < 20) {
+        const spellId = parseInt(fields[9], 10) || 0;
+        const spellName = (fields[10] || "").replace(/"/g, "");
+
+        this.currentSeg.resurrections.push({
+          ts, offsetMs: ts - this.currentSeg.startTs,
+          sourceName: this.guidToName.get(sourceGuid) || sourceName || null,
+          targetName: this.guidToName.get(destGuid) || destName || null,
+          spellId, spellName,
+          isCombatRez: this.inKey && this.currentSeg != null,
+        });
+      }
+      return null;
     }
 
     // ── UNIT_DIED — player death tracking ──────────────────────────────
@@ -1113,6 +1182,20 @@ class CombatLogRunBuilder extends EventEmitter {
       if (this.currentSeg && amount > 0) {
         this.currentSeg.playerDamageTakenSeg[destGuid] =
           (this.currentSeg.playerDamageTakenSeg[destGuid] || 0) + amount;
+
+        // ── Damage taken by ability (per-player, per-spell breakdown) ──
+        if (!this.currentSeg.damageTakenByAbility[destGuid]) {
+          this.currentSeg.damageTakenByAbility[destGuid] = {};
+        }
+        const abilities = this.currentSeg.damageTakenByAbility[destGuid];
+        const abilityKey = spellName || "Melee";
+        if (!abilities[abilityKey]) {
+          const spellSchool = (event !== "SWING_DAMAGE") ? (parseInt(fields[11]) || 1) : 1;
+          abilities[abilityKey] = { spellId: spellId || 0, spellSchool, total: 0, count: 0, maxHit: 0 };
+        }
+        abilities[abilityKey].total += amount;
+        abilities[abilityKey].count += 1;
+        if (amount > abilities[abilityKey].maxHit) abilities[abilityKey].maxHit = amount;
       }
 
       this._addDmg(ts, amount);
@@ -1206,6 +1289,15 @@ class CombatLogRunBuilder extends EventEmitter {
               (this.currentSeg.playerHealingReceived[destGuid] || 0) + healAmt;
           }
         }
+
+        // ── Overhealing tracking (per-player, per-segment) ──────────────
+        if (isPlayerGuid(sourceGuid) && !isNaN(healAmount) && healAmount > 0) {
+          if (!this.currentSeg.playerOverhealing[sourceGuid]) {
+            this.currentSeg.playerOverhealing[sourceGuid] = { healing: 0, overhealing: 0 };
+          }
+          this.currentSeg.playerOverhealing[sourceGuid].healing += healAmount;
+          this.currentSeg.playerOverhealing[sourceGuid].overhealing += (overhealAmount || 0);
+        }
       }
       return null;
     }
@@ -1230,6 +1322,23 @@ class CombatLogRunBuilder extends EventEmitter {
             role: this.guidToRole.get(sourceGuid) || "unknown",
             race: racialInfo.race,
             racialType: racialInfo.type,
+          });
+        }
+      }
+    }
+
+    // ── Consumable usage (healthstones, potions) ─────────────────────────
+    if (isCast && isPlayerGuid(sourceGuid)) {
+      const consSpellId = parseInt(fields[9], 10) || 0;
+      const consSpellName = (fields[10] || "").replace(/"/g, "");
+      if (CONSUMABLE_SPELL_IDS.has(consSpellId) || CONSUMABLE_SPELL_NAMES.has(consSpellName)) {
+        if (this.currentSeg && (!this.currentSeg.consumablesUsed || this.currentSeg.consumablesUsed.length < 30)) {
+          if (!this.currentSeg.consumablesUsed) this.currentSeg.consumablesUsed = [];
+          this.currentSeg.consumablesUsed.push({
+            ts, offsetMs: ts - this.currentSeg.startTs,
+            playerName: this.guidToName.get(sourceGuid) || sourceName || null,
+            spellId: consSpellId,
+            spellName: consSpellName,
           });
         }
       }
@@ -1438,6 +1547,39 @@ class CombatLogRunBuilder extends EventEmitter {
         prev.ccEvents.push(...(seg.ccEvents || []));
         prev.offensiveCDs = prev.offensiveCDs || [];
         prev.offensiveCDs.push(...(seg.offensiveCDs || []));
+        // Merge Week 2 arrays
+        prev.dispels = prev.dispels || [];
+        prev.dispels.push(...(seg.dispels || []));
+        prev.resurrections = prev.resurrections || [];
+        prev.resurrections.push(...(seg.resurrections || []));
+        prev.consumablesUsed = prev.consumablesUsed || [];
+        prev.consumablesUsed.push(...(seg.consumablesUsed || []));
+        // Merge damageTakenByAbility maps
+        prev.damageTakenByAbility = prev.damageTakenByAbility || {};
+        for (const [guid, abilities] of Object.entries(seg.damageTakenByAbility || {})) {
+          if (!prev.damageTakenByAbility[guid]) prev.damageTakenByAbility[guid] = {};
+          for (const [spell, info] of Object.entries(abilities)) {
+            if (!prev.damageTakenByAbility[guid][spell]) {
+              prev.damageTakenByAbility[guid][spell] = { ...info };
+            } else {
+              prev.damageTakenByAbility[guid][spell].total += info.total;
+              prev.damageTakenByAbility[guid][spell].count += info.count;
+              if (info.maxHit > prev.damageTakenByAbility[guid][spell].maxHit) {
+                prev.damageTakenByAbility[guid][spell].maxHit = info.maxHit;
+              }
+            }
+          }
+        }
+        // Merge playerOverhealing maps
+        prev.playerOverhealing = prev.playerOverhealing || {};
+        for (const [guid, oh] of Object.entries(seg.playerOverhealing || {})) {
+          if (!prev.playerOverhealing[guid]) {
+            prev.playerOverhealing[guid] = { ...oh };
+          } else {
+            prev.playerOverhealing[guid].healing += oh.healing;
+            prev.playerOverhealing[guid].overhealing += oh.overhealing;
+          }
+        }
         // Merge damage/heal per second maps
         for (const [sec, dmg] of Object.entries(seg.dmgPerSec || {})) {
           const adjustedSec = parseInt(sec) + Math.floor((seg.startTs - prev.startTs) / 1000);
@@ -1522,8 +1664,38 @@ class CombatLogRunBuilder extends EventEmitter {
         ),
         ccEvents: seg.ccEvents || [],
         offensiveCDs: seg.offensiveCDs || [],
+        // ── Week 2 data streams ──
+        dispels: seg.dispels || [],
+        damageTakenByAbility: Object.fromEntries(
+          Object.entries(seg.damageTakenByAbility || {}).map(([guid, abilities]) => [
+            this.guidToName.get(guid) || guid,
+            abilities
+          ])
+        ),
+        playerOverhealing: Object.fromEntries(
+          Object.entries(seg.playerOverhealing || {}).map(([guid, oh]) => [
+            this.guidToName.get(guid) || guid, oh
+          ])
+        ),
+        resurrections: seg.resurrections || [],
+        consumablesUsed: seg.consumablesUsed || [],
       };
     });
+
+    // ── Between-pull downtime computation ─────────────────────────────
+    if (finalSegments.length > 0) {
+      finalSegments[0].downtimeBeforePullMs = 0;
+      for (let i = 1; i < finalSegments.length; i++) {
+        const prevEnd = finalSegments[i - 1].finishTs;
+        const currStart = finalSegments[i].startTs;
+        if (prevEnd && currStart) {
+          finalSegments[i].downtimeBeforePullMs = currStart - prevEnd;
+        } else {
+          finalSegments[i].downtimeBeforePullMs = null;
+        }
+      }
+    }
+    const totalDowntimeMs = finalSegments.reduce((sum, seg) => sum + (seg.downtimeBeforePullMs || 0), 0);
 
     // Post-run role heuristic for any player still "unknown"
     const allDetectedGuids = [...this.guidToClass.keys()].filter(isPlayerGuid);
@@ -1719,6 +1891,13 @@ class CombatLogRunBuilder extends EventEmitter {
           hasCCEvents: finalSegments.some(s => (s.ccEvents || []).length > 0),
           hasOffensiveCDs: finalSegments.some(s => (s.offensiveCDs || []).length > 0),
           hasEncounterData: this.bossEncounters.length > 0,
+          // Week 2 capabilities
+          hasDispels: finalSegments.some(s => (s.dispels || []).length > 0),
+          hasDamageTakenByAbility: finalSegments.some(s => Object.keys(s.damageTakenByAbility || {}).length > 0),
+          hasDowntimeTracking: true,
+          hasOverhealing: finalSegments.some(s => Object.keys(s.playerOverhealing || {}).length > 0),
+          hasResurrections: finalSegments.some(s => (s.resurrections || []).length > 0),
+          hasConsumableTracking: finalSegments.some(s => (s.consumablesUsed || []).length > 0),
         },
         player: playerObj,
         partyMembers: otherMembers,
@@ -1726,6 +1905,7 @@ class CombatLogRunBuilder extends EventEmitter {
         bossEncounters: this.bossEncounters,
         completionResult: { medal: success > 0 ? 1 : 0, timeMs, money: 0 },
         deathCountFinal: totalDeaths,
+        totalDowntimeMs,
         interruptibleSpells: this.knownInterruptibleSpells
             ? [...this.knownInterruptibleSpells.values()]
             : [],
