@@ -181,6 +181,24 @@ let lastKnownRunId   = null;
 let lastKnownUploaderIdentity = null;
 let lastActiveRunId  = null;
 let cachedActiveRun  = null;  // In-memory copy of _activeRun for key-end upload
+let cachedAddonRaces = {};    // name→race from VelaraIntelDB.races — used to fill partyMember race on upload
+
+// Fill race on player + partyMembers from the addon's SavedVariables map.
+// Called immediately before upload. Only sets race where it was missing —
+// never overwrites. Safe to call when cachedAddonRaces is empty.
+function injectAddonRaces(payload) {
+  if (!payload || !payload.run) return payload;
+  const races = cachedAddonRaces || {};
+  if (Object.keys(races).length === 0) return payload;
+  const p = payload.run.player;
+  if (p && p.name && !p.race && races[p.name]) p.race = races[p.name];
+  if (Array.isArray(payload.run.partyMembers)) {
+    for (const pm of payload.run.partyMembers) {
+      if (pm && pm.name && !pm.race && races[pm.name]) pm.race = races[pm.name];
+    }
+  }
+  return payload;
+}
 let logRescanTimer   = null;  // 30-second periodic combat log re-scan
 
 const WOW_SEARCH_PATHS = [
@@ -733,6 +751,12 @@ function startSVWatcher() {
       if (!parsed || !parsed.VelaraIntelDB) return;
       const db = parsed.VelaraIntelDB;
 
+      // Cache the addon's name→race map so upload-time injection can fill
+      // race on every party member, not just those whose racial fired.
+      if (db.races && typeof db.races === "object") {
+        cachedAddonRaces = db.races;
+      }
+
       // Extract uploader identity from SavedVariables
       const uploaderIdentity = db.uploaderIdentity || null;
       if (uploaderIdentity) {
@@ -1048,6 +1072,7 @@ function startCombatLogWatcher() {
         payload.run.privacyMode = privacyMode;
 
         broadcastStatus("Uploading to velaraintel.com...", "info");
+        injectAddonRaces(payload);
         apiUploader.upload(payload).then((result) => {
           if (result.ok) {
             broadcastStatus("Uploaded!", "ok");
@@ -1264,6 +1289,7 @@ function setupIPC() {
     try {
       payload.run.runMode = runMode;
       payload.run.privacyMode = privacyMode;
+      injectAddonRaces(payload);
 
       const payloadSize = JSON.stringify(payload).length;
       broadcastStatus("Uploading " + (payloadSize / 1024).toFixed(1) + " KB to velaraintel.com...", "info");
