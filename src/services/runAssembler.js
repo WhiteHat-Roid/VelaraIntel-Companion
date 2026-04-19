@@ -147,6 +147,15 @@ function assembleRunPayload({ addonRun, parsedCombatEvidence, resolvedPulls, opt
       },
       player: normalizePlayer(run.player),
       partyMembers: normalizePartyMembers(run.partyMembers),
+      equipmentRegistry: Array.isArray(run.equipmentRegistry) ? run.equipmentRegistry.map(e => ({
+        spellId   : Number(e.spellId) || 0,
+        spellName : String(e.spellName || ""),
+        itemId    : Number(e.itemId) || 0,
+        itemName  : String(e.itemName || ""),
+        itemIcon  : String(e.itemIcon || ""),
+        slot      : Number(e.slot) || 0,
+        ownerName : String(e.ownerName || ""),
+      })) : [],
       pulls: [], enemyRegistry: [], damageBuckets: [], wipes: [],
     },
   };
@@ -400,7 +409,12 @@ function validatePayload(payload, diag, DEV) {
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-function normalizePlayer(player) { if (!player) return { class: "UNKNOWN", spec: null, role: "unknown" }; return { class: player.class || "UNKNOWN", spec: player.spec || null, role: player.role || "unknown" }; }
+function normalizePlayer(player) {
+  if (!player) return { class: "UNKNOWN", spec: null, role: "unknown" };
+  const out = { class: player.class || "UNKNOWN", spec: player.spec || null, role: player.role || "unknown" };
+  if (typeof player.itemLevel === "number" && player.itemLevel > 0) out.itemLevel = player.itemLevel;
+  return out;
+}
 function normalizePartyMembers(members) { if (!Array.isArray(members)) return []; return members.map(m => ({ class: m.class || "UNKNOWN", spec: m.spec || null, role: m.role || "unknown", specConfidence: m.specConfidence || "unknown" })); }
 function collectNpcIds(segIds, segmentMap) { const ids = new Set(); for (const sid of segIds) { const seg = segmentMap.get(sid); if (seg?.npcIds) seg.npcIds.forEach(id => ids.add(id)); } return [...ids]; }
 function buildPullsFromSegments(segments, runId) { return segments.map((seg, i) => ({ segmentIds: [seg.segmentId], startTs: seg.startTs || 0, finishTs: seg.finishTs || 0, npcIds: seg.npcIds || [], enemyCount: (seg.npcIds || []).length, packId: null, regionId: null, floor: null, anchor: { x: 50.0, y: 50.0 }, anchorType: "unknown", anchorPrecision: "fallback", packMatchConfidence: 0, pullDetectionMethod: "regen_boundary", pullConfidence: 0.5 })); }

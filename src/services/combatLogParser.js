@@ -291,6 +291,20 @@ function parseCombatLog({ run, combatLogLines, partyGuids = [] }) {
   const { guidToClass, guidToRole, guidToSpec } = buildGuidMap(run);
   let playerGuid = run.player?.guid || null;
 
+  // ── Equipment-use registry (per Track A WI1 redesign) ───────────────────────
+  // Addon snapshots equipped slot-11/12/13/14 spell IDs into run.equipmentRegistry
+  // at run start. Build a lookup so SPELL_CAST_SUCCESS for any equipment-use spell
+  // gets routed as a trinket_offensive cooldown without needing a hardcoded
+  // allowlist. Defensive trinkets/rings classified as offensive for now —
+  // pre-classification needs item-tooltip parsing the addon doesn't expose.
+  const equipmentBySpellId = new Map();
+  if (Array.isArray(run.equipmentRegistry)) {
+    for (const e of run.equipmentRegistry) {
+      const sid = Number(e?.spellId) || 0;
+      if (sid > 0) equipmentBySpellId.set(sid, e);
+    }
+  }
+
   // ── Diagnostics ──────────────────────────────────────────────────────────────
   const diag = {
     totalLinesRead           : 0,
@@ -364,12 +378,14 @@ function parseCombatLog({ run, combatLogLines, partyGuids = [] }) {
         interrupts     : [],
         enemyCasts     : [],
         spikes         : [],
+        absorbs        : [],
         buckets        : new Map(),
         deathCounter   : 0,
         cdCounter      : 0,
         intCounter     : 0,
         ecCounter      : 0,
         spikeCounter   : 0,
+        absorbCounter  : 0,
       });
     }
     return segmentData.get(segmentId);
@@ -657,6 +673,29 @@ function parseCombatLog({ run, combatLogLines, partyGuids = [] }) {
       });
     }
 
+    // Equipment-use cooldown (trinket / on-use ring) — registry-driven match
+    const equipMeta = equipmentBySpellId.get(spellId);
+    if (equipMeta) {
+      segData.cdCounter++;
+      segData.cooldownEvents.push({
+        cooldownEventId : `${run.runId || "unk"}-${segmentId}-cd${segData.cdCounter}`,
+        segmentId,
+        castTs   : normalizedTs,
+        offsetMs : seg ? normalizedTs - seg.startTs : 0,
+        spellId,
+        spellName : spellName || equipMeta.spellName || "",
+        sourceGuid,
+        class    : guidToClass.get(sourceGuid) || "UNKNOWN",
+        role     : guidToRole.get(sourceGuid)  || "unknown",
+        spec     : guidToSpec.get(sourceGuid)  || "",
+        cdType   : "trinket_offensive",
+        itemId   : equipMeta.itemId || 0,
+        itemName : equipMeta.itemName || "",
+        itemIcon : equipMeta.itemIcon || "",
+        slot     : equipMeta.slot || 0,
+      });
+    }
+
     // Interrupt detection moved to SPELL_INTERRUPT event handler (processSpellInterrupt)
     // which can extract the actual interrupted spell name/ID from the combat log.
   }
@@ -802,7 +841,67 @@ function parseCombatLog({ run, combatLogLines, partyGuids = [] }) {
       case "SPELL_PERIODIC_HEAL":
         processIncomingHealing(fields, normalizedTs, segmentId);
         break;
+      case "SPELL_ABSORBED":
+        processSpellAbsorbed(fields, normalizedTs, segmentId);
+        break;
     }
+  }
+
+  // ── SPELL_ABSORBED ─────────────────────────────────────────────────────────
+  // Field layout is variable: when a SPELL hit was absorbed there are 3 spell
+  // fields up front (the original damaging spell), when a SWING hit was
+  // absorbed those fields are absent. Normalize by walking from the END of
+  // the fields (always: absorbSpellId, absorbSpellName, absorbSpellSchool,
+  // absorbedAmount, critical) and from the FRONT (always: src + dest blocks).
+  // Cap per segment to 100 to bound payload growth on heavy-shield comps.
+  // Absorbs ship as a separate stream this pass — spike-merge integration
+  // (so a 300k-hit-150k-absorbed reads as 300k for spike threshold) is a
+  // follow-up; data capture beats perfect analytics.
+  function processSpellAbsorbed(fields, normalizedTs, segmentId) {
+    const seg = getSegment(segmentId);
+    if (!seg) return;
+    const segData = getSegData(segmentId);
+    if (segData.absorbs.length >= 100) return;
+
+    // Front block: dest is at offsets 5-8, source at 1-4 (combat-log convention).
+    const destGuid = (fields[5] || "").replace(/"/g, "");
+    const destName = (fields[6] || "").replace(/"/g, "");
+    if (!destGuid) return;
+
+    // Tail block: last 5 fields are absorbSpellId, absorbSpellName,
+    // absorbSpellSchool, absorbedAmount, critical.
+    const n = fields.length;
+    const absorbedAmount = parseInt(fields[n - 2], 10) || 0;
+    if (absorbedAmount <= 0) return;
+    const absorbSpellSchool = parseInt(fields[n - 3], 10) || 0;
+    const absorbSpellName = (fields[n - 4] || "").replace(/"/g, "");
+    const absorbSpellId = parseInt(fields[n - 5], 10) || 0;
+
+    // sourceHit is the spell that was absorbed. Heuristic: when the field
+    // count indicates there was a SPELL_* prefix, fields[9..11] hold it;
+    // otherwise (SWING_DAMAGE absorbed) those fields are absent.
+    let sourceHitSpellId = 0;
+    let sourceHitSpellName = "";
+    if (n >= 19) {
+      sourceHitSpellId = parseInt(fields[9], 10) || 0;
+      sourceHitSpellName = (fields[10] || "").replace(/"/g, "");
+    }
+
+    segData.absorbCounter++;
+    segData.absorbs.push({
+      absorbId       : `${run.runId || "unk"}-${segmentId}-ab${segData.absorbCounter}`,
+      segmentId,
+      absorbTs       : normalizedTs,
+      offsetMs       : normalizedTs - seg.startTs,
+      destGuid,
+      destName,
+      absorbSpellId,
+      absorbSpellName,
+      absorbSpellSchool,
+      absorbedAmount,
+      sourceHitSpellId,
+      sourceHitSpellName,
+    });
   }
 
   // ── Build death chains per segment ──────────────────────────────────────────
@@ -880,6 +979,7 @@ function parseCombatLog({ run, combatLogLines, partyGuids = [] }) {
       interrupts     : data.interrupts,
       enemyCasts     : data.enemyCasts,
       spikes         : data.spikes,
+      absorbs        : data.absorbs,
       damageBuckets,
       deathChain     : buildDeathChain(data.deaths),
     });
@@ -925,6 +1025,7 @@ function parseCombatLog({ run, combatLogLines, partyGuids = [] }) {
   const allInts    = enrichedSegments.flatMap(s => s.interrupts);
   const allECasts  = enrichedSegments.flatMap(s => s.enemyCasts);
   const allSpikes  = enrichedSegments.flatMap(s => s.spikes);
+  const allAbsorbs = enrichedSegments.flatMap(s => s.absorbs || []);
 
   const capabilityFlags = {
     hasDeathContext  : allDeaths.length > 0,
@@ -934,6 +1035,7 @@ function parseCombatLog({ run, combatLogLines, partyGuids = [] }) {
     hasInterrupts    : allInts.length > 0,
     hasEnemyCasts    : allECasts.length > 0,
     hasSpikes        : allSpikes.length > 0,
+    hasAbsorbs       : allAbsorbs.length > 0,
   };
 
   return {
