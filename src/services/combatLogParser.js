@@ -139,6 +139,53 @@ const INTERRUPT_SPELLS = new Set([
   119910, // Spell Lock (Warlock Felhunter)
 ]);
 
+// Player-cast CC applied to NPCs. Narrow allowlist keeps noise out of the
+// Stuns overlay — incapacitates and high-value roots included for M+ utility.
+// Frontend at UnifiedRunTimeline.tsx:522 consumes these via pull.ccEvents[].
+const CC_SPELL_IDS = new Set([
+  // Stuns
+  853,     // Hammer of Justice (Paladin)
+  119381,  // Leg Sweep (Monk)
+  30283,   // Shadowfury (Warlock)
+  179057,  // Chaos Nova (Demon Hunter)
+  46968,   // Shockwave (Warrior)
+  5211,    // Mighty Bash (Druid)
+  199530,  // Sundering (Shaman)
+  108194,  // Asphyxiate (Death Knight)
+  221562,  // Asphyxiate (Unholy DK)
+  91800,   // Gnaw (DK Ghoul)
+  24394,   // Intimidation (Hunter)
+  255723,  // Bull Rush (Highmountain Tauren racial)
+  20549,   // War Stomp (Tauren racial)
+  1833,    // Cheap Shot (Rogue)
+  408,     // Kidney Shot (Rogue)
+  192058,  // Capacitor Totem (Shaman)
+  372245,  // Terror of the Skies (Evoker)
+  // Incapacitates
+  6770,    // Sap (Rogue)
+  2094,    // Blind (Rogue)
+  118,     // Polymorph (Mage)
+  28272,   // Polymorph Pig
+  28271,   // Polymorph Turtle
+  61305,   // Polymorph Cat
+  61721,   // Polymorph Rabbit
+  61780,   // Polymorph Turkey
+  161354,  // Polymorph Monkey
+  277787,  // Polymorph Direhorn
+  277792,  // Polymorph Bumblebee
+  391622,  // Polymorph Duck
+  710,     // Banish (Warlock)
+  6358,    // Seduction (Warlock pet)
+  187650,  // Freezing Trap (Hunter)
+  3355,    // Freezing Trap debuff ID (Hunter)
+  20066,   // Repentance (Paladin)
+  9484,    // Shackle Undead (Priest)
+  // Roots
+  339,     // Entangling Roots (Druid)
+  102359,  // Mass Entanglement (Druid)
+  122,     // Frost Nova (Mage)
+]);
+
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const SEGMENT_TOLERANCE_MS    = 1500;
@@ -377,6 +424,7 @@ function parseCombatLog({ run, combatLogLines, partyGuids = [] }) {
         cooldownEvents : [],
         interrupts     : [],
         enemyCasts     : [],
+        ccEvents       : [],
         spikes         : [],
         absorbs        : [],
         buckets        : new Map(),
@@ -384,6 +432,7 @@ function parseCombatLog({ run, combatLogLines, partyGuids = [] }) {
         cdCounter      : 0,
         intCounter     : 0,
         ecCounter      : 0,
+        ccCounter      : 0,
         spikeCounter   : 0,
         absorbCounter  : 0,
       });
@@ -772,6 +821,50 @@ function parseCombatLog({ run, combatLogLines, partyGuids = [] }) {
     });
   }
 
+  // ── SPELL_AURA_APPLIED — capture player-cast CC/stuns on NPCs ──────────────
+  // Frontend Stuns overlay (UnifiedRunTimeline.tsx:522) consumes pull.ccEvents[].
+  // Shape mirrors cooldownEvents: source + target names, spellId/spellName,
+  // offsetMs relative to segment start. Only CC_SPELL_IDS entries land here —
+  // everything else (player buffs, non-CC debuffs) is filtered out up front.
+
+  function processSpellAuraApplied(fields, normalizedTs, segmentId) {
+    if (fields.length < 13) return;
+
+    const auraType = (fields[12] || "").replace(/"/g, "");
+    if (auraType !== "DEBUFF") return;
+
+    const sourceGuid = (fields[1] || "").replace(/"/g, "");
+    const destGuid   = (fields[5] || "").replace(/"/g, "");
+
+    if (!sourceGuid.startsWith("Player-")) return;
+    if (!destGuid.startsWith("Creature-") && !destGuid.startsWith("Vehicle-")) return;
+
+    const spellId = parseInt((fields[9] || "").replace(/"/g, ""), 10);
+    if (!CC_SPELL_IDS.has(spellId)) return;
+
+    const seg     = getSegment(segmentId);
+    const segData = getSegData(segmentId);
+
+    const sourceNameRaw = (fields[2] || "").replace(/"/g, "");
+    const playerName    = sourceNameRaw.split("-")[0];
+    const targetName    = (fields[6] || "").replace(/"/g, "");
+    const spellName     = (fields[10] || "").replace(/"/g, "");
+
+    segData.ccCounter++;
+    segData.ccEvents.push({
+      ccEventId  : `${run.runId || "unk"}-${segmentId}-cc${segData.ccCounter}`,
+      segmentId,
+      castTs     : normalizedTs,
+      offsetMs   : seg ? normalizedTs - seg.startTs : 0,
+      spellId,
+      spellName,
+      sourceGuid,
+      playerName,
+      targetName,
+      targetGuid : destGuid,
+    });
+  }
+
   // ── Main parse loop ──────────────────────────────────────────────────────────
 
   const RELEVANT_EVENTS = new Set([
@@ -785,6 +878,7 @@ function parseCombatLog({ run, combatLogLines, partyGuids = [] }) {
     "SPELL_HEAL",
     "SPELL_PERIODIC_HEAL",
     "SPELL_ABSORBED",
+    "SPELL_AURA_APPLIED",
   ]);
 
   for (const rawLine of combatLogLines) {
@@ -844,6 +938,9 @@ function parseCombatLog({ run, combatLogLines, partyGuids = [] }) {
         break;
       case "SPELL_ABSORBED":
         processSpellAbsorbed(fields, normalizedTs, segmentId);
+        break;
+      case "SPELL_AURA_APPLIED":
+        processSpellAuraApplied(fields, normalizedTs, segmentId);
         break;
     }
   }
@@ -940,6 +1037,7 @@ function parseCombatLog({ run, combatLogLines, partyGuids = [] }) {
         cooldownEvents : [],
         interrupts     : [],
         enemyCasts     : [],
+        ccEvents       : [],
         spikes         : [],
         damageBuckets  : [],
         deathChain     : null,
@@ -979,6 +1077,7 @@ function parseCombatLog({ run, combatLogLines, partyGuids = [] }) {
       cooldownEvents : data.cooldownEvents.filter(cd => isPlayerGuid(cd.sourceGuid)),
       interrupts     : data.interrupts,
       enemyCasts     : data.enemyCasts,
+      ccEvents       : data.ccEvents.filter(cc => isPlayerGuid(cc.sourceGuid)),
       spikes         : data.spikes,
       absorbs        : data.absorbs,
       damageBuckets,
