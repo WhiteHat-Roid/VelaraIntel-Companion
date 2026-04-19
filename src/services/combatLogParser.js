@@ -784,6 +784,7 @@ function parseCombatLog({ run, combatLogLines, partyGuids = [] }) {
     "SPELL_INTERRUPT",
     "SPELL_HEAL",
     "SPELL_PERIODIC_HEAL",
+    "SPELL_ABSORBED",
   ]);
 
   for (const rawLine of combatLogLines) {
