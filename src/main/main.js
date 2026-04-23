@@ -134,7 +134,8 @@ function startWowPoll() {
       console.log("[WoW] Retail WoW detected — showing dashboard");
       broadcastStatus("WoW detected — companion active", "ok");
       createDashboard();
-      if (dashboardWindow) { dashboardWindow.show(); dashboardWindow.focus(); }
+      const wowAutoShow = store.get("wowAutoShow", false);
+      if (wowAutoShow && dashboardWindow) { dashboardWindow.show(); dashboardWindow.focus(); }
 
       // Start watchers if not already running
       if (!watchersStarted) {
@@ -1233,6 +1234,7 @@ function setupIPC() {
     autoUpload     : store.get("autoUpload"),
     startMinimized : store.get("startMinimized"),
     autoStartOnBoot: getAutoStart(),
+    wowAutoShow    : store.get("wowAutoShow", false),
   }));
 
   ipcMain.handle("save-settings", (_, settings) => {
@@ -1246,6 +1248,7 @@ function setupIPC() {
       hotkey        : settings.hotkey,
       autoUpload    : settings.autoUpload,
       startMinimized: settings.startMinimized,
+      wowAutoShow   : settings.wowAutoShow,
     };
     Object.entries(safe).forEach(([k, v]) => store.set(k, v));
 
