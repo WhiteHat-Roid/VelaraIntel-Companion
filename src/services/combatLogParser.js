@@ -206,6 +206,46 @@ const TRACKED_CONSUMABLES = new Map([
   [6262,   { name: "Healthstone",                   type: "health" }],
 ]);
 
+// Player-cast stuns on enemies — copied verbatim from combatLogRunBuilder.js
+// PLAYER_STUN_SPELLS. Narrower than the existing CC_SPELL_IDS (which also
+// covers incapacitates and roots) — this drives the Playbook "Crowd Control"
+// pill with stuns specifically.
+const PLAYER_STUN_SPELLS = new Set([
+  // Paladin
+  853,      // Hammer of Justice
+  255937,   // Wake of Ashes
+  // Monk
+  119381,   // Leg Sweep
+  // Warrior
+  46968,    // Shockwave
+  132168,   // Shockwave variant (UNVERIFIED in Overwolf source)
+  132169,   // Storm Bolt
+  // DK
+  91800,    // Gnaw (Ghoul stun)
+  287254,   // Dead of Winter (UNVERIFIED — Shadowlands-era in Overwolf source)
+  // Druid
+  5211,     // Mighty Bash
+  163505,   // Rake stun (UNVERIFIED — aura, not cast, per Overwolf source)
+  202244,   // Overrun (UNVERIFIED)
+  // Hunter
+  24394,    // Intimidation
+  // DH
+  179057,   // Chaos Nova
+  211881,   // Fel Eruption
+  // Shaman
+  118905,   // Static Charge (Capacitor Totem)
+  // Warlock
+  30283,    // Shadowfury
+  89766,    // Axe Toss (Felguard)
+  // Priest
+  200200,   // Holy Word: Chastise (Censure)
+  // Evoker
+  357210,   // Deep Breath (UNVERIFIED — knockback, not true stun per Overwolf)
+  // Racials
+  20549,    // War Stomp (Tauren)
+  255661,   // Bull Rush (Highmountain Tauren — matches RACIAL_ABILITIES)
+]);
+
 // Resurrection spells — minimal set per Directive 7 Work Item 5.
 // Battle rezzes + one group rez (out-of-combat). Mass Resurrection included
 // for clean runs where the group out-of-combats to rez everyone.
@@ -523,6 +563,7 @@ function parseCombatLog({ run, combatLogLines, partyGuids = [] }) {
         racialCasts    : [],
         consumablesUsed: [],
         resurrections  : [],
+        stunEvents     : [],
         interrupts     : [],
         enemyCasts     : [],
         ccEvents       : [],
@@ -903,6 +944,27 @@ function parseCombatLog({ run, combatLogLines, partyGuids = [] }) {
       });
     }
 
+    // Player-cast stun on enemy (SPELL_CAST_SUCCESS) — Overwolf parity.
+    // Distinct from ccEvents[] (CC_SPELL_IDS, broader — incapacitates + roots).
+    if (PLAYER_STUN_SPELLS.has(spellId) && segData.stunEvents.length < 50) {
+      const playerName = (fields[2] || "").replace(/"/g, "") || "Unknown";
+      const isDupe = segData.stunEvents.some(s =>
+        s.spellId === spellId && s.playerName === playerName && Math.abs(s.ts - normalizedTs) < 1000
+      );
+      if (!isDupe) {
+        segData.stunEvents.push({
+          ts         : normalizedTs,
+          offsetMs   : seg ? normalizedTs - seg.startTs : 0,
+          spellId,
+          spellName,
+          playerName,
+          class      : guidToClass.get(sourceGuid) || "UNKNOWN",
+          role       : guidToRole.get(sourceGuid)  || "unknown",
+          targetName : (fields[6] || "").replace(/"/g, "") || "Unknown",
+        });
+      }
+    }
+
     // Equipment-use cooldown (trinket / on-use ring) — registry-driven match
     const equipMeta = equipmentBySpellId.get(spellId);
     if (equipMeta) {
@@ -1221,6 +1283,7 @@ function parseCombatLog({ run, combatLogLines, partyGuids = [] }) {
         racialCasts    : [],
         consumablesUsed: [],
         resurrections  : [],
+        stunEvents     : [],
         interrupts     : [],
         enemyCasts     : [],
         ccEvents       : [],
@@ -1266,6 +1329,7 @@ function parseCombatLog({ run, combatLogLines, partyGuids = [] }) {
       racialCasts    : data.racialCasts,
       consumablesUsed: data.consumablesUsed,
       resurrections  : data.resurrections,
+      stunEvents     : data.stunEvents,
       interrupts     : data.interrupts,
       enemyCasts     : data.enemyCasts,
       ccEvents       : data.ccEvents.filter(cc => isPlayerGuid(cc.sourceGuid)),
