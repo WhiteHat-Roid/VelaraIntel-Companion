@@ -1445,11 +1445,11 @@ app.whenReady().then(async () => {
   // Always poll — detects WoW launch/close transitions
   startWowPoll();
 
-  // Enable auto-start at Windows boot (tray mode — lightweight until WoW opens)
-  if (!getAutoStart()) {
-    setAutoStart(true);
-    console.log("[Velara] Auto-start enabled — companion will start with Windows");
-  }
+  // Sync Windows auto-start registry to stored user pref (default OFF).
+  // Called unconditionally so that if pref is false but an older build already
+  // wrote the registry entry, it gets cleaned up on next launch.
+  const autoStartPref = store.get("autoStartOnBoot", false);
+  setAutoStart(autoStartPref);
 });
 
 app.on("window-all-closed", (e) => e.preventDefault());
