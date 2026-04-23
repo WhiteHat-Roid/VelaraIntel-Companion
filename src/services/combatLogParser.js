@@ -206,6 +206,17 @@ const TRACKED_CONSUMABLES = new Map([
   [6262,   { name: "Healthstone",                   type: "health" }],
 ]);
 
+// Resurrection spells — minimal set per Directive 7 Work Item 5.
+// Battle rezzes + one group rez (out-of-combat). Mass Resurrection included
+// for clean runs where the group out-of-combats to rez everyone.
+const RESURRECTION_SPELLS = new Map([
+  [20484,  { name: "Rebirth" }],                    // Druid battle rez
+  [61999,  { name: "Raise Ally" }],                 // Death Knight battle rez
+  [159916, { name: "Ancestral Protection Totem" }], // Shaman battle rez via totem
+  [265116, { name: "Soulstone" }],                  // Warlock pre-cast rez
+  [342246, { name: "Mass Resurrection" }],          // Priest/Paladin/Shaman group rez (OOC)
+]);
+
 const INTERRUPT_SPELLS = new Set([
   47528,  // Mind Freeze (DK)
   183752, // Consume Magic (DH)
@@ -511,6 +522,7 @@ function parseCombatLog({ run, combatLogLines, partyGuids = [] }) {
         offensiveCDs   : [],
         racialCasts    : [],
         consumablesUsed: [],
+        resurrections  : [],
         interrupts     : [],
         enemyCasts     : [],
         ccEvents       : [],
@@ -876,6 +888,21 @@ function parseCombatLog({ run, combatLogLines, partyGuids = [] }) {
       });
     }
 
+    // Resurrection cast (battle rez, Soulstone, Mass Rez) — Overwolf parity
+    const rezInfo = RESURRECTION_SPELLS.get(spellId);
+    if (rezInfo && segData.resurrections.length < 10) {
+      segData.resurrections.push({
+        ts         : normalizedTs,
+        offsetMs   : seg ? normalizedTs - seg.startTs : 0,
+        spellId,
+        spellName  : rezInfo.name,
+        playerName : (fields[2] || "").replace(/"/g, "") || "Unknown",
+        class      : guidToClass.get(sourceGuid) || "UNKNOWN",
+        role       : guidToRole.get(sourceGuid)  || "unknown",
+        targetName : (fields[6] || "").replace(/"/g, "") || "Unknown",
+      });
+    }
+
     // Equipment-use cooldown (trinket / on-use ring) — registry-driven match
     const equipMeta = equipmentBySpellId.get(spellId);
     if (equipMeta) {
@@ -1193,6 +1220,7 @@ function parseCombatLog({ run, combatLogLines, partyGuids = [] }) {
         offensiveCDs   : [],
         racialCasts    : [],
         consumablesUsed: [],
+        resurrections  : [],
         interrupts     : [],
         enemyCasts     : [],
         ccEvents       : [],
@@ -1237,6 +1265,7 @@ function parseCombatLog({ run, combatLogLines, partyGuids = [] }) {
       offensiveCDs   : data.offensiveCDs,
       racialCasts    : data.racialCasts,
       consumablesUsed: data.consumablesUsed,
+      resurrections  : data.resurrections,
       interrupts     : data.interrupts,
       enemyCasts     : data.enemyCasts,
       ccEvents       : data.ccEvents.filter(cc => isPlayerGuid(cc.sourceGuid)),
