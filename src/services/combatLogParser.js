@@ -564,6 +564,8 @@ function parseCombatLog({ run, combatLogLines, partyGuids = [] }) {
         consumablesUsed: [],
         resurrections  : [],
         stunEvents     : [],
+        dispels        : [],
+        playerOverhealing: {},
         interrupts     : [],
         enemyCasts     : [],
         ccEvents       : [],
@@ -829,6 +831,13 @@ function parseCombatLog({ run, combatLogLines, partyGuids = [] }) {
         bucket.tankHealingReceived += effective;
         bucket.tankOverhealing     += overhealing;
       }
+
+      // WI 8 — per-player overhealing accumulation
+      const sourceGuid = fields[1] || "";
+      if (isPlayerGuid(sourceGuid) && overhealing > 0) {
+        segData.playerOverhealing[sourceGuid] =
+          (segData.playerOverhealing[sourceGuid] || 0) + overhealing;
+      }
     }
   }
 
@@ -1064,6 +1073,41 @@ function parseCombatLog({ run, combatLogLines, partyGuids = [] }) {
     });
   }
 
+  // ── SPELL_DISPEL — WI 7 — capture player dispel events ────────────────────
+  function processSpellDispel(fields, normalizedTs, segmentId) {
+    const sourceGuid = fields[1] || "";
+    if (!isPlayerGuid(sourceGuid)) return;
+    const seg     = getSegment(segmentId);
+    const segData = getSegData(segmentId);
+    if (!seg || !segData) return;
+    if (!segData.dispels) segData.dispels = [];
+    if (segData.dispels.length >= 50) return;
+
+    const spellId   = parseInt(fields[9],  10) || 0;
+    const spellName = (fields[10] || "").replace(/"/g, "");
+
+    // SPELL_DISPEL suffix: after spell prefix (fields 9-11), check advanced info
+    const dispelAdvStart = 12;
+    const dispelHasAdv = hasAdvancedInfo(fields, dispelAdvStart);
+    const dispelSuffixStart = dispelHasAdv ? dispelAdvStart + ADVANCED_INFO_FIELD_COUNT : dispelAdvStart;
+
+    const dispelledSpellId   = parseInt(fields[dispelSuffixStart],     10) || 0;
+    const dispelledSpellName = (fields[dispelSuffixStart + 1] || "").replace(/"/g, "");
+
+    segData.dispels.push({
+      ts              : normalizedTs,
+      offsetMs        : normalizedTs - seg.startTs,
+      spellId,
+      spellName,
+      playerName      : (fields[2] || "").replace(/"/g, "") || "Unknown",
+      class           : guidToClass.get(sourceGuid) || "UNKNOWN",
+      role            : guidToRole.get(sourceGuid)  || "unknown",
+      targetName      : (fields[6] || "").replace(/"/g, "") || "Unknown",
+      targetSpellId   : dispelledSpellId,
+      targetSpellName : dispelledSpellName,
+    });
+  }
+
   // ── SPELL_AURA_APPLIED — capture player-cast CC/stuns on NPCs ──────────────
   // Frontend Stuns overlay (UnifiedRunTimeline.tsx:522) consumes pull.ccEvents[].
   // Shape mirrors cooldownEvents: source + target names, spellId/spellName,
@@ -1175,6 +1219,9 @@ function parseCombatLog({ run, combatLogLines, partyGuids = [] }) {
       case "SPELL_INTERRUPT":
         processSpellInterrupt(fields, normalizedTs, segmentId);
         break;
+      case "SPELL_DISPEL":
+        processSpellDispel(fields, normalizedTs, segmentId);
+        break;
       case "SPELL_HEAL":
       case "SPELL_PERIODIC_HEAL":
         processIncomingHealing(fields, normalizedTs, segmentId);
@@ -1284,6 +1331,8 @@ function parseCombatLog({ run, combatLogLines, partyGuids = [] }) {
         consumablesUsed: [],
         resurrections  : [],
         stunEvents     : [],
+        dispels        : [],
+        playerOverhealing: {},
         interrupts     : [],
         enemyCasts     : [],
         ccEvents       : [],
@@ -1330,6 +1379,8 @@ function parseCombatLog({ run, combatLogLines, partyGuids = [] }) {
       consumablesUsed: data.consumablesUsed,
       resurrections  : data.resurrections,
       stunEvents     : data.stunEvents,
+      dispels        : data.dispels || [],
+      playerOverhealing: data.playerOverhealing || {},
       interrupts     : data.interrupts,
       enemyCasts     : data.enemyCasts,
       ccEvents       : data.ccEvents.filter(cc => isPlayerGuid(cc.sourceGuid)),
