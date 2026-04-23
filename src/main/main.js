@@ -1242,16 +1242,15 @@ function setupIPC() {
       settings.wowPath !== store.get("wowPath") ||
       settings.accountName !== store.get("accountName");
 
-    const safe = {
-      wowPath        : settings.wowPath,
-      accountName    : settings.accountName,
-      hotkey         : settings.hotkey,
-      autoUpload     : settings.autoUpload,
-      startMinimized : settings.startMinimized,
-      wowAutoShow    : settings.wowAutoShow,
-      autoStartOnBoot: settings.autoStartOnBoot,
-    };
-    Object.entries(safe).forEach(([k, v]) => store.set(k, v));
+    // Partial-merge: persist only keys the caller actually sent. A caller doing
+    // saveSettings({ wowPath }) must not silently wipe other settings to undefined.
+    const ALLOWED_KEYS = [
+      "wowPath", "accountName", "hotkey", "autoUpload",
+      "startMinimized", "wowAutoShow", "autoStartOnBoot",
+    ];
+    for (const k of ALLOWED_KEYS) {
+      if (k in settings) store.set(k, settings[k]);
+    }
 
     // Wire autoStartOnBoot toggle to Windows auto-start via Registry
     if (typeof settings.autoStartOnBoot === "boolean") {
