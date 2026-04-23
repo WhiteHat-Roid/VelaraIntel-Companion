@@ -1243,18 +1243,19 @@ function setupIPC() {
       settings.accountName !== store.get("accountName");
 
     const safe = {
-      wowPath       : settings.wowPath,
-      accountName   : settings.accountName,
-      hotkey        : settings.hotkey,
-      autoUpload    : settings.autoUpload,
-      startMinimized: settings.startMinimized,
-      wowAutoShow   : settings.wowAutoShow,
+      wowPath        : settings.wowPath,
+      accountName    : settings.accountName,
+      hotkey         : settings.hotkey,
+      autoUpload     : settings.autoUpload,
+      startMinimized : settings.startMinimized,
+      wowAutoShow    : settings.wowAutoShow,
+      autoStartOnBoot: settings.autoStartOnBoot,
     };
     Object.entries(safe).forEach(([k, v]) => store.set(k, v));
 
-    // Wire startMinimized toggle to Windows auto-start via Registry
-    if (typeof settings.startMinimized === "boolean") {
-      setAutoStart(settings.startMinimized);
+    // Wire autoStartOnBoot toggle to Windows auto-start via Registry
+    if (typeof settings.autoStartOnBoot === "boolean") {
+      setAutoStart(settings.autoStartOnBoot);
     }
 
     // Overlay disabled in v1.3.3 — hotkey registration removed
