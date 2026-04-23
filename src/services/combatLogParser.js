@@ -187,6 +187,25 @@ const RACIAL_ABILITIES = new Map([
   [448849, { race: "Earthen",              name: "Wide-Eyed Wonder",                 type: "utility" }],
 ]);
 
+// Tracked consumables — copied verbatim from combatLogRunBuilder.js TRACKED_CONSUMABLES.
+// TWW Season 1 IDs. type: "health" | "stat" | "flask".
+const TRACKED_CONSUMABLES = new Map([
+  // ── Health Potions ──
+  [431416, { name: "Algari Healing Potion",         type: "health" }],
+  [431418, { name: "Cavedweller's Delight",         type: "health" }],
+  // ── Stat Potions ──
+  [431932, { name: "Tempered Potion",               type: "stat" }],
+  [431934, { name: "Potion of Unwavering Focus",    type: "stat" }],
+  // ── Flasks ──
+  [431940, { name: "Flask of Alchemical Chaos",     type: "flask" }],
+  [431941, { name: "Flask of Tempered Mastery",     type: "flask" }],
+  [431942, { name: "Flask of Tempered Versatility", type: "flask" }],
+  [431943, { name: "Flask of Tempered Swiftness",   type: "flask" }],
+  [431944, { name: "Flask of Tempered Aggression",  type: "flask" }],
+  // ── Healthstone ──
+  [6262,   { name: "Healthstone",                   type: "health" }],
+]);
+
 const INTERRUPT_SPELLS = new Set([
   47528,  // Mind Freeze (DK)
   183752, // Consume Magic (DH)
@@ -491,6 +510,7 @@ function parseCombatLog({ run, combatLogLines, partyGuids = [] }) {
         defensives     : [],
         offensiveCDs   : [],
         racialCasts    : [],
+        consumablesUsed: [],
         interrupts     : [],
         enemyCasts     : [],
         ccEvents       : [],
@@ -841,6 +861,21 @@ function parseCombatLog({ run, combatLogLines, partyGuids = [] }) {
       });
     }
 
+    // Consumable use (health potions, stat potions, flasks, Healthstone) — Overwolf parity
+    const consumableInfo = TRACKED_CONSUMABLES.get(spellId);
+    if (consumableInfo && segData.consumablesUsed.length < 30) {
+      segData.consumablesUsed.push({
+        ts            : normalizedTs,
+        offsetMs      : seg ? normalizedTs - seg.startTs : 0,
+        spellId,
+        spellName     : consumableInfo.name,
+        playerName    : (fields[2] || "").replace(/"/g, "") || "Unknown",
+        class         : guidToClass.get(sourceGuid) || "UNKNOWN",
+        role          : guidToRole.get(sourceGuid)  || "unknown",
+        consumableType: consumableInfo.type,
+      });
+    }
+
     // Equipment-use cooldown (trinket / on-use ring) — registry-driven match
     const equipMeta = equipmentBySpellId.get(spellId);
     if (equipMeta) {
@@ -1157,6 +1192,7 @@ function parseCombatLog({ run, combatLogLines, partyGuids = [] }) {
         defensives     : [],
         offensiveCDs   : [],
         racialCasts    : [],
+        consumablesUsed: [],
         interrupts     : [],
         enemyCasts     : [],
         ccEvents       : [],
@@ -1200,6 +1236,7 @@ function parseCombatLog({ run, combatLogLines, partyGuids = [] }) {
       defensives     : data.defensives,
       offensiveCDs   : data.offensiveCDs,
       racialCasts    : data.racialCasts,
+      consumablesUsed: data.consumablesUsed,
       interrupts     : data.interrupts,
       enemyCasts     : data.enemyCasts,
       ccEvents       : data.ccEvents.filter(cc => isPlayerGuid(cc.sourceGuid)),
