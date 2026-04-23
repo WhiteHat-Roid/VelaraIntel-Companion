@@ -155,6 +155,38 @@ const OFFENSIVE_COOLDOWNS = new Map([
   [228920, { name: "Ravager",              type: "personal_offensive", cd: 90  }],
 ]);
 
+// Racial Abilities — copied verbatim from combatLogRunBuilder.js RACIAL_ABILITIES (Overwolf parity).
+// type buckets: "offensive" | "damage" | "heal" | "cc" | "cleanse" | "cleanse_defensive" | "cleanse_offensive"
+//               "combat_drop" | "mobility" | "emergency_heal" | "knockback" | "utility"
+const RACIAL_ABILITIES = new Map([
+  [20594,  { race: "Dwarf",                name: "Stoneform",                        type: "cleanse_defensive" }],
+  [265221, { race: "Dark Iron Dwarf",      name: "Fireblood",                        type: "cleanse_offensive" }],
+  [58984,  { race: "Night Elf",            name: "Shadowmeld",                       type: "combat_drop" }],
+  [256948, { race: "Void Elf",             name: "Spatial Rift",                     type: "mobility" }],
+  [259930, { race: "Kul Tiran",            name: "Haymaker",                         type: "cc" }],
+  [312924, { race: "Mechagnome",           name: "Hyper Organic Light Originator",   type: "emergency_heal" }],
+  [28880,  { race: "Draenei",              name: "Gift of the Naaru",                type: "heal" }],
+  [255654, { race: "Lightforged Draenei",  name: "Light's Judgment",                 type: "damage" }],
+  [69070,  { race: "Goblin",               name: "Rocket Jump",                      type: "mobility" }],
+  [20572,  { race: "Orc",                  name: "Blood Fury",                       type: "offensive" }],
+  [26297,  { race: "Troll",                name: "Berserking",                       type: "offensive" }],
+  [33697,  { race: "Orc",                  name: "Blood Fury",                       type: "offensive" }],
+  [33702,  { race: "Orc",                  name: "Blood Fury",                       type: "offensive" }],
+  [7744,   { race: "Undead",               name: "Will of the Forsaken",             type: "cleanse" }],
+  [20549,  { race: "Tauren",               name: "War Stomp",                        type: "cc" }],
+  [69179,  { race: "Goblin",               name: "Rocket Barrage",                   type: "damage" }],
+  [255661, { race: "Highmountain Tauren",  name: "Bull Rush",                        type: "cc" }],
+  [260364, { race: "Nightborne",           name: "Arcane Pulse",                     type: "damage" }],
+  [274738, { race: "Mag'har Orc",          name: "Ancestral Call",                   type: "offensive" }],
+  [291944, { race: "Zandalari Troll",      name: "Regeneratin'",                     type: "heal" }],
+  [312411, { race: "Vulpera",              name: "Bag of Tricks",                    type: "damage" }],
+  [107079, { race: "Pandaren",             name: "Quaking Palm",                     type: "cc" }],
+  [368970, { race: "Dracthyr",             name: "Tail Swipe",                       type: "cc" }],
+  [357214, { race: "Dracthyr",             name: "Wing Buffet",                      type: "knockback" }],
+  [446280, { race: "Earthen",              name: "Azerite Surge",                    type: "damage" }],
+  [448849, { race: "Earthen",              name: "Wide-Eyed Wonder",                 type: "utility" }],
+]);
+
 const INTERRUPT_SPELLS = new Set([
   47528,  // Mind Freeze (DK)
   183752, // Consume Magic (DH)
@@ -458,6 +490,7 @@ function parseCombatLog({ run, combatLogLines, partyGuids = [] }) {
         cooldownEvents : [],
         defensives     : [],
         offensiveCDs   : [],
+        racialCasts    : [],
         interrupts     : [],
         enemyCasts     : [],
         ccEvents       : [],
@@ -791,6 +824,23 @@ function parseCombatLog({ run, combatLogLines, partyGuids = [] }) {
       }
     }
 
+    // Racial ability cast — Overwolf parity
+    const racialInfo = RACIAL_ABILITIES.get(spellId);
+    if (racialInfo) {
+      const playerName = (fields[2] || "").replace(/"/g, "") || "Unknown";
+      segData.racialCasts.push({
+        ts         : normalizedTs,
+        offsetMs   : seg ? normalizedTs - seg.startTs : 0,
+        spellId,
+        spellName  : racialInfo.name,
+        name       : playerName,
+        class      : guidToClass.get(sourceGuid) || "UNKNOWN",
+        role       : guidToRole.get(sourceGuid)  || "unknown",
+        race       : racialInfo.race,
+        racialType : racialInfo.type,
+      });
+    }
+
     // Equipment-use cooldown (trinket / on-use ring) — registry-driven match
     const equipMeta = equipmentBySpellId.get(spellId);
     if (equipMeta) {
@@ -1106,6 +1156,7 @@ function parseCombatLog({ run, combatLogLines, partyGuids = [] }) {
         cooldownEvents : [],
         defensives     : [],
         offensiveCDs   : [],
+        racialCasts    : [],
         interrupts     : [],
         enemyCasts     : [],
         ccEvents       : [],
@@ -1148,6 +1199,7 @@ function parseCombatLog({ run, combatLogLines, partyGuids = [] }) {
       cooldownEvents : data.cooldownEvents.filter(cd => isPlayerGuid(cd.sourceGuid)),
       defensives     : data.defensives,
       offensiveCDs   : data.offensiveCDs,
+      racialCasts    : data.racialCasts,
       interrupts     : data.interrupts,
       enemyCasts     : data.enemyCasts,
       ccEvents       : data.ccEvents.filter(cc => isPlayerGuid(cc.sourceGuid)),
