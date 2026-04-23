@@ -111,6 +111,50 @@ const DEFENSIVE_CD_SPELLS = new Map([
   [118038, { name: "Die by the Sword",          category: "defensive" }],
 ]);
 
+// Offensive CDs — copied verbatim from combatLogRunBuilder.js OFFENSIVE_COOLDOWNS (Overwolf parity).
+// type: "group_offensive" = Bloodlust-class raid buff, "personal_offensive" = personal DPS CD.
+const OFFENSIVE_COOLDOWNS = new Map([
+  [2825,   { name: "Bloodlust",            type: "group_offensive",    cd: 300 }],
+  [32182,  { name: "Heroism",              type: "group_offensive",    cd: 300 }],
+  [80353,  { name: "Time Warp",            type: "group_offensive",    cd: 300 }],
+  [264667, { name: "Primal Rage",          type: "group_offensive",    cd: 300 }],
+  [390386, { name: "Fury of the Aspects",  type: "group_offensive",    cd: 300 }],
+  [47568,  { name: "Empower Rune Weapon",  type: "personal_offensive", cd: 120 }],
+  [207289, { name: "Unholy Assault",       type: "personal_offensive", cd: 90  }],
+  [51271,  { name: "Pillar of Frost",      type: "personal_offensive", cd: 60  }],
+  [275699, { name: "Apocalypse",           type: "personal_offensive", cd: 75  }],
+  [191427, { name: "Metamorphosis (Havoc)", type: "personal_offensive", cd: 240 }],
+  [258920, { name: "Immolation Aura",      type: "personal_offensive", cd: 30  }],
+  [194223, { name: "Celestial Alignment",  type: "personal_offensive", cd: 180 }],
+  [106951, { name: "Berserk (Feral)",      type: "personal_offensive", cd: 180 }],
+  [375087, { name: "Dragonrage",           type: "personal_offensive", cd: 120 }],
+  [288613, { name: "Trueshot",             type: "personal_offensive", cd: 120 }],
+  [19574,  { name: "Bestial Wrath",        type: "personal_offensive", cd: 90  }],
+  [360952, { name: "Coordinated Assault",  type: "personal_offensive", cd: 120 }],
+  [12472,  { name: "Icy Veins",            type: "personal_offensive", cd: 120 }],
+  [190319, { name: "Combustion",           type: "personal_offensive", cd: 120 }],
+  [365350, { name: "Arcane Surge",         type: "personal_offensive", cd: 90  }],
+  [137639, { name: "Storm, Earth, and Fire", type: "personal_offensive", cd: 90 }],
+  [152173, { name: "Serenity",             type: "personal_offensive", cd: 90  }],
+  [31884,  { name: "Avenging Wrath",       type: "personal_offensive", cd: 120 }],
+  [231895, { name: "Crusade",              type: "personal_offensive", cd: 120 }],
+  [10060,  { name: "Power Infusion",       type: "personal_offensive", cd: 120 }],
+  [228260, { name: "Void Eruption",        type: "personal_offensive", cd: 90  }],
+  [13750,  { name: "Adrenaline Rush",      type: "personal_offensive", cd: 180 }],
+  [121471, { name: "Shadow Blades",        type: "personal_offensive", cd: 180 }],
+  [360194, { name: "Deathmark",            type: "personal_offensive", cd: 120 }],
+  [114050, { name: "Ascendance",           type: "personal_offensive", cd: 180 }],
+  [191634, { name: "Stormkeeper",          type: "personal_offensive", cd: 60  }],
+  [51533,  { name: "Feral Spirit",         type: "personal_offensive", cd: 90  }],
+  [1122,   { name: "Summon Infernal",      type: "personal_offensive", cd: 180 }],
+  [111898, { name: "Grimoire: Felguard",   type: "personal_offensive", cd: 120 }],
+  [205180, { name: "Summon Darkglare",     type: "personal_offensive", cd: 120 }],
+  [107574, { name: "Avatar",               type: "personal_offensive", cd: 90  }],
+  [1719,   { name: "Recklessness",         type: "personal_offensive", cd: 90  }],
+  [227847, { name: "Bladestorm",           type: "personal_offensive", cd: 90  }],
+  [228920, { name: "Ravager",              type: "personal_offensive", cd: 90  }],
+]);
+
 const INTERRUPT_SPELLS = new Set([
   47528,  // Mind Freeze (DK)
   183752, // Consume Magic (DH)
@@ -413,6 +457,7 @@ function parseCombatLog({ run, combatLogLines, partyGuids = [] }) {
         deaths         : [],
         cooldownEvents : [],
         defensives     : [],
+        offensiveCDs   : [],
         interrupts     : [],
         enemyCasts     : [],
         ccEvents       : [],
@@ -723,6 +768,27 @@ function parseCombatLog({ run, combatLogLines, partyGuids = [] }) {
         spec     : guidToSpec.get(sourceGuid)  || "",
         category : defInfo.category,
       });
+    }
+
+    // Offensive cooldown (Bloodlust, personal DPS CDs) — Overwolf parity
+    const offInfo = OFFENSIVE_COOLDOWNS.get(spellId);
+    if (offInfo && segData.offensiveCDs.length < 30) {
+      const playerName = (fields[2] || "").replace(/"/g, "") || "Unknown";
+      const isDupe = segData.offensiveCDs.some(o =>
+        o.spellId === spellId && o.name === playerName && Math.abs(o.ts - normalizedTs) < 1000
+      );
+      if (!isDupe) {
+        segData.offensiveCDs.push({
+          ts       : normalizedTs,
+          offsetMs : seg ? normalizedTs - seg.startTs : 0,
+          spellId,
+          spellName: offInfo.name,
+          name     : playerName,
+          class    : guidToClass.get(sourceGuid) || "UNKNOWN",
+          role     : guidToRole.get(sourceGuid)  || "unknown",
+          cdType   : offInfo.type,
+        });
+      }
     }
 
     // Equipment-use cooldown (trinket / on-use ring) — registry-driven match
@@ -1039,6 +1105,7 @@ function parseCombatLog({ run, combatLogLines, partyGuids = [] }) {
         deaths         : [],
         cooldownEvents : [],
         defensives     : [],
+        offensiveCDs   : [],
         interrupts     : [],
         enemyCasts     : [],
         ccEvents       : [],
@@ -1080,6 +1147,7 @@ function parseCombatLog({ run, combatLogLines, partyGuids = [] }) {
       deaths         : data.deaths,
       cooldownEvents : data.cooldownEvents.filter(cd => isPlayerGuid(cd.sourceGuid)),
       defensives     : data.defensives,
+      offensiveCDs   : data.offensiveCDs,
       interrupts     : data.interrupts,
       enemyCasts     : data.enemyCasts,
       ccEvents       : data.ccEvents.filter(cc => isPlayerGuid(cc.sourceGuid)),
