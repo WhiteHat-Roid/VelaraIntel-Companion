@@ -32,93 +32,83 @@
 
 // ─── Spell allowlists ─────────────────────────────────────────────────────────
 
-// Flat defensive CD list — matches ALWAYS_TRACK + SPEC_CONDITIONAL from combatLogRunBuilder.js
-// Parser doesn't do spec-aware filtering (no per-player spec context here).
-const DEFENSIVE_CD_SPELLS = new Set([
+// Defensive CD spells — Map<spellId, { name, category }>
+// category: "defensive" = self-only, "external" = cast on another player
+// Matches ALWAYS_TRACK_DEFENSIVES from combatLogRunBuilder.js (Overwolf parity).
+// Map.has() semantics are identical to Set.has() so prior call sites keep working.
+const DEFENSIVE_CD_SPELLS = new Map([
   // ── Death Knight ──
-  48792,    // Icebound Fortitude (3min)
-  55233,    // Vampiric Blood (1.5min)
-  49028,    // Dancing Rune Weapon (2min)
-  51052,    // Anti-Magic Zone (2min)
-  49039,    // Lichborne (2min)
-
+  [48792,  { name: "Icebound Fortitude",       category: "defensive" }],
+  [55233,  { name: "Vampiric Blood",            category: "defensive" }],
+  [49028,  { name: "Dancing Rune Weapon",       category: "defensive" }],
+  [51052,  { name: "Anti-Magic Zone",           category: "defensive" }],
+  [49039,  { name: "Lichborne",                 category: "defensive" }],
   // ── Demon Hunter ──
-  198589,   // Blur (1min)
-  196718,   // Darkness (3min)
-  196555,   // Netherwalk (3min)
-  187827,   // Metamorphosis (3-4min)
-  204021,   // Fiery Brand (1min)
-
+  [198589, { name: "Blur",                      category: "defensive" }],
+  [196718, { name: "Darkness",                  category: "defensive" }],
+  [196555, { name: "Netherwalk",                category: "defensive" }],
+  [187827, { name: "Metamorphosis (Veng)",      category: "defensive" }],
+  [204021, { name: "Fiery Brand",               category: "defensive" }],
   // ── Druid ──
-  22812,    // Barkskin (45s — core druid defensive)
-  61336,    // Survival Instincts (3min)
-  102342,   // Ironbark (1.5min, external)
-  22842,    // Frenzied Regeneration (spec-conditional in RunBuilder)
-  102558,   // Incarnation: Guardian of Ursoc (spec-conditional in RunBuilder)
-  319454,   // Heart of the Wild (spec-conditional in RunBuilder)
-
+  [22812,  { name: "Barkskin",                  category: "defensive" }],
+  [61336,  { name: "Survival Instincts",        category: "defensive" }],
+  [102342, { name: "Ironbark",                  category: "external"  }],
+  [22842,  { name: "Frenzied Regeneration",     category: "defensive" }],
+  [102558, { name: "Incarnation: Guardian of Ursoc", category: "defensive" }],
+  [319454, { name: "Heart of the Wild",         category: "defensive" }],
   // ── Evoker ──
-  374348,   // Obsidian Scales (2.5min)
-  374227,   // Zephyr (2min)
-  370960,   // Emerald Communion (3min)
-
+  [374348, { name: "Obsidian Scales",           category: "defensive" }],
+  [374227, { name: "Zephyr",                    category: "defensive" }],
+  [370960, { name: "Emerald Communion",         category: "defensive" }],
   // ── Hunter ──
-  186265,   // Aspect of the Turtle (3min)
-  109304,   // Exhilaration (2min)
-
+  [186265, { name: "Aspect of the Turtle",      category: "defensive" }],
+  [109304, { name: "Exhilaration",              category: "defensive" }],
   // ── Mage ──
-  45438,    // Ice Block (4min)
-  342245,   // Alter Time (1min)
-  55342,    // Mirror Image (2min)
-
+  [45438,  { name: "Ice Block",                 category: "defensive" }],
+  [342245, { name: "Alter Time",                category: "defensive" }],
+  [55342,  { name: "Mirror Image",              category: "defensive" }],
   // ── Monk ──
-  115203,   // Fortifying Brew (3min)
-  122278,   // Dampen Harm (2min)
-  122783,   // Diffuse Magic (1.5min)
-  115176,   // Zen Meditation (5min)
-  116849,   // Life Cocoon (2min, external)
-  325197,   // Invoke Chi-Ji, the Red Crane (3min, Mistweaver)
-  322118,   // Invoke Yu'lon, the Jade Serpent (3min, Mistweaver)
-
+  [115203, { name: "Fortifying Brew",           category: "defensive" }],
+  [122278, { name: "Dampen Harm",               category: "defensive" }],
+  [122783, { name: "Diffuse Magic",             category: "defensive" }],
+  [115176, { name: "Zen Meditation",            category: "defensive" }],
+  [116849, { name: "Life Cocoon",               category: "external"  }],
+  [325197, { name: "Invoke Chi-Ji",             category: "external"  }],
+  [322118, { name: "Invoke Yu'lon",             category: "external"  }],
   // ── Paladin ──
-  642,      // Divine Shield (5min)
-  498,      // Divine Protection (1min)
-  31850,    // Ardent Defender (2min)
-  86659,    // Guardian of Ancient Kings (5min)
-  633,      // Lay on Hands (10min, external)
-  1022,     // Blessing of Protection (5min, external)
-  6940,     // Blessing of Sacrifice (1min, external)
-  204018,   // Blessing of Spellwarding (3min, external)
-
+  [642,    { name: "Divine Shield",             category: "defensive" }],
+  [498,    { name: "Divine Protection",         category: "defensive" }],
+  [31850,  { name: "Ardent Defender",           category: "defensive" }],
+  [86659,  { name: "Guardian of Ancient Kings", category: "defensive" }],
+  [633,    { name: "Lay on Hands",              category: "external"  }],
+  [1022,   { name: "Blessing of Protection",    category: "external"  }],
+  [6940,   { name: "Blessing of Sacrifice",     category: "external"  }],
+  [204018, { name: "Blessing of Spellwarding",  category: "external"  }],
   // ── Priest ──
-  47788,    // Guardian Spirit (3min, external)
-  33206,    // Pain Suppression (3min, external)
-  19236,    // Desperate Prayer (1.5min)
-  62618,    // Power Word: Barrier (3min, group)
-  271466,   // Luminous Barrier (3min, Disc)
-  15286,    // Vampiric Embrace (2min, Shadow)
-  64843,    // Divine Hymn (3min, Holy)
-  47585,    // Dispersion (2min, Shadow)
-
+  [47788,  { name: "Guardian Spirit",           category: "external"  }],
+  [33206,  { name: "Pain Suppression",          category: "external"  }],
+  [19236,  { name: "Desperate Prayer",          category: "defensive" }],
+  [62618,  { name: "Power Word: Barrier",       category: "external"  }],
+  [271466, { name: "Luminous Barrier",          category: "external"  }],
+  [15286,  { name: "Vampiric Embrace",          category: "defensive" }],
+  [64843,  { name: "Divine Hymn",               category: "external"  }],
+  [47585,  { name: "Dispersion",                category: "defensive" }],
   // ── Rogue ──
-  31224,    // Cloak of Shadows (2min)
-  5277,     // Evasion (2min)
-
+  [31224,  { name: "Cloak of Shadows",          category: "defensive" }],
+  [5277,   { name: "Evasion",                   category: "defensive" }],
   // ── Shaman ──
-  108271,   // Astral Shift (1.5min)
-  98008,    // Spirit Link Totem (3min, group)
-  108280,   // Healing Tide Totem (3min, group)
-
+  [108271, { name: "Astral Shift",              category: "defensive" }],
+  [98008,  { name: "Spirit Link Totem",         category: "external"  }],
+  [108280, { name: "Healing Tide Totem",        category: "external"  }],
   // ── Warlock ──
-  104773,   // Unending Resolve (3min)
-  108416,   // Dark Pact (1min)
-
+  [104773, { name: "Unending Resolve",          category: "defensive" }],
+  [108416, { name: "Dark Pact",                 category: "defensive" }],
   // ── Warrior ──
-  871,      // Shield Wall (3min)
-  12975,    // Last Stand (3min)
-  184364,   // Enraged Regeneration (2min, Fury)
-  97462,    // Rallying Cry (3min, group)
-  118038,   // Die by the Sword (3min, Arms/Fury)
+  [871,    { name: "Shield Wall",               category: "defensive" }],
+  [12975,  { name: "Last Stand",                category: "defensive" }],
+  [184364, { name: "Enraged Regeneration",      category: "defensive" }],
+  [97462,  { name: "Rallying Cry",              category: "external"  }],
+  [118038, { name: "Die by the Sword",          category: "defensive" }],
 ]);
 
 const INTERRUPT_SPELLS = new Set([
@@ -422,6 +412,7 @@ function parseCombatLog({ run, combatLogLines, partyGuids = [] }) {
       segmentData.set(segmentId, {
         deaths         : [],
         cooldownEvents : [],
+        defensives     : [],
         interrupts     : [],
         enemyCasts     : [],
         ccEvents       : [],
@@ -705,8 +696,9 @@ function parseCombatLog({ run, combatLogLines, partyGuids = [] }) {
     const seg     = getSegment(segmentId);
     const segData = getSegData(segmentId);
 
-    // Defensive cooldown
-    if (DEFENSIVE_CD_SPELLS.has(spellId)) {
+    // Defensive cooldown — dual-populate: legacy cooldownEvents + Overwolf-parity defensives with category
+    const defInfo = DEFENSIVE_CD_SPELLS.get(spellId);
+    if (defInfo) {
       segData.cdCounter++;
       segData.cooldownEvents.push({
         cooldownEventId : `${run.runId || "unk"}-${segmentId}-cd${segData.cdCounter}`,
@@ -719,6 +711,17 @@ function parseCombatLog({ run, combatLogLines, partyGuids = [] }) {
         class    : guidToClass.get(sourceGuid) || "UNKNOWN",
         role     : guidToRole.get(sourceGuid)  || "unknown",
         spec     : guidToSpec.get(sourceGuid)  || "",
+      });
+      segData.defensives.push({
+        ts       : normalizedTs,
+        offsetMs : seg ? normalizedTs - seg.startTs : 0,
+        spellId,
+        spellName: defInfo.name || spellName,
+        name     : (fields[2] || "").replace(/"/g, "") || "Unknown",
+        class    : guidToClass.get(sourceGuid) || "UNKNOWN",
+        role     : guidToRole.get(sourceGuid)  || "unknown",
+        spec     : guidToSpec.get(sourceGuid)  || "",
+        category : defInfo.category,
       });
     }
 
@@ -1035,6 +1038,7 @@ function parseCombatLog({ run, combatLogLines, partyGuids = [] }) {
         segmentId      : seg.segmentId,
         deaths         : [],
         cooldownEvents : [],
+        defensives     : [],
         interrupts     : [],
         enemyCasts     : [],
         ccEvents       : [],
@@ -1075,6 +1079,7 @@ function parseCombatLog({ run, combatLogLines, partyGuids = [] }) {
       segmentId      : seg.segmentId,
       deaths         : data.deaths,
       cooldownEvents : data.cooldownEvents.filter(cd => isPlayerGuid(cd.sourceGuid)),
+      defensives     : data.defensives,
       interrupts     : data.interrupts,
       enemyCasts     : data.enemyCasts,
       ccEvents       : data.ccEvents.filter(cc => isPlayerGuid(cc.sourceGuid)),
