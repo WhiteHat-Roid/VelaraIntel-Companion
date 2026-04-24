@@ -59,6 +59,9 @@ const ALWAYS_TRACK_DEFENSIVES = new Map([
   [116849, { name: "Life Cocoon",            category: "external" }],
   [325197, { name: "Invoke Chi-Ji",          category: "external" }],
   [322118, { name: "Invoke Yu'lon",          category: "external" }],
+  [132578, { name: "Invoke Niuzao, the Black Ox", category: "defensive" }],
+  [322507, { name: "Celestial Brew",         category: "defensive" }],
+  [115399, { name: "Black Ox Brew",          category: "defensive" }],
 
   // ── Paladin ──
   [642,    { name: "Divine Shield",          category: "defensive" }],

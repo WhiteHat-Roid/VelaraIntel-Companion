@@ -134,7 +134,8 @@ function startWowPoll() {
       console.log("[WoW] Retail WoW detected — showing dashboard");
       broadcastStatus("WoW detected — companion active", "ok");
       createDashboard();
-      if (dashboardWindow) { dashboardWindow.show(); dashboardWindow.focus(); }
+      const wowAutoShow = store.get("wowAutoShow", false);
+      if (wowAutoShow && dashboardWindow) { dashboardWindow.show(); dashboardWindow.focus(); }
 
       // Start watchers if not already running
       if (!watchersStarted) {
@@ -181,6 +182,24 @@ let lastKnownRunId   = null;
 let lastKnownUploaderIdentity = null;
 let lastActiveRunId  = null;
 let cachedActiveRun  = null;  // In-memory copy of _activeRun for key-end upload
+let cachedAddonRaces = {};    // name→race from VelaraIntelDB.races — used to fill partyMember race on upload
+
+// Fill race on player + partyMembers from the addon's SavedVariables map.
+// Called immediately before upload. Only sets race where it was missing —
+// never overwrites. Safe to call when cachedAddonRaces is empty.
+function injectAddonRaces(payload) {
+  if (!payload || !payload.run) return payload;
+  const races = cachedAddonRaces || {};
+  if (Object.keys(races).length === 0) return payload;
+  const p = payload.run.player;
+  if (p && p.name && !p.race && races[p.name]) p.race = races[p.name];
+  if (Array.isArray(payload.run.partyMembers)) {
+    for (const pm of payload.run.partyMembers) {
+      if (pm && pm.name && !pm.race && races[pm.name]) pm.race = races[pm.name];
+    }
+  }
+  return payload;
+}
 let logRescanTimer   = null;  // 30-second periodic combat log re-scan
 
 const WOW_SEARCH_PATHS = [
@@ -733,6 +752,12 @@ function startSVWatcher() {
       if (!parsed || !parsed.VelaraIntelDB) return;
       const db = parsed.VelaraIntelDB;
 
+      // Cache the addon's name→race map so upload-time injection can fill
+      // race on every party member, not just those whose racial fired.
+      if (db.races && typeof db.races === "object") {
+        cachedAddonRaces = db.races;
+      }
+
       // Extract uploader identity from SavedVariables
       const uploaderIdentity = db.uploaderIdentity || null;
       if (uploaderIdentity) {
@@ -1048,6 +1073,7 @@ function startCombatLogWatcher() {
         payload.run.privacyMode = privacyMode;
 
         broadcastStatus("Uploading to velaraintel.com...", "info");
+        injectAddonRaces(payload);
         apiUploader.upload(payload).then((result) => {
           if (result.ok) {
             broadcastStatus("Uploaded!", "ok");
@@ -1208,6 +1234,7 @@ function setupIPC() {
     autoUpload     : store.get("autoUpload"),
     startMinimized : store.get("startMinimized"),
     autoStartOnBoot: getAutoStart(),
+    wowAutoShow    : store.get("wowAutoShow", false),
   }));
 
   ipcMain.handle("save-settings", (_, settings) => {
@@ -1215,18 +1242,19 @@ function setupIPC() {
       settings.wowPath !== store.get("wowPath") ||
       settings.accountName !== store.get("accountName");
 
-    const safe = {
-      wowPath       : settings.wowPath,
-      accountName   : settings.accountName,
-      hotkey        : settings.hotkey,
-      autoUpload    : settings.autoUpload,
-      startMinimized: settings.startMinimized,
-    };
-    Object.entries(safe).forEach(([k, v]) => store.set(k, v));
+    // Partial-merge: persist only keys the caller actually sent. A caller doing
+    // saveSettings({ wowPath }) must not silently wipe other settings to undefined.
+    const ALLOWED_KEYS = [
+      "wowPath", "accountName", "hotkey", "autoUpload",
+      "startMinimized", "wowAutoShow", "autoStartOnBoot",
+    ];
+    for (const k of ALLOWED_KEYS) {
+      if (k in settings) store.set(k, settings[k]);
+    }
 
-    // Wire startMinimized toggle to Windows auto-start via Registry
-    if (typeof settings.startMinimized === "boolean") {
-      setAutoStart(settings.startMinimized);
+    // Wire autoStartOnBoot toggle to Windows auto-start via Registry
+    if (typeof settings.autoStartOnBoot === "boolean") {
+      setAutoStart(settings.autoStartOnBoot);
     }
 
     // Overlay disabled in v1.3.3 — hotkey registration removed
@@ -1264,6 +1292,7 @@ function setupIPC() {
     try {
       payload.run.runMode = runMode;
       payload.run.privacyMode = privacyMode;
+      injectAddonRaces(payload);
 
       const payloadSize = JSON.stringify(payload).length;
       broadcastStatus("Uploading " + (payloadSize / 1024).toFixed(1) + " KB to velaraintel.com...", "info");
@@ -1416,11 +1445,11 @@ app.whenReady().then(async () => {
   // Always poll — detects WoW launch/close transitions
   startWowPoll();
 
-  // Enable auto-start at Windows boot (tray mode — lightweight until WoW opens)
-  if (!getAutoStart()) {
-    setAutoStart(true);
-    console.log("[Velara] Auto-start enabled — companion will start with Windows");
-  }
+  // Sync Windows auto-start registry to stored user pref (default OFF).
+  // Called unconditionally so that if pref is false but an older build already
+  // wrote the registry entry, it gets cleaned up on next launch.
+  const autoStartPref = store.get("autoStartOnBoot", false);
+  setAutoStart(autoStartPref);
 });
 
 app.on("window-all-closed", (e) => e.preventDefault());

@@ -32,93 +32,229 @@
 
 // ─── Spell allowlists ─────────────────────────────────────────────────────────
 
-// Flat defensive CD list — matches ALWAYS_TRACK + SPEC_CONDITIONAL from combatLogRunBuilder.js
-// Parser doesn't do spec-aware filtering (no per-player spec context here).
-const DEFENSIVE_CD_SPELLS = new Set([
+// Defensive CD spells — Map<spellId, { name, category }>
+// category: "defensive" = self-only, "external" = cast on another player
+// Matches ALWAYS_TRACK_DEFENSIVES from combatLogRunBuilder.js (Overwolf parity).
+// Map.has() semantics are identical to Set.has() so prior call sites keep working.
+const DEFENSIVE_CD_SPELLS = new Map([
   // ── Death Knight ──
-  48792,    // Icebound Fortitude (3min)
-  55233,    // Vampiric Blood (1.5min)
-  49028,    // Dancing Rune Weapon (2min)
-  51052,    // Anti-Magic Zone (2min)
-  49039,    // Lichborne (2min)
-
+  [48792,  { name: "Icebound Fortitude",       category: "defensive" }],
+  [55233,  { name: "Vampiric Blood",            category: "defensive" }],
+  [49028,  { name: "Dancing Rune Weapon",       category: "defensive" }],
+  [51052,  { name: "Anti-Magic Zone",           category: "defensive" }],
+  [49039,  { name: "Lichborne",                 category: "defensive" }],
   // ── Demon Hunter ──
-  198589,   // Blur (1min)
-  196718,   // Darkness (3min)
-  196555,   // Netherwalk (3min)
-  187827,   // Metamorphosis (3-4min)
-  204021,   // Fiery Brand (1min)
-
+  [198589, { name: "Blur",                      category: "defensive" }],
+  [196718, { name: "Darkness",                  category: "defensive" }],
+  [196555, { name: "Netherwalk",                category: "defensive" }],
+  [187827, { name: "Metamorphosis (Veng)",      category: "defensive" }],
+  [204021, { name: "Fiery Brand",               category: "defensive" }],
   // ── Druid ──
-  22812,    // Barkskin (45s — core druid defensive)
-  61336,    // Survival Instincts (3min)
-  102342,   // Ironbark (1.5min, external)
-  22842,    // Frenzied Regeneration (spec-conditional in RunBuilder)
-  102558,   // Incarnation: Guardian of Ursoc (spec-conditional in RunBuilder)
-  319454,   // Heart of the Wild (spec-conditional in RunBuilder)
-
+  [22812,  { name: "Barkskin",                  category: "defensive" }],
+  [61336,  { name: "Survival Instincts",        category: "defensive" }],
+  [102342, { name: "Ironbark",                  category: "external"  }],
+  [22842,  { name: "Frenzied Regeneration",     category: "defensive" }],
+  [102558, { name: "Incarnation: Guardian of Ursoc", category: "defensive" }],
+  [319454, { name: "Heart of the Wild",         category: "defensive" }],
   // ── Evoker ──
-  374348,   // Obsidian Scales (2.5min)
-  374227,   // Zephyr (2min)
-  370960,   // Emerald Communion (3min)
-
+  [374348, { name: "Obsidian Scales",           category: "defensive" }],
+  [374227, { name: "Zephyr",                    category: "defensive" }],
+  [370960, { name: "Emerald Communion",         category: "defensive" }],
   // ── Hunter ──
-  186265,   // Aspect of the Turtle (3min)
-  109304,   // Exhilaration (2min)
-
+  [186265, { name: "Aspect of the Turtle",      category: "defensive" }],
+  [109304, { name: "Exhilaration",              category: "defensive" }],
   // ── Mage ──
-  45438,    // Ice Block (4min)
-  342245,   // Alter Time (1min)
-  55342,    // Mirror Image (2min)
-
+  [45438,  { name: "Ice Block",                 category: "defensive" }],
+  [342245, { name: "Alter Time",                category: "defensive" }],
+  [55342,  { name: "Mirror Image",              category: "defensive" }],
   // ── Monk ──
-  115203,   // Fortifying Brew (3min)
-  122278,   // Dampen Harm (2min)
-  122783,   // Diffuse Magic (1.5min)
-  115176,   // Zen Meditation (5min)
-  116849,   // Life Cocoon (2min, external)
-  325197,   // Invoke Chi-Ji, the Red Crane (3min, Mistweaver)
-  322118,   // Invoke Yu'lon, the Jade Serpent (3min, Mistweaver)
-
+  [115203, { name: "Fortifying Brew",           category: "defensive" }],
+  [122278, { name: "Dampen Harm",               category: "defensive" }],
+  [122783, { name: "Diffuse Magic",             category: "defensive" }],
+  [115176, { name: "Zen Meditation",            category: "defensive" }],
+  [116849, { name: "Life Cocoon",               category: "external"  }],
+  [325197, { name: "Invoke Chi-Ji",             category: "external"  }],
+  [322118, { name: "Invoke Yu'lon",             category: "external"  }],
   // ── Paladin ──
-  642,      // Divine Shield (5min)
-  498,      // Divine Protection (1min)
-  31850,    // Ardent Defender (2min)
-  86659,    // Guardian of Ancient Kings (5min)
-  633,      // Lay on Hands (10min, external)
-  1022,     // Blessing of Protection (5min, external)
-  6940,     // Blessing of Sacrifice (1min, external)
-  204018,   // Blessing of Spellwarding (3min, external)
-
+  [642,    { name: "Divine Shield",             category: "defensive" }],
+  [498,    { name: "Divine Protection",         category: "defensive" }],
+  [31850,  { name: "Ardent Defender",           category: "defensive" }],
+  [86659,  { name: "Guardian of Ancient Kings", category: "defensive" }],
+  [633,    { name: "Lay on Hands",              category: "external"  }],
+  [1022,   { name: "Blessing of Protection",    category: "external"  }],
+  [6940,   { name: "Blessing of Sacrifice",     category: "external"  }],
+  [204018, { name: "Blessing of Spellwarding",  category: "external"  }],
   // ── Priest ──
-  47788,    // Guardian Spirit (3min, external)
-  33206,    // Pain Suppression (3min, external)
-  19236,    // Desperate Prayer (1.5min)
-  62618,    // Power Word: Barrier (3min, group)
-  271466,   // Luminous Barrier (3min, Disc)
-  15286,    // Vampiric Embrace (2min, Shadow)
-  64843,    // Divine Hymn (3min, Holy)
-  47585,    // Dispersion (2min, Shadow)
-
+  [47788,  { name: "Guardian Spirit",           category: "external"  }],
+  [33206,  { name: "Pain Suppression",          category: "external"  }],
+  [19236,  { name: "Desperate Prayer",          category: "defensive" }],
+  [62618,  { name: "Power Word: Barrier",       category: "external"  }],
+  [271466, { name: "Luminous Barrier",          category: "external"  }],
+  [15286,  { name: "Vampiric Embrace",          category: "defensive" }],
+  [64843,  { name: "Divine Hymn",               category: "external"  }],
+  [47585,  { name: "Dispersion",                category: "defensive" }],
   // ── Rogue ──
-  31224,    // Cloak of Shadows (2min)
-  5277,     // Evasion (2min)
-
+  [31224,  { name: "Cloak of Shadows",          category: "defensive" }],
+  [5277,   { name: "Evasion",                   category: "defensive" }],
   // ── Shaman ──
-  108271,   // Astral Shift (1.5min)
-  98008,    // Spirit Link Totem (3min, group)
-  108280,   // Healing Tide Totem (3min, group)
-
+  [108271, { name: "Astral Shift",              category: "defensive" }],
+  [98008,  { name: "Spirit Link Totem",         category: "external"  }],
+  [108280, { name: "Healing Tide Totem",        category: "external"  }],
   // ── Warlock ──
-  104773,   // Unending Resolve (3min)
-  108416,   // Dark Pact (1min)
-
+  [104773, { name: "Unending Resolve",          category: "defensive" }],
+  [108416, { name: "Dark Pact",                 category: "defensive" }],
   // ── Warrior ──
-  871,      // Shield Wall (3min)
-  12975,    // Last Stand (3min)
-  184364,   // Enraged Regeneration (2min, Fury)
-  97462,    // Rallying Cry (3min, group)
-  118038,   // Die by the Sword (3min, Arms/Fury)
+  [871,    { name: "Shield Wall",               category: "defensive" }],
+  [12975,  { name: "Last Stand",                category: "defensive" }],
+  [184364, { name: "Enraged Regeneration",      category: "defensive" }],
+  [97462,  { name: "Rallying Cry",              category: "external"  }],
+  [118038, { name: "Die by the Sword",          category: "defensive" }],
+]);
+
+// Offensive CDs — copied verbatim from combatLogRunBuilder.js OFFENSIVE_COOLDOWNS (Overwolf parity).
+// type: "group_offensive" = Bloodlust-class raid buff, "personal_offensive" = personal DPS CD.
+const OFFENSIVE_COOLDOWNS = new Map([
+  [2825,   { name: "Bloodlust",            type: "group_offensive",    cd: 300 }],
+  [32182,  { name: "Heroism",              type: "group_offensive",    cd: 300 }],
+  [80353,  { name: "Time Warp",            type: "group_offensive",    cd: 300 }],
+  [264667, { name: "Primal Rage",          type: "group_offensive",    cd: 300 }],
+  [390386, { name: "Fury of the Aspects",  type: "group_offensive",    cd: 300 }],
+  [47568,  { name: "Empower Rune Weapon",  type: "personal_offensive", cd: 120 }],
+  [207289, { name: "Unholy Assault",       type: "personal_offensive", cd: 90  }],
+  [51271,  { name: "Pillar of Frost",      type: "personal_offensive", cd: 60  }],
+  [275699, { name: "Apocalypse",           type: "personal_offensive", cd: 75  }],
+  [191427, { name: "Metamorphosis (Havoc)", type: "personal_offensive", cd: 240 }],
+  [258920, { name: "Immolation Aura",      type: "personal_offensive", cd: 30  }],
+  [194223, { name: "Celestial Alignment",  type: "personal_offensive", cd: 180 }],
+  [106951, { name: "Berserk (Feral)",      type: "personal_offensive", cd: 180 }],
+  [375087, { name: "Dragonrage",           type: "personal_offensive", cd: 120 }],
+  [288613, { name: "Trueshot",             type: "personal_offensive", cd: 120 }],
+  [19574,  { name: "Bestial Wrath",        type: "personal_offensive", cd: 90  }],
+  [360952, { name: "Coordinated Assault",  type: "personal_offensive", cd: 120 }],
+  [12472,  { name: "Icy Veins",            type: "personal_offensive", cd: 120 }],
+  [190319, { name: "Combustion",           type: "personal_offensive", cd: 120 }],
+  [365350, { name: "Arcane Surge",         type: "personal_offensive", cd: 90  }],
+  [137639, { name: "Storm, Earth, and Fire", type: "personal_offensive", cd: 90 }],
+  [152173, { name: "Serenity",             type: "personal_offensive", cd: 90  }],
+  [31884,  { name: "Avenging Wrath",       type: "personal_offensive", cd: 120 }],
+  [231895, { name: "Crusade",              type: "personal_offensive", cd: 120 }],
+  [10060,  { name: "Power Infusion",       type: "personal_offensive", cd: 120 }],
+  [228260, { name: "Void Eruption",        type: "personal_offensive", cd: 90  }],
+  [13750,  { name: "Adrenaline Rush",      type: "personal_offensive", cd: 180 }],
+  [121471, { name: "Shadow Blades",        type: "personal_offensive", cd: 180 }],
+  [360194, { name: "Deathmark",            type: "personal_offensive", cd: 120 }],
+  [114050, { name: "Ascendance",           type: "personal_offensive", cd: 180 }],
+  [191634, { name: "Stormkeeper",          type: "personal_offensive", cd: 60  }],
+  [51533,  { name: "Feral Spirit",         type: "personal_offensive", cd: 90  }],
+  [1122,   { name: "Summon Infernal",      type: "personal_offensive", cd: 180 }],
+  [111898, { name: "Grimoire: Felguard",   type: "personal_offensive", cd: 120 }],
+  [205180, { name: "Summon Darkglare",     type: "personal_offensive", cd: 120 }],
+  [107574, { name: "Avatar",               type: "personal_offensive", cd: 90  }],
+  [1719,   { name: "Recklessness",         type: "personal_offensive", cd: 90  }],
+  [227847, { name: "Bladestorm",           type: "personal_offensive", cd: 90  }],
+  [228920, { name: "Ravager",              type: "personal_offensive", cd: 90  }],
+]);
+
+// Racial Abilities — copied verbatim from combatLogRunBuilder.js RACIAL_ABILITIES (Overwolf parity).
+// type buckets: "offensive" | "damage" | "heal" | "cc" | "cleanse" | "cleanse_defensive" | "cleanse_offensive"
+//               "combat_drop" | "mobility" | "emergency_heal" | "knockback" | "utility"
+const RACIAL_ABILITIES = new Map([
+  [20594,  { race: "Dwarf",                name: "Stoneform",                        type: "cleanse_defensive" }],
+  [265221, { race: "Dark Iron Dwarf",      name: "Fireblood",                        type: "cleanse_offensive" }],
+  [58984,  { race: "Night Elf",            name: "Shadowmeld",                       type: "combat_drop" }],
+  [256948, { race: "Void Elf",             name: "Spatial Rift",                     type: "mobility" }],
+  [259930, { race: "Kul Tiran",            name: "Haymaker",                         type: "cc" }],
+  [312924, { race: "Mechagnome",           name: "Hyper Organic Light Originator",   type: "emergency_heal" }],
+  [28880,  { race: "Draenei",              name: "Gift of the Naaru",                type: "heal" }],
+  [255654, { race: "Lightforged Draenei",  name: "Light's Judgment",                 type: "damage" }],
+  [69070,  { race: "Goblin",               name: "Rocket Jump",                      type: "mobility" }],
+  [20572,  { race: "Orc",                  name: "Blood Fury",                       type: "offensive" }],
+  [26297,  { race: "Troll",                name: "Berserking",                       type: "offensive" }],
+  [33697,  { race: "Orc",                  name: "Blood Fury",                       type: "offensive" }],
+  [33702,  { race: "Orc",                  name: "Blood Fury",                       type: "offensive" }],
+  [7744,   { race: "Undead",               name: "Will of the Forsaken",             type: "cleanse" }],
+  [20549,  { race: "Tauren",               name: "War Stomp",                        type: "cc" }],
+  [69179,  { race: "Goblin",               name: "Rocket Barrage",                   type: "damage" }],
+  [255661, { race: "Highmountain Tauren",  name: "Bull Rush",                        type: "cc" }],
+  [260364, { race: "Nightborne",           name: "Arcane Pulse",                     type: "damage" }],
+  [274738, { race: "Mag'har Orc",          name: "Ancestral Call",                   type: "offensive" }],
+  [291944, { race: "Zandalari Troll",      name: "Regeneratin'",                     type: "heal" }],
+  [312411, { race: "Vulpera",              name: "Bag of Tricks",                    type: "damage" }],
+  [107079, { race: "Pandaren",             name: "Quaking Palm",                     type: "cc" }],
+  [368970, { race: "Dracthyr",             name: "Tail Swipe",                       type: "cc" }],
+  [357214, { race: "Dracthyr",             name: "Wing Buffet",                      type: "knockback" }],
+  [446280, { race: "Earthen",              name: "Azerite Surge",                    type: "damage" }],
+  [448849, { race: "Earthen",              name: "Wide-Eyed Wonder",                 type: "utility" }],
+]);
+
+// Tracked consumables — copied verbatim from combatLogRunBuilder.js TRACKED_CONSUMABLES.
+// TWW Season 1 IDs. type: "health" | "stat" | "flask".
+const TRACKED_CONSUMABLES = new Map([
+  // ── Health Potions ──
+  [431416, { name: "Algari Healing Potion",         type: "health" }],
+  [431418, { name: "Cavedweller's Delight",         type: "health" }],
+  // ── Stat Potions ──
+  [431932, { name: "Tempered Potion",               type: "stat" }],
+  [431934, { name: "Potion of Unwavering Focus",    type: "stat" }],
+  // ── Flasks ──
+  [431940, { name: "Flask of Alchemical Chaos",     type: "flask" }],
+  [431941, { name: "Flask of Tempered Mastery",     type: "flask" }],
+  [431942, { name: "Flask of Tempered Versatility", type: "flask" }],
+  [431943, { name: "Flask of Tempered Swiftness",   type: "flask" }],
+  [431944, { name: "Flask of Tempered Aggression",  type: "flask" }],
+  // ── Healthstone ──
+  [6262,   { name: "Healthstone",                   type: "health" }],
+]);
+
+// Player-cast stuns on enemies — copied verbatim from combatLogRunBuilder.js
+// PLAYER_STUN_SPELLS. Narrower than the existing CC_SPELL_IDS (which also
+// covers incapacitates and roots) — this drives the Playbook "Crowd Control"
+// pill with stuns specifically.
+const PLAYER_STUN_SPELLS = new Set([
+  // Paladin
+  853,      // Hammer of Justice
+  255937,   // Wake of Ashes
+  // Monk
+  119381,   // Leg Sweep
+  // Warrior
+  46968,    // Shockwave
+  132168,   // Shockwave variant (UNVERIFIED in Overwolf source)
+  132169,   // Storm Bolt
+  // DK
+  91800,    // Gnaw (Ghoul stun)
+  287254,   // Dead of Winter (UNVERIFIED — Shadowlands-era in Overwolf source)
+  // Druid
+  5211,     // Mighty Bash
+  163505,   // Rake stun (UNVERIFIED — aura, not cast, per Overwolf source)
+  202244,   // Overrun (UNVERIFIED)
+  // Hunter
+  24394,    // Intimidation
+  // DH
+  179057,   // Chaos Nova
+  211881,   // Fel Eruption
+  // Shaman
+  118905,   // Static Charge (Capacitor Totem)
+  // Warlock
+  30283,    // Shadowfury
+  89766,    // Axe Toss (Felguard)
+  // Priest
+  200200,   // Holy Word: Chastise (Censure)
+  // Evoker
+  357210,   // Deep Breath (UNVERIFIED — knockback, not true stun per Overwolf)
+  // Racials
+  20549,    // War Stomp (Tauren)
+  255661,   // Bull Rush (Highmountain Tauren — matches RACIAL_ABILITIES)
+]);
+
+// Resurrection spells — minimal set per Directive 7 Work Item 5.
+// Battle rezzes + one group rez (out-of-combat). Mass Resurrection included
+// for clean runs where the group out-of-combats to rez everyone.
+const RESURRECTION_SPELLS = new Map([
+  [20484,  { name: "Rebirth" }],                    // Druid battle rez
+  [61999,  { name: "Raise Ally" }],                 // Death Knight battle rez
+  [159916, { name: "Ancestral Protection Totem" }], // Shaman battle rez via totem
+  [265116, { name: "Soulstone" }],                  // Warlock pre-cast rez
+  [342246, { name: "Mass Resurrection" }],          // Priest/Paladin/Shaman group rez (OOC)
 ]);
 
 const INTERRUPT_SPELLS = new Set([
@@ -137,6 +273,53 @@ const INTERRUPT_SPELLS = new Set([
   57994,  // Wind Shear (Shaman)
   6552,   // Pummel (Warrior)
   119910, // Spell Lock (Warlock Felhunter)
+]);
+
+// Player-cast CC applied to NPCs. Narrow allowlist keeps noise out of the
+// Stuns overlay — incapacitates and high-value roots included for M+ utility.
+// Frontend at UnifiedRunTimeline.tsx:522 consumes these via pull.ccEvents[].
+const CC_SPELL_IDS = new Set([
+  // Stuns
+  853,     // Hammer of Justice (Paladin)
+  119381,  // Leg Sweep (Monk)
+  30283,   // Shadowfury (Warlock)
+  179057,  // Chaos Nova (Demon Hunter)
+  46968,   // Shockwave (Warrior)
+  5211,    // Mighty Bash (Druid)
+  199530,  // Sundering (Shaman)
+  108194,  // Asphyxiate (Death Knight)
+  221562,  // Asphyxiate (Unholy DK)
+  91800,   // Gnaw (DK Ghoul)
+  24394,   // Intimidation (Hunter)
+  255723,  // Bull Rush (Highmountain Tauren racial)
+  20549,   // War Stomp (Tauren racial)
+  1833,    // Cheap Shot (Rogue)
+  408,     // Kidney Shot (Rogue)
+  192058,  // Capacitor Totem (Shaman)
+  372245,  // Terror of the Skies (Evoker)
+  // Incapacitates
+  6770,    // Sap (Rogue)
+  2094,    // Blind (Rogue)
+  118,     // Polymorph (Mage)
+  28272,   // Polymorph Pig
+  28271,   // Polymorph Turtle
+  61305,   // Polymorph Cat
+  61721,   // Polymorph Rabbit
+  61780,   // Polymorph Turkey
+  161354,  // Polymorph Monkey
+  277787,  // Polymorph Direhorn
+  277792,  // Polymorph Bumblebee
+  391622,  // Polymorph Duck
+  710,     // Banish (Warlock)
+  6358,    // Seduction (Warlock pet)
+  187650,  // Freezing Trap (Hunter)
+  3355,    // Freezing Trap debuff ID (Hunter)
+  20066,   // Repentance (Paladin)
+  9484,    // Shackle Undead (Priest)
+  // Roots
+  339,     // Entangling Roots (Druid)
+  102359,  // Mass Entanglement (Druid)
+  122,     // Frost Nova (Mage)
 ]);
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -291,6 +474,20 @@ function parseCombatLog({ run, combatLogLines, partyGuids = [] }) {
   const { guidToClass, guidToRole, guidToSpec } = buildGuidMap(run);
   let playerGuid = run.player?.guid || null;
 
+  // ── Equipment-use registry (per Track A WI1 redesign) ───────────────────────
+  // Addon snapshots equipped slot-11/12/13/14 spell IDs into run.equipmentRegistry
+  // at run start. Build a lookup so SPELL_CAST_SUCCESS for any equipment-use spell
+  // gets routed as a trinket_offensive cooldown without needing a hardcoded
+  // allowlist. Defensive trinkets/rings classified as offensive for now —
+  // pre-classification needs item-tooltip parsing the addon doesn't expose.
+  const equipmentBySpellId = new Map();
+  if (Array.isArray(run.equipmentRegistry)) {
+    for (const e of run.equipmentRegistry) {
+      const sid = Number(e?.spellId) || 0;
+      if (sid > 0) equipmentBySpellId.set(sid, e);
+    }
+  }
+
   // ── Diagnostics ──────────────────────────────────────────────────────────────
   const diag = {
     totalLinesRead           : 0,
@@ -361,15 +558,27 @@ function parseCombatLog({ run, combatLogLines, partyGuids = [] }) {
       segmentData.set(segmentId, {
         deaths         : [],
         cooldownEvents : [],
+        defensives     : [],
+        offensiveCDs   : [],
+        racialCasts    : [],
+        consumablesUsed: [],
+        resurrections  : [],
+        stunEvents     : [],
+        dispels        : [],
+        playerOverhealing: {},
         interrupts     : [],
         enemyCasts     : [],
+        ccEvents       : [],
         spikes         : [],
+        absorbs        : [],
         buckets        : new Map(),
         deathCounter   : 0,
         cdCounter      : 0,
         intCounter     : 0,
         ecCounter      : 0,
+        ccCounter      : 0,
         spikeCounter   : 0,
+        absorbCounter  : 0,
       });
     }
     return segmentData.get(segmentId);
@@ -622,6 +831,13 @@ function parseCombatLog({ run, combatLogLines, partyGuids = [] }) {
         bucket.tankHealingReceived += effective;
         bucket.tankOverhealing     += overhealing;
       }
+
+      // WI 8 — per-player overhealing accumulation
+      const sourceGuid = fields[1] || "";
+      if (isPlayerGuid(sourceGuid) && overhealing > 0) {
+        segData.playerOverhealing[sourceGuid] =
+          (segData.playerOverhealing[sourceGuid] || 0) + overhealing;
+      }
     }
   }
 
@@ -640,8 +856,9 @@ function parseCombatLog({ run, combatLogLines, partyGuids = [] }) {
     const seg     = getSegment(segmentId);
     const segData = getSegData(segmentId);
 
-    // Defensive cooldown
-    if (DEFENSIVE_CD_SPELLS.has(spellId)) {
+    // Defensive cooldown — dual-populate: legacy cooldownEvents + Overwolf-parity defensives with category
+    const defInfo = DEFENSIVE_CD_SPELLS.get(spellId);
+    if (defInfo) {
       segData.cdCounter++;
       segData.cooldownEvents.push({
         cooldownEventId : `${run.runId || "unk"}-${segmentId}-cd${segData.cdCounter}`,
@@ -654,6 +871,129 @@ function parseCombatLog({ run, combatLogLines, partyGuids = [] }) {
         class    : guidToClass.get(sourceGuid) || "UNKNOWN",
         role     : guidToRole.get(sourceGuid)  || "unknown",
         spec     : guidToSpec.get(sourceGuid)  || "",
+      });
+      segData.defensives.push({
+        ts       : normalizedTs,
+        offsetMs : seg ? normalizedTs - seg.startTs : 0,
+        spellId,
+        spellName: defInfo.name || spellName,
+        name     : (fields[2] || "").replace(/"/g, "") || "Unknown",
+        class    : guidToClass.get(sourceGuid) || "UNKNOWN",
+        role     : guidToRole.get(sourceGuid)  || "unknown",
+        spec     : guidToSpec.get(sourceGuid)  || "",
+        category : defInfo.category,
+      });
+    }
+
+    // Offensive cooldown (Bloodlust, personal DPS CDs) — Overwolf parity
+    const offInfo = OFFENSIVE_COOLDOWNS.get(spellId);
+    if (offInfo && segData.offensiveCDs.length < 30) {
+      const playerName = (fields[2] || "").replace(/"/g, "") || "Unknown";
+      const isDupe = segData.offensiveCDs.some(o =>
+        o.spellId === spellId && o.name === playerName && Math.abs(o.ts - normalizedTs) < 1000
+      );
+      if (!isDupe) {
+        segData.offensiveCDs.push({
+          ts       : normalizedTs,
+          offsetMs : seg ? normalizedTs - seg.startTs : 0,
+          spellId,
+          spellName: offInfo.name,
+          name     : playerName,
+          class    : guidToClass.get(sourceGuid) || "UNKNOWN",
+          role     : guidToRole.get(sourceGuid)  || "unknown",
+          cdType   : offInfo.type,
+        });
+      }
+    }
+
+    // Racial ability cast — Overwolf parity
+    const racialInfo = RACIAL_ABILITIES.get(spellId);
+    if (racialInfo) {
+      const playerName = (fields[2] || "").replace(/"/g, "") || "Unknown";
+      segData.racialCasts.push({
+        ts         : normalizedTs,
+        offsetMs   : seg ? normalizedTs - seg.startTs : 0,
+        spellId,
+        spellName  : racialInfo.name,
+        name       : playerName,
+        class      : guidToClass.get(sourceGuid) || "UNKNOWN",
+        role       : guidToRole.get(sourceGuid)  || "unknown",
+        race       : racialInfo.race,
+        racialType : racialInfo.type,
+      });
+    }
+
+    // Consumable use (health potions, stat potions, flasks, Healthstone) — Overwolf parity
+    const consumableInfo = TRACKED_CONSUMABLES.get(spellId);
+    if (consumableInfo && segData.consumablesUsed.length < 30) {
+      segData.consumablesUsed.push({
+        ts            : normalizedTs,
+        offsetMs      : seg ? normalizedTs - seg.startTs : 0,
+        spellId,
+        spellName     : consumableInfo.name,
+        playerName    : (fields[2] || "").replace(/"/g, "") || "Unknown",
+        class         : guidToClass.get(sourceGuid) || "UNKNOWN",
+        role          : guidToRole.get(sourceGuid)  || "unknown",
+        consumableType: consumableInfo.type,
+      });
+    }
+
+    // Resurrection cast (battle rez, Soulstone, Mass Rez) — Overwolf parity
+    const rezInfo = RESURRECTION_SPELLS.get(spellId);
+    if (rezInfo && segData.resurrections.length < 10) {
+      segData.resurrections.push({
+        ts         : normalizedTs,
+        offsetMs   : seg ? normalizedTs - seg.startTs : 0,
+        spellId,
+        spellName  : rezInfo.name,
+        playerName : (fields[2] || "").replace(/"/g, "") || "Unknown",
+        class      : guidToClass.get(sourceGuid) || "UNKNOWN",
+        role       : guidToRole.get(sourceGuid)  || "unknown",
+        targetName : (fields[6] || "").replace(/"/g, "") || "Unknown",
+      });
+    }
+
+    // Player-cast stun on enemy (SPELL_CAST_SUCCESS) — Overwolf parity.
+    // Distinct from ccEvents[] (CC_SPELL_IDS, broader — incapacitates + roots).
+    if (PLAYER_STUN_SPELLS.has(spellId) && segData.stunEvents.length < 50) {
+      const playerName = (fields[2] || "").replace(/"/g, "") || "Unknown";
+      const isDupe = segData.stunEvents.some(s =>
+        s.spellId === spellId && s.playerName === playerName && Math.abs(s.ts - normalizedTs) < 1000
+      );
+      if (!isDupe) {
+        segData.stunEvents.push({
+          ts         : normalizedTs,
+          offsetMs   : seg ? normalizedTs - seg.startTs : 0,
+          spellId,
+          spellName,
+          playerName,
+          class      : guidToClass.get(sourceGuid) || "UNKNOWN",
+          role       : guidToRole.get(sourceGuid)  || "unknown",
+          targetName : (fields[6] || "").replace(/"/g, "") || "Unknown",
+        });
+      }
+    }
+
+    // Equipment-use cooldown (trinket / on-use ring) — registry-driven match
+    const equipMeta = equipmentBySpellId.get(spellId);
+    if (equipMeta) {
+      segData.cdCounter++;
+      segData.cooldownEvents.push({
+        cooldownEventId : `${run.runId || "unk"}-${segmentId}-cd${segData.cdCounter}`,
+        segmentId,
+        castTs   : normalizedTs,
+        offsetMs : seg ? normalizedTs - seg.startTs : 0,
+        spellId,
+        spellName : spellName || equipMeta.spellName || "",
+        sourceGuid,
+        class    : guidToClass.get(sourceGuid) || "UNKNOWN",
+        role     : guidToRole.get(sourceGuid)  || "unknown",
+        spec     : guidToSpec.get(sourceGuid)  || "",
+        cdType   : "trinket_offensive",
+        itemId   : equipMeta.itemId || 0,
+        itemName : equipMeta.itemName || "",
+        itemIcon : equipMeta.itemIcon || "",
+        slot     : equipMeta.slot || 0,
       });
     }
 
@@ -733,6 +1073,85 @@ function parseCombatLog({ run, combatLogLines, partyGuids = [] }) {
     });
   }
 
+  // ── SPELL_DISPEL — WI 7 — capture player dispel events ────────────────────
+  function processSpellDispel(fields, normalizedTs, segmentId) {
+    const sourceGuid = fields[1] || "";
+    if (!isPlayerGuid(sourceGuid)) return;
+    const seg     = getSegment(segmentId);
+    const segData = getSegData(segmentId);
+    if (!seg || !segData) return;
+    if (!segData.dispels) segData.dispels = [];
+    if (segData.dispels.length >= 50) return;
+
+    const spellId   = parseInt(fields[9],  10) || 0;
+    const spellName = (fields[10] || "").replace(/"/g, "");
+
+    // SPELL_DISPEL suffix: after spell prefix (fields 9-11), check advanced info
+    const dispelAdvStart = 12;
+    const dispelHasAdv = hasAdvancedInfo(fields, dispelAdvStart);
+    const dispelSuffixStart = dispelHasAdv ? dispelAdvStart + ADVANCED_INFO_FIELD_COUNT : dispelAdvStart;
+
+    const dispelledSpellId   = parseInt(fields[dispelSuffixStart],     10) || 0;
+    const dispelledSpellName = (fields[dispelSuffixStart + 1] || "").replace(/"/g, "");
+
+    segData.dispels.push({
+      ts              : normalizedTs,
+      offsetMs        : normalizedTs - seg.startTs,
+      spellId,
+      spellName,
+      playerName      : (fields[2] || "").replace(/"/g, "") || "Unknown",
+      class           : guidToClass.get(sourceGuid) || "UNKNOWN",
+      role            : guidToRole.get(sourceGuid)  || "unknown",
+      targetName      : (fields[6] || "").replace(/"/g, "") || "Unknown",
+      targetSpellId   : dispelledSpellId,
+      targetSpellName : dispelledSpellName,
+    });
+  }
+
+  // ── SPELL_AURA_APPLIED — capture player-cast CC/stuns on NPCs ──────────────
+  // Frontend Stuns overlay (UnifiedRunTimeline.tsx:522) consumes pull.ccEvents[].
+  // Shape mirrors cooldownEvents: source + target names, spellId/spellName,
+  // offsetMs relative to segment start. Only CC_SPELL_IDS entries land here —
+  // everything else (player buffs, non-CC debuffs) is filtered out up front.
+
+  function processSpellAuraApplied(fields, normalizedTs, segmentId) {
+    if (fields.length < 13) return;
+
+    const auraType = (fields[12] || "").replace(/"/g, "");
+    if (auraType !== "DEBUFF") return;
+
+    const sourceGuid = (fields[1] || "").replace(/"/g, "");
+    const destGuid   = (fields[5] || "").replace(/"/g, "");
+
+    if (!sourceGuid.startsWith("Player-")) return;
+    if (!destGuid.startsWith("Creature-") && !destGuid.startsWith("Vehicle-")) return;
+
+    const spellId = parseInt((fields[9] || "").replace(/"/g, ""), 10);
+    if (!CC_SPELL_IDS.has(spellId)) return;
+
+    const seg     = getSegment(segmentId);
+    const segData = getSegData(segmentId);
+
+    const sourceNameRaw = (fields[2] || "").replace(/"/g, "");
+    const playerName    = sourceNameRaw.split("-")[0];
+    const targetName    = (fields[6] || "").replace(/"/g, "");
+    const spellName     = (fields[10] || "").replace(/"/g, "");
+
+    segData.ccCounter++;
+    segData.ccEvents.push({
+      ccEventId  : `${run.runId || "unk"}-${segmentId}-cc${segData.ccCounter}`,
+      segmentId,
+      castTs     : normalizedTs,
+      offsetMs   : seg ? normalizedTs - seg.startTs : 0,
+      spellId,
+      spellName,
+      sourceGuid,
+      playerName,
+      targetName,
+      targetGuid : destGuid,
+    });
+  }
+
   // ── Main parse loop ──────────────────────────────────────────────────────────
 
   const RELEVANT_EVENTS = new Set([
@@ -745,6 +1164,8 @@ function parseCombatLog({ run, combatLogLines, partyGuids = [] }) {
     "SPELL_INTERRUPT",
     "SPELL_HEAL",
     "SPELL_PERIODIC_HEAL",
+    "SPELL_ABSORBED",
+    "SPELL_AURA_APPLIED",
   ]);
 
   for (const rawLine of combatLogLines) {
@@ -798,11 +1219,77 @@ function parseCombatLog({ run, combatLogLines, partyGuids = [] }) {
       case "SPELL_INTERRUPT":
         processSpellInterrupt(fields, normalizedTs, segmentId);
         break;
+      case "SPELL_DISPEL":
+        processSpellDispel(fields, normalizedTs, segmentId);
+        break;
       case "SPELL_HEAL":
       case "SPELL_PERIODIC_HEAL":
         processIncomingHealing(fields, normalizedTs, segmentId);
         break;
+      case "SPELL_ABSORBED":
+        processSpellAbsorbed(fields, normalizedTs, segmentId);
+        break;
+      case "SPELL_AURA_APPLIED":
+        processSpellAuraApplied(fields, normalizedTs, segmentId);
+        break;
     }
+  }
+
+  // ── SPELL_ABSORBED ─────────────────────────────────────────────────────────
+  // Field layout is variable: when a SPELL hit was absorbed there are 3 spell
+  // fields up front (the original damaging spell), when a SWING hit was
+  // absorbed those fields are absent. Normalize by walking from the END of
+  // the fields (always: absorbSpellId, absorbSpellName, absorbSpellSchool,
+  // absorbedAmount, critical) and from the FRONT (always: src + dest blocks).
+  // Cap per segment to 100 to bound payload growth on heavy-shield comps.
+  // Absorbs ship as a separate stream this pass — spike-merge integration
+  // (so a 300k-hit-150k-absorbed reads as 300k for spike threshold) is a
+  // follow-up; data capture beats perfect analytics.
+  function processSpellAbsorbed(fields, normalizedTs, segmentId) {
+    const seg = getSegment(segmentId);
+    if (!seg) return;
+    const segData = getSegData(segmentId);
+    if (segData.absorbs.length >= 100) return;
+
+    // Front block: dest is at offsets 5-8, source at 1-4 (combat-log convention).
+    const destGuid = (fields[5] || "").replace(/"/g, "");
+    const destName = (fields[6] || "").replace(/"/g, "");
+    if (!destGuid) return;
+
+    // Tail block: last 5 fields are absorbSpellId, absorbSpellName,
+    // absorbSpellSchool, absorbedAmount, critical.
+    const n = fields.length;
+    const absorbedAmount = parseInt(fields[n - 2], 10) || 0;
+    if (absorbedAmount <= 0) return;
+    const absorbSpellSchool = parseInt(fields[n - 3], 10) || 0;
+    const absorbSpellName = (fields[n - 4] || "").replace(/"/g, "");
+    const absorbSpellId = parseInt(fields[n - 5], 10) || 0;
+
+    // sourceHit is the spell that was absorbed. Heuristic: when the field
+    // count indicates there was a SPELL_* prefix, fields[9..11] hold it;
+    // otherwise (SWING_DAMAGE absorbed) those fields are absent.
+    let sourceHitSpellId = 0;
+    let sourceHitSpellName = "";
+    if (n >= 19) {
+      sourceHitSpellId = parseInt(fields[9], 10) || 0;
+      sourceHitSpellName = (fields[10] || "").replace(/"/g, "");
+    }
+
+    segData.absorbCounter++;
+    segData.absorbs.push({
+      absorbId       : `${run.runId || "unk"}-${segmentId}-ab${segData.absorbCounter}`,
+      segmentId,
+      absorbTs       : normalizedTs,
+      offsetMs       : normalizedTs - seg.startTs,
+      destGuid,
+      destName,
+      absorbSpellId,
+      absorbSpellName,
+      absorbSpellSchool,
+      absorbedAmount,
+      sourceHitSpellId,
+      sourceHitSpellName,
+    });
   }
 
   // ── Build death chains per segment ──────────────────────────────────────────
@@ -838,8 +1325,17 @@ function parseCombatLog({ run, combatLogLines, partyGuids = [] }) {
         segmentId      : seg.segmentId,
         deaths         : [],
         cooldownEvents : [],
+        defensives     : [],
+        offensiveCDs   : [],
+        racialCasts    : [],
+        consumablesUsed: [],
+        resurrections  : [],
+        stunEvents     : [],
+        dispels        : [],
+        playerOverhealing: {},
         interrupts     : [],
         enemyCasts     : [],
+        ccEvents       : [],
         spikes         : [],
         damageBuckets  : [],
         deathChain     : null,
@@ -877,9 +1373,19 @@ function parseCombatLog({ run, combatLogLines, partyGuids = [] }) {
       segmentId      : seg.segmentId,
       deaths         : data.deaths,
       cooldownEvents : data.cooldownEvents.filter(cd => isPlayerGuid(cd.sourceGuid)),
+      defensives     : data.defensives,
+      offensiveCDs   : data.offensiveCDs,
+      racialCasts    : data.racialCasts,
+      consumablesUsed: data.consumablesUsed,
+      resurrections  : data.resurrections,
+      stunEvents     : data.stunEvents,
+      dispels        : data.dispels || [],
+      playerOverhealing: data.playerOverhealing || {},
       interrupts     : data.interrupts,
       enemyCasts     : data.enemyCasts,
+      ccEvents       : data.ccEvents.filter(cc => isPlayerGuid(cc.sourceGuid)),
       spikes         : data.spikes,
+      absorbs        : data.absorbs,
       damageBuckets,
       deathChain     : buildDeathChain(data.deaths),
     });
@@ -925,6 +1431,7 @@ function parseCombatLog({ run, combatLogLines, partyGuids = [] }) {
   const allInts    = enrichedSegments.flatMap(s => s.interrupts);
   const allECasts  = enrichedSegments.flatMap(s => s.enemyCasts);
   const allSpikes  = enrichedSegments.flatMap(s => s.spikes);
+  const allAbsorbs = enrichedSegments.flatMap(s => s.absorbs || []);
 
   const capabilityFlags = {
     hasDeathContext  : allDeaths.length > 0,
@@ -934,6 +1441,7 @@ function parseCombatLog({ run, combatLogLines, partyGuids = [] }) {
     hasInterrupts    : allInts.length > 0,
     hasEnemyCasts    : allECasts.length > 0,
     hasSpikes        : allSpikes.length > 0,
+    hasAbsorbs       : allAbsorbs.length > 0,
   };
 
   return {

@@ -104,6 +104,7 @@ function assembleRunPayload({ addonRun, parsedCombatEvidence, resolvedPulls, opt
     unmatchedCooldownEvents  : [],
     unmatchedEnemyCasts      : [],
     unmatchedInterrupts      : [],
+    unmatchedCCEvents        : [],
     unmatchedSpikes          : [],
     pullsWithFallbackAnchors : [],
     pullsWithLowPackConfidence: [],
@@ -147,6 +148,15 @@ function assembleRunPayload({ addonRun, parsedCombatEvidence, resolvedPulls, opt
       },
       player: normalizePlayer(run.player),
       partyMembers: normalizePartyMembers(run.partyMembers),
+      equipmentRegistry: Array.isArray(run.equipmentRegistry) ? run.equipmentRegistry.map(e => ({
+        spellId   : Number(e.spellId) || 0,
+        spellName : String(e.spellName || ""),
+        itemId    : Number(e.itemId) || 0,
+        itemName  : String(e.itemName || ""),
+        itemIcon  : String(e.itemIcon || ""),
+        slot      : Number(e.slot) || 0,
+        ownerName : String(e.ownerName || ""),
+      })) : [],
       pulls: [], enemyRegistry: [], damageBuckets: [], wipes: [],
     },
   };
@@ -224,7 +234,7 @@ function assembleRunPayload({ addonRun, parsedCombatEvidence, resolvedPulls, opt
       encounterStartOffsetMs: matchedEncounter && pullStartTs > 0 ? matchedEncounter.startTs - pullStartTs : null,
       encounterEndOffsetMs: matchedEncounter && pullStartTs > 0 ? matchedEncounter.endTs - pullStartTs : null,
       deaths: [], deathChain: null, cooldownEvents: [], spikes: [],
-      enemyCasts: [], interrupts: [], enemyHealthSnapshots: [],
+      enemyCasts: [], interrupts: [], ccEvents: [], enemyHealthSnapshots: [],
       firstDeathId: null, firstDeathRole: null, timeToFirstDeathMs: null, wipeId: null,
     };
 
@@ -247,7 +257,7 @@ function assembleRunPayload({ addonRun, parsedCombatEvidence, resolvedPulls, opt
   // ── Pass 4: Assign evidence objects to pulls ────────────────────────────────
 
   const enrichedSegments = pce.enrichedSegments || [];
-  const allDeaths = [], allCooldowns = [], allInterrupts = [];
+  const allDeaths = [], allCooldowns = [], allInterrupts = [], allCCEvents = [];
   const allEnemyCasts = [], allSpikes = [], allBuckets = [], allHealthSnaps = [];
 
   for (const eseg of enrichedSegments) {
@@ -255,6 +265,7 @@ function assembleRunPayload({ addonRun, parsedCombatEvidence, resolvedPulls, opt
     for (const d of (eseg.deaths || [])) { d._targetPull = pull; allDeaths.push(d); }
     for (const c of (eseg.cooldownEvents || [])) { c._targetPull = pull; allCooldowns.push(c); }
     for (const it of (eseg.interrupts || [])) { it._targetPull = pull; allInterrupts.push(it); }
+    for (const cc of (eseg.ccEvents || [])) { cc._targetPull = pull; allCCEvents.push(cc); }
     for (const ec of (eseg.enemyCasts || [])) { ec._targetPull = pull; allEnemyCasts.push(ec); }
     for (const b of (eseg.damageBuckets || [])) { b._targetPull = pull; allBuckets.push(b); }
     for (const hs of (eseg.enemyHealthSnapshots || [])) { hs._targetPull = pull; allHealthSnaps.push(hs); }
@@ -263,6 +274,7 @@ function assembleRunPayload({ addonRun, parsedCombatEvidence, resolvedPulls, opt
   for (const d of allDeaths) { if (!d._targetPull) { if (DEV) diag.unmatchedDeaths.push(d.deathId || "unknown"); continue; } d._targetPull.deaths.push(d); }
   for (const c of allCooldowns) { if (!c._targetPull) { if (DEV) diag.unmatchedCooldownEvents.push(c.cooldownEventId || "unknown"); continue; } c._targetPull.cooldownEvents.push(c); }
   for (const it of allInterrupts) { if (!it._targetPull) { if (DEV) diag.unmatchedInterrupts.push(it.interruptId || "unknown"); continue; } it._targetPull.interrupts.push(it); }
+  for (const cc of allCCEvents) { if (!cc._targetPull) { if (DEV) diag.unmatchedCCEvents.push(cc.ccEventId || "unknown"); continue; } cc._targetPull.ccEvents.push(cc); }
 
   const interruptTargetGuids = new Set(allInterrupts.filter(it => it._targetPull).map(it => `${it._targetPull.pullId}:${it.targetGuid}`));
   for (const ec of allEnemyCasts) {
@@ -283,6 +295,7 @@ function assembleRunPayload({ addonRun, parsedCombatEvidence, resolvedPulls, opt
     for (const c of pull.cooldownEvents) enrichSpatial(c);
     for (const ec of pull.enemyCasts) enrichSpatial(ec);
     for (const it of pull.interrupts) enrichSpatial(it);
+    for (const cc of pull.ccEvents) enrichSpatial(cc);
     for (const hs of pull.enemyHealthSnapshots) enrichSpatial(hs);
   }
 
@@ -400,7 +413,12 @@ function validatePayload(payload, diag, DEV) {
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-function normalizePlayer(player) { if (!player) return { class: "UNKNOWN", spec: null, role: "unknown" }; return { class: player.class || "UNKNOWN", spec: player.spec || null, role: player.role || "unknown" }; }
+function normalizePlayer(player) {
+  if (!player) return { class: "UNKNOWN", spec: null, role: "unknown" };
+  const out = { class: player.class || "UNKNOWN", spec: player.spec || null, role: player.role || "unknown" };
+  if (typeof player.itemLevel === "number" && player.itemLevel > 0) out.itemLevel = player.itemLevel;
+  return out;
+}
 function normalizePartyMembers(members) { if (!Array.isArray(members)) return []; return members.map(m => ({ class: m.class || "UNKNOWN", spec: m.spec || null, role: m.role || "unknown", specConfidence: m.specConfidence || "unknown" })); }
 function collectNpcIds(segIds, segmentMap) { const ids = new Set(); for (const sid of segIds) { const seg = segmentMap.get(sid); if (seg?.npcIds) seg.npcIds.forEach(id => ids.add(id)); } return [...ids]; }
 function buildPullsFromSegments(segments, runId) { return segments.map((seg, i) => ({ segmentIds: [seg.segmentId], startTs: seg.startTs || 0, finishTs: seg.finishTs || 0, npcIds: seg.npcIds || [], enemyCount: (seg.npcIds || []).length, packId: null, regionId: null, floor: null, anchor: { x: 50.0, y: 50.0 }, anchorType: "unknown", anchorPrecision: "fallback", packMatchConfidence: 0, pullDetectionMethod: "regen_boundary", pullConfidence: 0.5 })); }
@@ -415,7 +433,7 @@ function buildDefensiveHistory(death, cooldownEvents, pullStartTs) {
 
 function stripInternalFields(payload) {
   const R = payload.run;
-  for (const pull of R.pulls) { for (const arr of [pull.deaths, pull.cooldownEvents, pull.enemyCasts, pull.interrupts, pull.enemyHealthSnapshots, pull.spikes]) { for (const obj of arr) { delete obj._targetPull; delete obj.normalizedTs; delete obj.playerGuid; delete obj.sourceGuid; } } }
+  for (const pull of R.pulls) { for (const arr of [pull.deaths, pull.cooldownEvents, pull.enemyCasts, pull.interrupts, pull.ccEvents, pull.enemyHealthSnapshots, pull.spikes]) { for (const obj of arr) { delete obj._targetPull; delete obj.normalizedTs; delete obj.playerGuid; delete obj.sourceGuid; } } }
   for (const b of R.damageBuckets) delete b._targetPull;
   for (const w of R.wipes) delete w._targetPull;
 }
