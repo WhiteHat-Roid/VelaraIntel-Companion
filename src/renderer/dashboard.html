@@ -23,13 +23,11 @@
       -webkit-app-region: drag;
     }
     .titlebar-left { display: flex; align-items: center; gap: 10px; }
-    .titlebar-logo { height: 32px; width: auto; -webkit-app-region: no-drag; }
+    .titlebar-logo { height: 22px; width: auto; -webkit-app-region: no-drag; }
     .titlebar-title { display: flex; flex-direction: column; line-height: 1.1; }
     .titlebar-title .brand {
-      font-size: 13px; font-weight: 700; letter-spacing: 0.1em;
-      text-transform: uppercase; color: #C8D4DC;
+      font-size: 12px; font-weight: 600; letter-spacing: 0.02em; color: #C8D4DC;
     }
-    .titlebar-title .sub { font-size: 9px; color: #556677; letter-spacing: 0.15em; text-transform: uppercase; }
     .titlebar-btns { display: flex; gap: 8px; -webkit-app-region: no-drag; }
     .titlebar-btns button {
       background: none; border: none; color: #556677; font-size: 16px;
@@ -220,21 +218,119 @@
     .status-feed .line-err { color: #C0392B; }
     .status-feed .line-warn { color: #E8A030; }
     .status-feed .line-info { color: #8899AA; }
+
+    /* ── Gear icon (tab strip right side) ── */
+    .tabs { position: relative; }
+    .gear-btn {
+      position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
+      background: none; border: none; color: #556677;
+      font-size: 16px; cursor: pointer; padding: 4px 10px;
+      border-radius: 4px;
+      transition: color 0.15s, background 0.15s;
+      z-index: 2;
+    }
+    .gear-btn:hover { color: #C9A84C; background: rgba(201, 168, 76, 0.06); }
+
+    /* ── Settings modal ── */
+    .modal-backdrop {
+      display: none;
+      position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0, 0, 0, 0.6);
+      z-index: 100;
+      align-items: flex-start; justify-content: center;
+      padding: 60px 40px 40px;
+    }
+    .modal-backdrop.open { display: flex; }
+    .settings-modal {
+      width: 540px; max-width: 100%;
+      background: #0D1117;
+      border: 1px solid #1A1A2E;
+      border-radius: 8px;
+      max-height: 80vh;
+      overflow-y: auto;
+      box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6);
+    }
+    .settings-header {
+      display: flex; align-items: center; gap: 14px;
+      padding: 18px 22px 14px;
+      border-bottom: 1px solid #1A1A2E;
+    }
+    .settings-header .shield { height: 32px; width: auto; }
+    .settings-header .titles { flex: 1; }
+    .settings-header .titles .h1 {
+      font-size: 20px; font-weight: 700; color: #C8D4DC;
+      letter-spacing: 0.01em;
+    }
+    .settings-header .titles .sub {
+      font-size: 11px; color: #667788; margin-top: 2px;
+    }
+    .settings-header .close-x {
+      background: none; border: none; color: #556677;
+      font-size: 18px; cursor: pointer; padding: 4px 8px;
+      border-radius: 4px;
+    }
+    .settings-header .close-x:hover { background: #1A1A2E; color: #C8D4DC; }
+    .settings-section {
+      padding: 18px 22px;
+      border-bottom: 1px solid #1A1A2E;
+    }
+    .settings-section:last-of-type { border-bottom: none; }
+    .settings-section .section-title {
+      font-size: 10px; font-weight: 700; letter-spacing: 0.18em;
+      text-transform: uppercase; color: #C9A84C;
+      margin-bottom: 14px;
+    }
+    .settings-row {
+      display: flex; align-items: flex-start; justify-content: space-between;
+      gap: 16px; margin-bottom: 14px;
+    }
+    .settings-row:last-child { margin-bottom: 0; }
+    .settings-row .rowmain { flex: 1; min-width: 0; }
+    .settings-row .rowmain .label {
+      font-size: 13px; font-weight: 600; color: #C8D4DC;
+      margin-bottom: 4px;
+    }
+    .settings-row .rowmain .help {
+      font-size: 11px; color: #667788; line-height: 1.5;
+    }
+    .settings-row .toggle-switch { flex-shrink: 0; }
+    .settings-footer {
+      display: flex; justify-content: flex-end; gap: 10px;
+      padding: 16px 22px;
+      border-top: 1px solid #1A1A2E;
+      background: #0A0E13;
+      border-radius: 0 0 8px 8px;
+    }
+    .settings-footer .btn-cancel {
+      background: transparent; border: 1px solid #2A3A4A;
+      color: #8899AA; padding: 8px 20px;
+      font-size: 12px; font-weight: 600;
+      letter-spacing: 0.06em; text-transform: uppercase;
+      cursor: pointer; transition: all 0.15s;
+    }
+    .settings-footer .btn-cancel:hover { border-color: #556677; color: #C8D4DC; }
+    .settings-footer .btn-save {
+      background: #C9A84C; border: 1px solid #C9A84C;
+      color: #0D1117; padding: 8px 24px;
+      font-size: 12px; font-weight: 700;
+      letter-spacing: 0.06em; text-transform: uppercase;
+      cursor: pointer; transition: all 0.15s;
+    }
+    .settings-footer .btn-save:hover { background: #D6B558; border-color: #D6B558; }
   </style>
 </head>
 <body>
   <!-- Titlebar -->
   <div class="titlebar">
     <div class="titlebar-left">
-      <img class="titlebar-logo" src="../../assets/icon.png" alt="Velara">
+      <img class="titlebar-logo" src="assets/shield_gold_v2.png" alt="Velara">
       <div class="titlebar-title">
-        <span class="brand">Velara</span>
-        <span class="sub" id="titleSub">Intelligence</span>
+        <span class="brand" id="brandTitle">Velara Companion &middot; v1.4.3</span>
       </div>
     </div>
     <div class="titlebar-btns">
-      <button id="btnMin" title="Minimize">─</button>
-      <button id="btnClose" title="Close">✕</button>
+      <button type="button" id="btnMin" title="Minimize">─</button>
+      <button type="button" id="btnClose" title="Close">✕</button>
     </div>
   </div>
 
@@ -242,6 +338,7 @@
   <div class="tabs">
     <div class="tab active" data-tab="live">Live Log</div>
     <div class="tab" data-tab="upload">Upload a Log</div>
+    <button type="button" class="gear-btn" id="btnSettings" title="Settings" aria-label="Settings">&#9881;</button>
   </div>
 
   <!-- Tab 1: Live Log -->
@@ -307,6 +404,74 @@
     <button class="go-btn disabled" id="uploadGoBtn" disabled>GO!</button>
 
     <div class="status-feed" id="uploadStatusFeed"></div>
+  </div>
+
+  <!-- Settings modal -->
+  <div class="modal-backdrop" id="settingsBackdrop">
+    <div class="settings-modal" role="dialog" aria-label="Settings">
+      <div class="settings-header">
+        <img class="shield" src="assets/shield_gold_v2.png" alt="">
+        <div class="titles">
+          <div class="h1">Settings</div>
+          <div class="sub" id="settingsModalSub">Companion v1.4.3</div>
+        </div>
+        <button type="button" class="close-x" id="btnSettingsClose" title="Close" aria-label="Close settings">&#10005;</button>
+      </div>
+
+      <div class="settings-section">
+        <div class="section-title">Startup</div>
+
+        <div class="settings-row">
+          <div class="rowmain">
+            <div class="label">Show Companion window when WoW launches</div>
+            <div class="help">Off (recommended): Companion stays in the tray when WoW opens. Turn on to have the Companion window appear automatically.</div>
+          </div>
+          <div class="toggle-switch" id="tglWowAutoShow" role="switch" tabindex="0" aria-label="Show Companion window when WoW launches"><div class="toggle-knob"></div></div>
+        </div>
+
+        <div class="settings-row">
+          <div class="rowmain">
+            <div class="label">Start Companion with Windows</div>
+            <div class="help">Launches Companion in the tray when you sign in to Windows. Separate from "Start minimized" &mdash; this controls boot-time auto-launch.</div>
+          </div>
+          <div class="toggle-switch" id="tglAutoStartOnBoot" role="switch" tabindex="0" aria-label="Start Companion with Windows"><div class="toggle-knob"></div></div>
+        </div>
+
+        <div class="settings-row">
+          <div class="rowmain">
+            <div class="label">Start minimized to tray</div>
+            <div class="help">When Companion launches, start in the tray instead of opening the window. Separate from "Start with Windows".</div>
+          </div>
+          <div class="toggle-switch" id="tglStartMinimized" role="switch" tabindex="0" aria-label="Start minimized to tray"><div class="toggle-knob"></div></div>
+        </div>
+      </div>
+
+      <div class="settings-section">
+        <div class="section-title">Uploads</div>
+
+        <div class="settings-row">
+          <div class="rowmain">
+            <div class="label">Auto-upload runs on key completion</div>
+            <div class="help">Automatically upload run data when you complete a Mythic+ key.</div>
+          </div>
+          <div class="toggle-switch" id="tglAutoUpload" role="switch" tabindex="0" aria-label="Auto-upload runs on key completion"><div class="toggle-knob"></div></div>
+        </div>
+      </div>
+
+      <div class="settings-section">
+        <div class="section-title">Paths</div>
+        <div class="field-label">WoW installation path</div>
+        <div class="path-row">
+          <input type="text" class="path-input" id="settingsWowPath" readonly placeholder="Select your WoW install folder" title="WoW installation path">
+          <button type="button" class="btn-sm" id="btnSettingsBrowse">Browse</button>
+        </div>
+      </div>
+
+      <div class="settings-footer">
+        <button type="button" class="btn-cancel" id="btnSettingsCancel">Cancel</button>
+        <button type="button" class="btn-save" id="btnSettingsSave">Save</button>
+      </div>
+    </div>
   </div>
 
   <script>
@@ -661,9 +826,86 @@
       });
     }
 
-    // Build info
+    // Build info — keep titlebar + modal header in sync with package.json at runtime
     window.velara.getBuildInfo().then(info => {
-      document.getElementById('titleSub').textContent = 'v' + info.version;
+      const brand = document.getElementById('brandTitle');
+      if (brand) brand.textContent = 'Velara Companion · v' + info.version;
+      const modalSub = document.getElementById('settingsModalSub');
+      if (modalSub) modalSub.textContent = 'Companion v' + info.version;
+    });
+
+    // ═══════════════════════════════════════════════
+    // SETTINGS MODAL
+    // ═══════════════════════════════════════════════
+
+    const settingsBackdrop   = document.getElementById('settingsBackdrop');
+    const btnOpenSettings    = document.getElementById('btnSettings');
+    const btnCloseSettings   = document.getElementById('btnSettingsClose');
+    const btnCancelSettings  = document.getElementById('btnSettingsCancel');
+    const btnSaveSettings    = document.getElementById('btnSettingsSave');
+    const btnSettingsBrowse  = document.getElementById('btnSettingsBrowse');
+    const tglWowAutoShow     = document.getElementById('tglWowAutoShow');
+    const tglAutoStartOnBoot = document.getElementById('tglAutoStartOnBoot');
+    const tglStartMinimized  = document.getElementById('tglStartMinimized');
+    const tglAutoUpload      = document.getElementById('tglAutoUpload');
+    const settingsWowPath    = document.getElementById('settingsWowPath');
+
+    function setToggle(el, on) {
+      if (on) el.classList.add('on'); else el.classList.remove('on');
+    }
+    function getToggle(el) { return el.classList.contains('on'); }
+
+    [tglWowAutoShow, tglAutoStartOnBoot, tglStartMinimized, tglAutoUpload].forEach(el => {
+      el.addEventListener('click', () => setToggle(el, !getToggle(el)));
+      el.addEventListener('keydown', (ev) => {
+        if (ev.key === ' ' || ev.key === 'Enter') {
+          ev.preventDefault();
+          setToggle(el, !getToggle(el));
+        }
+      });
+    });
+
+    function openSettings() {
+      window.velara.getSettings().then(s => {
+        setToggle(tglWowAutoShow,     !!s.wowAutoShow);
+        setToggle(tglAutoStartOnBoot, !!s.autoStartOnBoot);
+        setToggle(tglStartMinimized,  !!s.startMinimized);
+        // autoUpload defaults ON when unset so users get the expected behavior
+        setToggle(tglAutoUpload, s.autoUpload === undefined ? true : !!s.autoUpload);
+        settingsWowPath.value = s.wowPath || '';
+        settingsBackdrop.classList.add('open');
+      });
+    }
+    function closeSettings() { settingsBackdrop.classList.remove('open'); }
+
+    btnOpenSettings.addEventListener('click', openSettings);
+    btnCloseSettings.addEventListener('click', closeSettings);
+    btnCancelSettings.addEventListener('click', closeSettings);
+
+    btnSettingsBrowse.addEventListener('click', async () => {
+      const result = await window.velara.browseWowPath();
+      if (result && result.path) settingsWowPath.value = result.path;
+    });
+
+    btnSaveSettings.addEventListener('click', async () => {
+      await window.velara.saveSettings({
+        wowAutoShow    : getToggle(tglWowAutoShow),
+        autoStartOnBoot: getToggle(tglAutoStartOnBoot),
+        startMinimized : getToggle(tglStartMinimized),
+        autoUpload     : getToggle(tglAutoUpload),
+        wowPath        : settingsWowPath.value,
+      });
+      addStatus('liveStatusFeed', 'Settings saved', 'ok');
+      closeSettings();
+    });
+
+    settingsBackdrop.addEventListener('click', (ev) => {
+      if (ev.target === settingsBackdrop) closeSettings();
+    });
+    document.addEventListener('keydown', (ev) => {
+      if (ev.key === 'Escape' && settingsBackdrop.classList.contains('open')) {
+        closeSettings();
+      }
     });
 
     // Initial status
