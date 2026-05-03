@@ -269,6 +269,40 @@ const OFFENSIVE_COOLDOWNS = new Map([
   [1719,   { name: "Recklessness",        type: "personal_offensive", cd: 90 }],
   [227847, { name: "Bladestorm",          type: "personal_offensive", cd: 90 }],
   [228920, { name: "Ravager",             type: "personal_offensive", cd: 90 }],
+  // ── Death Knight (additions 2026-05-03) ──
+  [96268,  { name: "Death's Advance",        type: "personal_offensive", cd: 45 }],
+  // ── Demon Hunter (additions 2026-05-03) ──
+  [198013, { name: "Eye Beam",               type: "personal_offensive", cd: 30 }],
+  [200166, { name: "Metamorphosis (Veng)",   type: "personal_offensive", cd: 240 }],
+  // ── Druid (additions 2026-05-03) ──
+  [323764, { name: "Convoke the Spirits",    type: "personal_offensive", cd: 120 }],
+  [102560, { name: "Incarnation: Chosen of Elune", type: "personal_offensive", cd: 180 }],
+  [102543, { name: "Incarnation: King of the Jungle", type: "personal_offensive", cd: 180 }],
+  // ── Hunter (additions 2026-05-03) ──
+  [260243, { name: "Volley",                 type: "personal_offensive", cd: 45 }],
+  [400456, { name: "Salvo",                  type: "personal_offensive", cd: 45 }],
+  // ── Mage (additions 2026-05-03) ──
+  [55342,  { name: "Mirror Image",           type: "personal_offensive", cd: 120 }],
+  // ── Paladin (additions 2026-05-03) ──
+  [255937, { name: "Wake of Ashes",          type: "personal_offensive", cd: 60 }],
+  [343721, { name: "Final Reckoning",        type: "personal_offensive", cd: 60 }],
+  [343527, { name: "Execution Sentence",     type: "personal_offensive", cd: 60 }],
+  // ── Priest (additions 2026-05-03) ──
+  [123040, { name: "Mindbender",             type: "personal_offensive", cd: 60 }],
+  [34433,  { name: "Shadowfiend",            type: "personal_offensive", cd: 180 }],
+  [47536,  { name: "Rapture",                type: "personal_offensive", cd: 90 }],
+  [391109, { name: "Dark Ascension",         type: "personal_offensive", cd: 60 }],
+  // ── Rogue (additions 2026-05-03) ──
+  [343142, { name: "Dreadblades",            type: "personal_offensive", cd: 90 }],
+  // ── Shaman (additions 2026-05-03) ──
+  [192249, { name: "Storm Elemental",        type: "personal_offensive", cd: 150 }],
+  [198067, { name: "Fire Elemental",         type: "personal_offensive", cd: 150 }],
+  // ── Warlock (additions 2026-05-03) ──
+  [265187, { name: "Summon Demonic Tyrant",  type: "personal_offensive", cd: 90 }],
+  [113858, { name: "Dark Soul: Instability", type: "personal_offensive", cd: 120 }],
+  // ── Warrior (additions 2026-05-03) ──
+  [376079, { name: "Spear of Bastion",       type: "personal_offensive", cd: 60 }],
+  [262161, { name: "Warbreaker",             type: "personal_offensive", cd: 45 }],
 ]);
 
 // ── On-Use Trinkets — Season 1 Midnight ────────────────────────────────────
@@ -292,15 +326,40 @@ const FEIGN_DEATH_LOOKAHEAD_MS = 15000; // 15 seconds — matches WCL's approach
 // ── Consumables — healthstones, potions ───────────────────────────────────
 // Track SPELL_CAST_SUCCESS for these spells by players.
 // Spell names are also checked as fallback for potions with variable IDs.
-const CONSUMABLE_SPELL_IDS = new Set([
-  6262,    // Healthstone
-  431416,  // Algari Healing Potion
-  431418,  // Algari Mana Potion
+// ── Consumables — strict allowlist (TWW S1) ────────────────────────
+// Only these spell IDs land in pull.consumablesUsed[]. Everything else
+// the player self-casts is dropped from this stream.
+// Verified against Wowhead 2026-05-03. Update each season.
+const CONSUMABLE_SPELL_IDS = new Map([
+  // ── Healthstones / In-combat heals ──
+  [6262,    { name: "Healthstone",                    type: "health" }],
+  // ── Health Potions ──
+  [431416,  { name: "Algari Healing Potion",          type: "health" }],
+  [431417,  { name: "Cavedweller's Delight",          type: "health" }],
+  // ── Mana Potions ──
+  [431418,  { name: "Algari Mana Potion",             type: "mana" }],
+  // ── Stat Potions ──
+  [431932,  { name: "Tempered Potion",                type: "stat" }],
+  [431934,  { name: "Potion of Unwavering Focus",     type: "stat" }],
+  // ── Flasks ──
+  [431940,  { name: "Flask of Alchemical Chaos",      type: "flask" }],
+  [431941,  { name: "Flask of Tempered Mastery",      type: "flask" }],
+  [431942,  { name: "Flask of Tempered Versatility",  type: "flask" }],
+  [431943,  { name: "Flask of Tempered Swiftness",    type: "flask" }],
+  [431944,  { name: "Flask of Tempered Aggression",   type: "flask" }],
+  // ── Augment Runes ──
+  [367405,  { name: "Draconic Augment Rune",          type: "augment" }],
+  // ── Weapon Stones ──
+  [29532,   { name: "Adamantite Weapon Stone",        type: "weapon" }],
 ]);
+
+// Kept for reference only. No longer consulted by the consumables block.
+// Removal of this set requires Brian's explicit instruction.
 const CONSUMABLE_SPELL_NAMES = new Set([
   "Healthstone", "Healing Potion", "Algari Healing Potion",
   "Algari Mana Potion", "Dreamwalker's Healing Potion",
 ]);
+void CONSUMABLE_SPELL_NAMES;
 
 // ─── Dungeon lookup ────────────────────────────────────────────────────────
 
@@ -1330,18 +1389,26 @@ class CombatLogRunBuilder extends EventEmitter {
       }
     }
 
-    // ── Consumable usage (healthstones, potions) ─────────────────────────
+    // ── Consumable usage — strict allowlist ───────────────────────────
+    // Only spells in CONSUMABLE_SPELL_IDS land here. Class spells the
+    // player happens to self-cast (Power Word: Radiance, Tiger's Lust,
+    // Arcane Intellect, etc.) are NOT consumables and are dropped from
+    // this stream. The previous catch-all gated against 5 allowlists was
+    // too wide and dumped utility/heal class spells into Consumables.
     if (isCast && isPlayerGuid(sourceGuid)) {
       const consSpellId = parseInt(fields[9], 10) || 0;
-      const consSpellName = (fields[10] || "").replace(/"/g, "");
-      if (CONSUMABLE_SPELL_IDS.has(consSpellId) || CONSUMABLE_SPELL_NAMES.has(consSpellName)) {
-        if (this.currentSeg && (!this.currentSeg.consumablesUsed || this.currentSeg.consumablesUsed.length < 30)) {
-          if (!this.currentSeg.consumablesUsed) this.currentSeg.consumablesUsed = [];
+      const consInfo = CONSUMABLE_SPELL_IDS.get(consSpellId);
+      if (consInfo) {
+        if (this.currentSeg && this.currentSeg.consumablesUsed.length < 30) {
           this.currentSeg.consumablesUsed.push({
-            ts, offsetMs: ts - this.currentSeg.startTs,
+            ts,
+            offsetMs: ts - this.currentSeg.startTs,
             playerName: this.guidToName.get(sourceGuid) || sourceName || null,
+            class: this.guidToClass.get(sourceGuid) || "UNKNOWN",
+            role: this.guidToRole.get(sourceGuid) || "unknown",
             spellId: consSpellId,
-            spellName: consSpellName,
+            spellName: consInfo.name,
+            consumableType: consInfo.type,
           });
         }
       }
