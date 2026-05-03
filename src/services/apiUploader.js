@@ -8,11 +8,16 @@ const https = require("https");
 class ApiUploader {
   constructor(clientId) {
     this.clientId = clientId || "";
+    this.authToken = null;
     this.uploadedKeys = new Set(); // Only stores SUCCESSFULLY uploaded runIds
   }
 
   setClientId(id) {
     this.clientId = id;
+  }
+
+  setAuthToken(token) {
+    this.authToken = token || null;
   }
 
   async upload(payload) {
@@ -67,6 +72,10 @@ class ApiUploader {
 
     if (this.clientId) {
       headers["X-Client-Id"] = this.clientId;
+    }
+
+    if (this.authToken) {
+      headers["Authorization"] = `Bearer ${this.authToken}`;
     }
 
     return new Promise((resolve) => {
