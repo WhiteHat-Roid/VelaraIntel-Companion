@@ -1256,23 +1256,42 @@ function parseCombatLog({ run, combatLogLines, partyGuids = [] }) {
     const destName = (fields[6] || "").replace(/"/g, "");
     if (!destGuid) return;
 
-    // Tail block: last 5 fields are absorbSpellId, absorbSpellName,
-    // absorbSpellSchool, absorbedAmount, critical.
-    const n = fields.length;
-    const absorbedAmount = parseInt(fields[n - 2], 10) || 0;
+    // 2026-05-05 (Companion 1.4.7) — fixed argument-index off-by-one and form detection.
+    // Blizzard CLEU SPELL_ABSORBED has two forms:
+    //   Form 1 (SWING absorbed): suffix starts with caster block at fields[9].
+    //                            Total fields = 19.
+    //   Form 2 (SPELL_* absorbed): suffix has source-spell prefix (3 fields) before caster block.
+    //                              Total fields = 22.
+    // Absorb block layout (last 6 fields of suffix in both forms):
+    //   [absorbSpellId, absorbSpellName, absorbSpellSchool, absorbedAmount, totalAmount, critical]
+    //
+    // Detection: fields[9] is a caster GUID in form 1; numeric spell ID in form 2.
+    //
+    // Previous code assumed only 5 trailing absorb fields (no totalAmount) and read
+    // [n-5..n-2] = [id, name, school, amount]. After Blizzard added totalAmount in 12.x,
+    // every value shifted by 1: stored absorbedAmount was actually totalAmount,
+    // school field held the real absorbedAmount, name field held the school hex
+    // bitmask string ("0x1" etc.), and id field's parseInt of the shield's name
+    // string returned 0. Forward-indexed read with form detection avoids the
+    // shift entirely and is robust to future trailing-field additions.
+    const SPELL_ABSORBED_BASE = 9;
+    const fieldAtBase = fields[SPELL_ABSORBED_BASE] || "";
+    const isFormTwo = /^\d+$/.test(fieldAtBase);
+    const casterStart = isFormTwo ? SPELL_ABSORBED_BASE + 3 : SPELL_ABSORBED_BASE;
+    const absorbBlockStart = casterStart + 4;
+    const absorbSpellId = parseInt(fields[absorbBlockStart], 10) || 0;
+    const absorbSpellName = (fields[absorbBlockStart + 1] || "").replace(/"/g, "");
+    const absorbSpellSchool = parseInt(fields[absorbBlockStart + 2], 10) || 0;
+    const absorbedAmount = parseInt(fields[absorbBlockStart + 3], 10) || 0;
     if (absorbedAmount <= 0) return;
-    const absorbSpellSchool = parseInt(fields[n - 3], 10) || 0;
-    const absorbSpellName = (fields[n - 4] || "").replace(/"/g, "");
-    const absorbSpellId = parseInt(fields[n - 5], 10) || 0;
+    // fields[absorbBlockStart + 4] = totalAbsorbAmount (cumulative on this shield, not stored)
+    // fields[absorbBlockStart + 5] = critical flag (not stored)
 
-    // sourceHit is the spell that was absorbed. Heuristic: when the field
-    // count indicates there was a SPELL_* prefix, fields[9..11] hold it;
-    // otherwise (SWING_DAMAGE absorbed) those fields are absent.
     let sourceHitSpellId = 0;
     let sourceHitSpellName = "";
-    if (n >= 19) {
-      sourceHitSpellId = parseInt(fields[9], 10) || 0;
-      sourceHitSpellName = (fields[10] || "").replace(/"/g, "");
+    if (isFormTwo) {
+      sourceHitSpellId = parseInt(fields[SPELL_ABSORBED_BASE], 10) || 0;
+      sourceHitSpellName = (fields[SPELL_ABSORBED_BASE + 1] || "").replace(/"/g, "");
     }
 
     segData.absorbCounter++;
