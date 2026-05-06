@@ -467,6 +467,12 @@ const MIN_FIELDS = {
   "UNIT_DIED": 9,
 };
 
+// ─── Spike thresholds (Overwolf parity, ported 2026-05-06) ─────────────────
+const SPIKE_THRESHOLD_ABSOLUTE = 80000;
+const SPIKE_THRESHOLD_PCT      = 0.30;
+const ESTIMATED_PLAYER_HP      = 800000;
+const SPIKE_THRESHOLD_RELATIVE = Math.floor(SPIKE_THRESHOLD_PCT * ESTIMATED_PLAYER_HP);
+
 // ─── Helpers ───────────────────────────────────────────────────────────────
 
 function isPlayerGuid(guid) {
@@ -562,7 +568,7 @@ class CombatLogRunBuilder extends EventEmitter {
     this.playerDamageTaken = new Map();  // GUID → total damage taken
     this.playerHealingDone = new Map();  // GUID → total healing done
     this.confirmedPartyGuids = new Set();
-    this.segCounters     = { death: 0, cd: 0, int: 0, ec: 0 };
+    this.segCounters     = { death: 0, cd: 0, int: 0, ec: 0, spike: 0, absorb: 0 };
     this.lastCreatureDamageTs = 0;  // Last time ANY creature dealt or received damage
     this.knownInterruptibleSpells = new Map();  // spellId → { spellId, spellName, npcId, npcName, count }
     this._defensiveBuffer = [];  // buffered defensives when no segment is open
@@ -638,8 +644,10 @@ class CombatLogRunBuilder extends EventEmitter {
       playerOverhealing: {},    // { playerGuid: { healing: total, overhealing: total } }
       resurrections: [],        // SPELL_RESURRECT events (capped at 20)
       consumablesUsed: [],      // healthstones, potions (capped at 30)
+      absorbs: [],              // SPELL_ABSORBED events (capped at 100)
+      spikes: [],               // high-damage spike events for Deadliest Enemy Abilities chart
     };
-    this.segCounters = { death: 0, cd: 0, int: 0, ec: 0 };
+    this.segCounters = { death: 0, cd: 0, int: 0, ec: 0, spike: 0, absorb: 0 };
 
     // Flush buffered defensives cast within 3s before segment opened
     const cutoff = ts - 3000;
@@ -951,8 +959,9 @@ class CombatLogRunBuilder extends EventEmitter {
     const isInterrupt = event === "SPELL_INTERRUPT";
     const isDispel = event === "SPELL_DISPEL" || event === "SPELL_STOLEN";
     const isResurrect = event === "SPELL_RESURRECT";
+    const isAbsorbed = event === "SPELL_ABSORBED";
 
-    if (!isDamage && !isEnvironmental && !isHeal && !isCast && !isCastStart && !isAuraApplied && !isDied && !isInterrupt && !isDispel && !isResurrect) return null;
+    if (!isDamage && !isEnvironmental && !isHeal && !isCast && !isCastStart && !isAuraApplied && !isDied && !isInterrupt && !isDispel && !isResurrect && !isAbsorbed) return null;
 
     const sourceGuid = fields[1] || "";
     const sourceName = (fields[2] || "").replace(/"/g, "");
@@ -1208,9 +1217,63 @@ class CombatLogRunBuilder extends EventEmitter {
       return null;
     }
 
+    // ── SPELL_ABSORBED — true incoming damage signal (Overwolf parity, ported 2026-05-06) ──
+    // When a hit is absorbed by Power Word: Shield etc., SPELL_DAMAGE shows
+    // the post-absorb amount. We need the absorbed portion to know the
+    // *true* hit so spike detection and threat analytics aren't fooled.
+    //
+    // Blizzard CLEU SPELL_ABSORBED has two forms:
+    //   Form 1 (SWING absorbed): caster block at fields[9]
+    //   Form 2 (SPELL_* absorbed): source-spell prefix (3 fields) before caster block
+    // Absorb block layout (last 6 fields): [absorbSpellId, absorbSpellName,
+    //   absorbSpellSchool, absorbedAmount, totalAmount, critical].
+    if (isAbsorbed && this.currentSeg && this.currentSeg.absorbs.length < 100) {
+      const SPELL_ABSORBED_BASE = 9;
+      const fieldAtBase = fields[SPELL_ABSORBED_BASE] || "";
+      const isFormTwo = /^\d+$/.test(fieldAtBase);
+      const casterStart = isFormTwo ? SPELL_ABSORBED_BASE + 3 : SPELL_ABSORBED_BASE;
+      const absorbBlockStart = casterStart + 4;
+      const absorbSpellId = parseInt(fields[absorbBlockStart], 10) || 0;
+      const absorbSpellName = (fields[absorbBlockStart + 1] || "").replace(/"/g, "");
+      const absorbSpellSchool = parseInt(fields[absorbBlockStart + 2], 10) || 0;
+      const absorbedAmount = parseInt(fields[absorbBlockStart + 3], 10) || 0;
+
+      if (absorbedAmount > 0 && destGuid) {
+        let sourceHitSpellId = 0;
+        let sourceHitSpellName = "";
+        if (isFormTwo) {
+          sourceHitSpellId = parseInt(fields[SPELL_ABSORBED_BASE], 10) || 0;
+          sourceHitSpellName = (fields[SPELL_ABSORBED_BASE + 1] || "").replace(/"/g, "");
+        }
+
+        this.segCounters.absorb++;
+        const segId = this.currentSeg.segmentId;
+        const runId = this.run ? this.run.runId : "unk";
+        this.currentSeg.absorbs.push({
+          absorbId       : `${runId}-${segId}-ab${this.segCounters.absorb}`,
+          segmentId      : segId,
+          absorbTs       : ts,
+          offsetMs       : ts - this.currentSeg.startTs,
+          destGuid,
+          destName,
+          destRole       : this.guidToRole.get(destGuid) || "unknown",
+          destClass      : this.guidToClass.get(destGuid) || "UNKNOWN",
+          absorbSpellId,
+          absorbSpellName,
+          absorbSpellSchool,
+          absorbedAmount,
+          sourceHitSpellId,
+          sourceHitSpellName,
+          sourceNpcId    : npcIdFromGuid(sourceGuid),
+          sourceNpcName  : isCreatureGuid(sourceGuid) ? sourceName : null,
+        });
+      }
+      return null;
+    }
+
     // ── Damage (dynamic suffix detection for advanced combat log) ──────
     if (isDamage && isPlayerGuid(destGuid)) {
-      let spellId = 0, spellName = "Melee", amount = 0, overkill = 0;
+      let spellId = 0, spellName = "Melee", spellSchool = 1, amount = 0, overkill = 0;
       if (event === "SWING_DAMAGE") {
         // Swing: no spell prefix — advanced info starts at field 9
         const swingAdvStart = 9;
@@ -1220,8 +1283,9 @@ class CombatLogRunBuilder extends EventEmitter {
         overkill = parseInt(fields[swingSuffixStart + 1], 10) || 0;
       } else {
         // Spell/Range: spell prefix at fields 9-11, advanced info at field 12
-        spellId   = parseInt(fields[9], 10) || 0;
-        spellName = (fields[10] || "").replace(/"/g, "");
+        spellId     = parseInt(fields[9], 10) || 0;
+        spellName   = (fields[10] || "").replace(/"/g, "");
+        spellSchool = parseInt(fields[11], 10) || 0;
         const advStart = 12;
         const hasAdv = hasAdvancedInfo(fields, advStart);
         const suffixStart = hasAdv ? advStart + ADVANCED_INFO_FIELD_COUNT : advStart;
@@ -1258,6 +1322,28 @@ class CombatLogRunBuilder extends EventEmitter {
         abilities[abilityKey].total += amount;
         abilities[abilityKey].count += 1;
         if (amount > abilities[abilityKey].maxHit) abilities[abilityKey].maxHit = amount;
+      }
+
+      // Spike detection — hybrid threshold (Overwolf parity, ported 2026-05-06).
+      // Shape matches normalize_segments.py → pull.spikes round-trip without translation.
+      if (this.currentSeg && (amount >= SPIKE_THRESHOLD_ABSOLUTE || amount >= SPIKE_THRESHOLD_RELATIVE)) {
+        this.segCounters.spike++;
+        const segId = this.currentSeg.segmentId;
+        const runId = this.run ? this.run.runId : "unk";
+        this.currentSeg.spikes.push({
+          spikeId       : `${runId}-${segId}-sp${this.segCounters.spike}`,
+          segmentId     : segId,
+          spikeTs       : ts,
+          offsetMs      : ts - this.currentSeg.startTs,
+          damage        : amount,
+          targetGuid    : destGuid,
+          targetRole    : this.guidToRole.get(destGuid) || "unknown",
+          spellId,
+          spellName,
+          spellSchool,
+          sourceNpcId   : npcIdFromGuid(sourceGuid),
+          sourceNpcName : isCreatureGuid(sourceGuid) ? sourceName : null,
+        });
       }
 
       this._addDmg(ts, amount);
@@ -1624,6 +1710,10 @@ class CombatLogRunBuilder extends EventEmitter {
         prev.resurrections.push(...(seg.resurrections || []));
         prev.consumablesUsed = prev.consumablesUsed || [];
         prev.consumablesUsed.push(...(seg.consumablesUsed || []));
+        prev.absorbs = prev.absorbs || [];
+        prev.absorbs.push(...(seg.absorbs || []));
+        prev.spikes = prev.spikes || [];
+        prev.spikes.push(...(seg.spikes || []));
         // Merge damageTakenByAbility maps
         prev.damageTakenByAbility = prev.damageTakenByAbility || {};
         for (const [guid, abilities] of Object.entries(seg.damageTakenByAbility || {})) {
@@ -1749,6 +1839,8 @@ class CombatLogRunBuilder extends EventEmitter {
         ),
         resurrections: seg.resurrections || [],
         consumablesUsed: seg.consumablesUsed || [],
+        absorbs: seg.absorbs || [],
+        spikes: seg.spikes || [],
       };
     });
 
@@ -1968,6 +2060,8 @@ class CombatLogRunBuilder extends EventEmitter {
           hasOverhealing: finalSegments.some(s => Object.keys(s.playerOverhealing || {}).length > 0),
           hasResurrections: finalSegments.some(s => (s.resurrections || []).length > 0),
           hasConsumableTracking: finalSegments.some(s => (s.consumablesUsed || []).length > 0),
+          hasAbsorbs: finalSegments.some(s => (s.absorbs || []).length > 0),
+          hasSpikes: finalSegments.some(s => (s.spikes || []).length > 0),
         },
         player: playerObj,
         partyMembers: otherMembers,
