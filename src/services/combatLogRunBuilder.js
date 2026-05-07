@@ -150,6 +150,11 @@ const RACIAL_ABILITIES = new Map([
   // ── Alliance ──
   [20594,  { race: "Dwarf",           name: "Stoneform",         type: "cleanse_defensive" }],
   [265221, { race: "Dark Iron Dwarf",  name: "Fireblood",         type: "cleanse_offensive" }],
+  // 273104 is the combat-log-emitted ID for Fireblood (the 265221 in the spellbook
+  // never fires in CLEU). Same lesson as absorb spell IDs: Wowhead/spellbook IDs
+  // and combat log IDs can diverge. Both kept; either may surface depending on
+  // toy/transformation state.
+  [273104, { race: "Dark Iron Dwarf",  name: "Fireblood",         type: "cleanse_offensive" }],
   [58984,  { race: "Night Elf",        name: "Shadowmeld",        type: "combat_drop" }],
   [256948, { race: "Void Elf",         name: "Spatial Rift",      type: "mobility" }],
   [259930, { race: "Kul Tiran",        name: "Haymaker",          type: "cc" }],
