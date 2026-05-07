@@ -1205,9 +1205,13 @@ function setupIPC() {
   });
 
   // ── Scan for missed runs IPC ───────────────────────────────────────
+  // Scans the entire WoW Logs directory (every WoWCombatLog*.txt) — used by
+  // the dashboard "Scan Previous Logs" button. Auto-scan on startup uses the
+  // single-file scanFile path (faster) for the newest log only.
   ipcMain.handle("scan-missed-runs", async () => {
     const logPath = getCombatLogPath();
     if (!logPath) return { ok: false, error: "Combat log path not configured" };
+    const logsDir = path.dirname(logPath);
     const scanner = new CombatLogScanner({
       uploader: apiUploader,
       velaraAuth,
@@ -1217,7 +1221,7 @@ function setupIPC() {
         broadcast("scan-progress", { message: msg, type });
       },
     });
-    const result = await scanner.scanFile(logPath);
+    const result = await scanner.scanDirectory(logsDir);
     broadcast("scan-complete", result);
     return { ok: true, ...result };
   });

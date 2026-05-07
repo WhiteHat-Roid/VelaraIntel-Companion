@@ -161,6 +161,8 @@ const OFFENSIVE_COOLDOWNS = new Map([
 const RACIAL_ABILITIES = new Map([
   [20594,  { race: "Dwarf",                name: "Stoneform",                        type: "cleanse_defensive" }],
   [265221, { race: "Dark Iron Dwarf",      name: "Fireblood",                        type: "cleanse_offensive" }],
+  // Combat-log-emitted ID — see combatLogRunBuilder.js for full note.
+  [273104, { race: "Dark Iron Dwarf",      name: "Fireblood",                        type: "cleanse_offensive" }],
   [58984,  { race: "Night Elf",            name: "Shadowmeld",                       type: "combat_drop" }],
   [256948, { race: "Void Elf",             name: "Spatial Rift",                     type: "mobility" }],
   [259930, { race: "Kul Tiran",            name: "Haymaker",                         type: "cc" }],
@@ -173,6 +175,7 @@ const RACIAL_ABILITIES = new Map([
   [33697,  { race: "Orc",                  name: "Blood Fury",                       type: "offensive" }],
   [33702,  { race: "Orc",                  name: "Blood Fury",                       type: "offensive" }],
   [7744,   { race: "Undead",               name: "Will of the Forsaken",             type: "cleanse" }],
+  [59752,  { race: "Human",                name: "Every Man for Himself",            type: "cleanse" }],
   [20549,  { race: "Tauren",               name: "War Stomp",                        type: "cc" }],
   [69179,  { race: "Goblin",               name: "Rocket Barrage",                   type: "damage" }],
   [255661, { race: "Highmountain Tauren",  name: "Bull Rush",                        type: "cc" }],

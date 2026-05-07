@@ -150,6 +150,11 @@ const RACIAL_ABILITIES = new Map([
   // ── Alliance ──
   [20594,  { race: "Dwarf",           name: "Stoneform",         type: "cleanse_defensive" }],
   [265221, { race: "Dark Iron Dwarf",  name: "Fireblood",         type: "cleanse_offensive" }],
+  // 273104 is the combat-log-emitted ID for Fireblood (the 265221 in the spellbook
+  // never fires in CLEU). Same lesson as absorb spell IDs: Wowhead/spellbook IDs
+  // and combat log IDs can diverge. Both kept; either may surface depending on
+  // toy/transformation state.
+  [273104, { race: "Dark Iron Dwarf",  name: "Fireblood",         type: "cleanse_offensive" }],
   [58984,  { race: "Night Elf",        name: "Shadowmeld",        type: "combat_drop" }],
   [256948, { race: "Void Elf",         name: "Spatial Rift",      type: "mobility" }],
   [259930, { race: "Kul Tiran",        name: "Haymaker",          type: "cc" }],
@@ -163,6 +168,7 @@ const RACIAL_ABILITIES = new Map([
   [33697,  { race: "Orc",             name: "Blood Fury",        type: "offensive" }],
   [33702,  { race: "Orc",             name: "Blood Fury",        type: "offensive" }],
   [7744,   { race: "Undead",          name: "Will of the Forsaken", type: "cleanse" }],
+  [59752,  { race: "Human",           name: "Every Man for Himself", type: "cleanse" }],
   [20549,  { race: "Tauren",          name: "War Stomp",         type: "cc" }],
   [69179,  { race: "Goblin",          name: "Rocket Barrage",    type: "damage" }],
   [255661, { race: "Highmountain Tauren", name: "Bull Rush",     type: "cc" }],
@@ -1070,6 +1076,13 @@ class CombatLogRunBuilder extends EventEmitter {
         this.currentSeg.resurrections.push({
           ts, offsetMs: ts - this.currentSeg.startTs,
           sourceName: this.guidToName.get(sourceGuid) || sourceName || null,
+          sourceClass: this.guidToClass.get(sourceGuid) || "UNKNOWN",
+          sourceRole: this.guidToRole.get(sourceGuid) || "unknown",
+          // Frontend aggregate keys rows on `class`/`name` and drops UNKNOWN-class rows;
+          // mirror sourceClass into `class` so PlaybookTable renders the rez row with
+          // the caster's class color rather than dropping it. Without this, badge==len
+          // counts the entry but aggregate hides it, producing the badge/table mismatch.
+          class: this.guidToClass.get(sourceGuid) || "UNKNOWN",
           targetName: this.guidToName.get(destGuid) || destName || null,
           spellId, spellName,
           isCombatRez: this.inKey && this.currentSeg != null,

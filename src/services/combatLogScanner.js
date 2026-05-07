@@ -9,6 +9,7 @@
 // uploadedRunIds. Uploads the rest via ApiUploader.
 
 const fs = require("fs");
+const path = require("path");
 const readline = require("readline");
 const { CombatLogRunBuilder } = require("./combatLogRunBuilder");
 
@@ -93,6 +94,63 @@ class CombatLogScanner {
     this.onProgress(summary, result.uploaded > 0 ? "ok" : "info");
 
     return result;
+  }
+
+  // Scan every WoWCombatLog*.txt file in a directory, oldest first, calling
+  // scanFile on each. uploadedRunIds is shared across files so a run that
+  // happens to appear in two logs only uploads once.
+  async scanDirectory(logsDir) {
+    const agg = { filesScanned: 0, totalFiles: 0, found: 0, uploaded: 0, skipped: 0, errors: 0 };
+
+    if (!logsDir) {
+      this.onProgress("No combat log directory configured", "err");
+      return agg;
+    }
+    if (!fs.existsSync(logsDir)) {
+      this.onProgress(`Logs directory not found: ${logsDir}`, "err");
+      return agg;
+    }
+
+    let entries;
+    try { entries = fs.readdirSync(logsDir); }
+    catch (err) {
+      this.onProgress(`Failed to list ${logsDir}: ${err.message}`, "err");
+      return agg;
+    }
+
+    const logFiles = entries
+      .filter(name => name.startsWith("WoWCombatLog") && name.endsWith(".txt"))
+      .map(name => {
+        const full = path.join(logsDir, name);
+        let mtime = 0;
+        try { mtime = fs.statSync(full).mtimeMs; } catch { /* skip */ }
+        return { name, full, mtime };
+      })
+      .filter(f => f.mtime > 0)
+      .sort((a, b) => a.mtime - b.mtime);  // oldest first so newer dedup wins
+
+    agg.totalFiles = logFiles.length;
+    if (logFiles.length === 0) {
+      this.onProgress(`No WoWCombatLog*.txt files in ${logsDir}`, "warn");
+      return agg;
+    }
+
+    this.onProgress(`Found ${logFiles.length} combat log file(s) — scanning oldest first`, "info");
+
+    for (let i = 0; i < logFiles.length; i++) {
+      const f = logFiles[i];
+      this.onProgress(`Scanning file ${i + 1}/${logFiles.length}: ${f.name}`, "info");
+      const r = await this.scanFile(f.full);
+      agg.filesScanned++;
+      agg.found    += r.found    || 0;
+      agg.uploaded += r.uploaded || 0;
+      agg.skipped  += r.skipped  || 0;
+      agg.errors   += r.errors   || 0;
+    }
+
+    const summary = `Directory scan complete — ${agg.uploaded} uploaded, ${agg.skipped} already on site, ${agg.errors} errors across ${agg.filesScanned} file(s)`;
+    this.onProgress(summary, agg.uploaded > 0 ? "ok" : "info");
+    return agg;
   }
 
   // Feed every line in the log file through a CombatLogRunBuilder and collect

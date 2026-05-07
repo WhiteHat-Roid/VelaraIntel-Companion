@@ -31,6 +31,16 @@ contextBridge.exposeInMainWorld("velara", {
   setPrivacyMode:    (mode) => ipcRenderer.send("set-privacy-mode", mode),
   getPrivacyMode:    () => ipcRenderer.invoke("get-privacy-mode"),
 
+  // Account link (velaraAuth)
+  getAuthStatus:     () => ipcRenderer.invoke("get-auth-status"),
+  linkCompanion:     (code) => ipcRenderer.invoke("link-companion", code),
+  unlinkCompanion:   () => ipcRenderer.invoke("unlink-companion"),
+
+  // Batch scan WoW Logs directory for missed M+ runs
+  scanMissedRuns:    () => ipcRenderer.invoke("scan-missed-runs"),
+  onScanProgress:    (cb) => ipcRenderer.on("scan-progress", (_, data) => cb(data)),
+  onScanComplete:    (cb) => ipcRenderer.on("scan-complete", (_, data) => cb(data)),
+
   // Status events
   onStatusLog:       (cb) => ipcRenderer.on("status-log", (_, data) => cb(data.msg, data.level)),
   onRunCompleted:    (cb) => ipcRenderer.on("run-completed", (_, data) => cb(data)),

@@ -35,6 +35,86 @@
     }
     .titlebar-btns button:hover { background: #1A1A2E; color: #C8D4DC; }
 
+    /* ── Scan section (Upload tab) ── */
+    .scan-section {
+      background: #0D1117; border: 1px solid #1A1A2E;
+      padding: 14px 16px; margin-bottom: 16px;
+    }
+    .scan-row {
+      display: flex; align-items: center; gap: 12px;
+    }
+    .scan-row .scan-btn {
+      background: #C9A84C; border: none; color: #0D1117;
+      padding: 10px 18px; font-size: 12px; font-weight: 700;
+      letter-spacing: 0.06em; text-transform: uppercase; cursor: pointer;
+      transition: background 0.15s; white-space: nowrap;
+    }
+    .scan-row .scan-btn:hover { background: #D6B558; }
+    .scan-row .scan-btn:disabled { background: #2A3A4A; color: #556677; cursor: not-allowed; }
+    .scan-row .scan-status {
+      font-size: 11px; color: #8899AA; flex: 1;
+      font-family: 'Consolas', monospace;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .scan-row .scan-status.ok   { color: #27AE60; }
+    .scan-row .scan-status.warn { color: #E8A030; }
+    .scan-row .scan-status.err  { color: #C0392B; }
+    .scan-section .scan-hint {
+      font-size: 10px; color: #667788; margin-top: 8px; line-height: 1.5;
+    }
+    .scan-divider {
+      height: 1px; background: #1A1A2E; margin: 18px 0 16px;
+    }
+
+    /* ── Account link bar ── */
+    .auth-bar {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 16px;
+      background: #0A0E13;
+      border-bottom: 1px solid #1A1A2E;
+      font-size: 11px;
+    }
+    .auth-dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: #556677; flex-shrink: 0;
+    }
+    .auth-dot.linked   { background: #27AE60; box-shadow: 0 0 6px rgba(39, 174, 96, 0.5); }
+    .auth-dot.unlinked { background: #C0392B; box-shadow: 0 0 6px rgba(192, 57, 43, 0.5); }
+    .auth-status-text {
+      color: #C8D4DC; font-weight: 600; letter-spacing: 0.02em;
+      white-space: nowrap;
+    }
+    .auth-status-text.dim { color: #8899AA; font-weight: 500; }
+    .auth-spacer { flex: 1; }
+    .auth-code-input {
+      width: 140px; background: #0D1117; border: 1px solid #1A1A2E;
+      color: #C8D4DC; padding: 6px 10px; font-size: 11px;
+      font-family: 'Consolas', monospace; outline: none; letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+    .auth-code-input:focus { border-color: #7B2FBE; }
+    .auth-code-input::placeholder { color: #556677; text-transform: none; letter-spacing: normal; }
+    .auth-btn {
+      background: #7B2FBE; border: none; color: #fff;
+      padding: 6px 14px; font-size: 11px; font-weight: 700;
+      letter-spacing: 0.06em; text-transform: uppercase; cursor: pointer;
+      transition: background 0.15s;
+    }
+    .auth-btn:hover { background: #8E3DD4; }
+    .auth-btn:disabled { background: #2A3A4A; color: #556677; cursor: not-allowed; }
+    .auth-btn.secondary {
+      background: transparent; color: #8899AA; border: 1px solid #2A3A4A;
+    }
+    .auth-btn.secondary:hover { color: #C8D4DC; border-color: #556677; background: #1A1A2E; }
+    .auth-error {
+      color: #C0392B; font-size: 10px; padding-left: 16px; padding-bottom: 6px;
+      background: #0A0E13; border-bottom: 1px solid #1A1A2E;
+      display: none;
+    }
+    .auth-error.show { display: block; }
+
     /* ── Tabs ── */
     .tabs {
       display: flex;
@@ -334,6 +414,17 @@
     </div>
   </div>
 
+  <!-- Account link bar -->
+  <div class="auth-bar" id="authBar">
+    <div class="auth-dot" id="authDot"></div>
+    <div class="auth-status-text dim" id="authStatusText">Checking account...</div>
+    <div class="auth-spacer"></div>
+    <input type="text" class="auth-code-input" id="authCodeInput" placeholder="Link code" maxlength="32" autocomplete="off" style="display:none">
+    <button type="button" class="auth-btn" id="authLinkBtn" style="display:none">Link</button>
+    <button type="button" class="auth-btn secondary" id="authUnlinkBtn" style="display:none">Unlink</button>
+  </div>
+  <div class="auth-error" id="authError"></div>
+
   <!-- Tabs -->
   <div class="tabs">
     <div class="tab active" data-tab="live">Live Log</div>
@@ -380,11 +471,24 @@
 
   <!-- Tab 2: Upload a Log -->
   <div class="tab-content" id="tab-upload">
-    <div class="field-label">Choose the file you want to upload</div>
+    <!-- Scan all logs in the WoW Logs directory -->
+    <div class="scan-section">
+      <div class="field-label">Backfill missed runs</div>
+      <div class="scan-row">
+        <button type="button" class="scan-btn" id="btnScanLogs">Scan Previous Logs</button>
+        <span class="scan-status" id="scanStatus">Scans every WoWCombatLog*.txt in your Logs folder</span>
+      </div>
+      <div class="scan-hint">Finds completed M+ runs in past combat logs and uploads any that aren't on velaraintel.com yet. Older runs are scanned first.</div>
+    </div>
+
+    <div class="scan-divider"></div>
+
+    <div class="field-label">Or upload one log at a time</div>
     <div class="path-row">
       <input type="text" class="path-input" id="uploadFileInput" readonly>
       <button class="btn-sm" id="btnChooseFile">Choose...</button>
     </div>
+    <div class="hint" style="margin-top:0">Pick a single combat log file to see and upload runs from it.</div>
 
     <div class="field-label">Or paste addon JSON export</div>
     <textarea class="paste-area" id="pasteArea" placeholder="Paste /vi export here..."></textarea>
@@ -817,6 +921,69 @@
     });
 
     // ═══════════════════════════════════════════════
+    // SCAN PREVIOUS LOGS — batch directory scan
+    // ═══════════════════════════════════════════════
+    const btnScanLogs = document.getElementById('btnScanLogs');
+    const scanStatus  = document.getElementById('scanStatus');
+    let scanInProgress = false;
+
+    function setScanStatus(text, level) {
+      scanStatus.textContent = text || '';
+      scanStatus.className = 'scan-status' + (level ? ' ' + level : '');
+    }
+
+    if (window.velara.onScanProgress) {
+      window.velara.onScanProgress((data) => {
+        if (data && data.message) {
+          setScanStatus(data.message, data.type);
+          addStatus('uploadStatusFeed', data.message, data.type || 'info');
+        }
+      });
+    }
+
+    if (window.velara.onScanComplete) {
+      window.velara.onScanComplete((data) => {
+        scanInProgress = false;
+        btnScanLogs.disabled = false;
+        btnScanLogs.textContent = 'Scan Again';
+        if (!data) { setScanStatus('Scan finished', 'ok'); return; }
+        const parts = [];
+        parts.push((data.uploaded || 0) + ' uploaded');
+        parts.push((data.skipped  || 0) + ' already on site');
+        if (data.errors) parts.push(data.errors + ' errors');
+        if (data.totalFiles) parts.push('across ' + (data.filesScanned || data.totalFiles) + '/' + data.totalFiles + ' files');
+        const summary = 'Done — ' + parts.join(', ');
+        setScanStatus(summary, data.uploaded > 0 ? 'ok' : (data.errors ? 'err' : 'warn'));
+        addStatus('uploadStatusFeed', summary, data.uploaded > 0 ? 'ok' : 'info');
+      });
+    }
+
+    btnScanLogs.addEventListener('click', async () => {
+      if (scanInProgress) return;
+      scanInProgress = true;
+      btnScanLogs.disabled = true;
+      btnScanLogs.textContent = 'Scanning...';
+      setScanStatus('Starting scan...', '');
+      try {
+        const result = await window.velara.scanMissedRuns();
+        // onScanComplete handler also fires via broadcast — guard against double-render
+        if (result && !result.ok) {
+          setScanStatus(result.error || 'Scan failed', 'err');
+          addStatus('uploadStatusFeed', 'Scan failed: ' + (result.error || 'unknown'), 'err');
+          scanInProgress = false;
+          btnScanLogs.disabled = false;
+          btnScanLogs.textContent = 'Scan Previous Logs';
+        }
+      } catch (err) {
+        setScanStatus(err.message || String(err), 'err');
+        addStatus('uploadStatusFeed', 'Scan error: ' + (err.message || String(err)), 'err');
+        scanInProgress = false;
+        btnScanLogs.disabled = false;
+        btnScanLogs.textContent = 'Scan Previous Logs';
+      }
+    });
+
+    // ═══════════════════════════════════════════════
     // STATUS LOG LISTENER (from main process)
     // ═══════════════════════════════════════════════
 
@@ -825,6 +992,111 @@
         addStatus('liveStatusFeed', msg, level);
       });
     }
+
+    // ═══════════════════════════════════════════════
+    // ACCOUNT LINK BAR
+    // ═══════════════════════════════════════════════
+    const authDot         = document.getElementById('authDot');
+    const authStatusText  = document.getElementById('authStatusText');
+    const authCodeInput   = document.getElementById('authCodeInput');
+    const authLinkBtn     = document.getElementById('authLinkBtn');
+    const authUnlinkBtn   = document.getElementById('authUnlinkBtn');
+    const authError       = document.getElementById('authError');
+
+    function showAuthError(msg) {
+      if (!msg) {
+        authError.classList.remove('show');
+        authError.textContent = '';
+        return;
+      }
+      authError.textContent = msg;
+      authError.classList.add('show');
+    }
+
+    function renderAuthState(status) {
+      showAuthError('');
+      if (status && status.isLinked) {
+        authDot.className = 'auth-dot linked';
+        const name = status.displayName || status.userId || 'Linked account';
+        const charNote = status.characterCount ? ' · ' + status.characterCount + ' char' + (status.characterCount === 1 ? '' : 's') : '';
+        authStatusText.textContent = 'Linked as ' + name + charNote;
+        authStatusText.classList.remove('dim');
+        authCodeInput.style.display = 'none';
+        authLinkBtn.style.display = 'none';
+        authUnlinkBtn.style.display = 'inline-block';
+      } else {
+        authDot.className = 'auth-dot unlinked';
+        authStatusText.textContent = 'Account not linked — uploads will fail (401)';
+        authStatusText.classList.add('dim');
+        authCodeInput.style.display = 'inline-block';
+        authCodeInput.value = '';
+        authCodeInput.disabled = false;
+        authLinkBtn.style.display = 'inline-block';
+        authLinkBtn.disabled = false;
+        authLinkBtn.textContent = 'Link';
+        authUnlinkBtn.style.display = 'none';
+      }
+    }
+
+    async function refreshAuthStatus() {
+      try {
+        const status = await window.velara.getAuthStatus();
+        renderAuthState(status);
+      } catch (err) {
+        authDot.className = 'auth-dot unlinked';
+        authStatusText.textContent = 'Account status unavailable';
+        showAuthError(err.message || String(err));
+      }
+    }
+
+    authLinkBtn.addEventListener('click', async () => {
+      const code = authCodeInput.value.trim();
+      if (!code) {
+        showAuthError('Paste your link code from velaraintel.com → Account Settings');
+        authCodeInput.focus();
+        return;
+      }
+      authLinkBtn.disabled = true;
+      authLinkBtn.textContent = 'Linking...';
+      authCodeInput.disabled = true;
+      showAuthError('');
+      try {
+        const result = await window.velara.linkCompanion(code);
+        if (result && result.ok) {
+          addStatus('liveStatusFeed', 'Companion linked as ' + (result.displayName || 'account'), 'ok');
+          await refreshAuthStatus();
+        } else {
+          showAuthError(result && result.error ? result.error : 'Link failed');
+          authLinkBtn.disabled = false;
+          authLinkBtn.textContent = 'Link';
+          authCodeInput.disabled = false;
+        }
+      } catch (err) {
+        showAuthError(err.message || String(err));
+        authLinkBtn.disabled = false;
+        authLinkBtn.textContent = 'Link';
+        authCodeInput.disabled = false;
+      }
+    });
+
+    authCodeInput.addEventListener('keydown', (ev) => {
+      if (ev.key === 'Enter') { ev.preventDefault(); authLinkBtn.click(); }
+    });
+
+    authUnlinkBtn.addEventListener('click', async () => {
+      authUnlinkBtn.disabled = true;
+      try {
+        await window.velara.unlinkCompanion();
+        addStatus('liveStatusFeed', 'Companion unlinked', 'info');
+        await refreshAuthStatus();
+      } catch (err) {
+        showAuthError(err.message || String(err));
+      } finally {
+        authUnlinkBtn.disabled = false;
+      }
+    });
+
+    refreshAuthStatus();
 
     // Build info — keep titlebar + modal header in sync with package.json at runtime
     window.velara.getBuildInfo().then(info => {
