@@ -35,6 +35,55 @@
     }
     .titlebar-btns button:hover { background: #1A1A2E; color: #C8D4DC; }
 
+    /* ── Account link bar ── */
+    .auth-bar {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 16px;
+      background: #0A0E13;
+      border-bottom: 1px solid #1A1A2E;
+      font-size: 11px;
+    }
+    .auth-dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: #556677; flex-shrink: 0;
+    }
+    .auth-dot.linked   { background: #27AE60; box-shadow: 0 0 6px rgba(39, 174, 96, 0.5); }
+    .auth-dot.unlinked { background: #C0392B; box-shadow: 0 0 6px rgba(192, 57, 43, 0.5); }
+    .auth-status-text {
+      color: #C8D4DC; font-weight: 600; letter-spacing: 0.02em;
+      white-space: nowrap;
+    }
+    .auth-status-text.dim { color: #8899AA; font-weight: 500; }
+    .auth-spacer { flex: 1; }
+    .auth-code-input {
+      width: 140px; background: #0D1117; border: 1px solid #1A1A2E;
+      color: #C8D4DC; padding: 6px 10px; font-size: 11px;
+      font-family: 'Consolas', monospace; outline: none; letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+    .auth-code-input:focus { border-color: #7B2FBE; }
+    .auth-code-input::placeholder { color: #556677; text-transform: none; letter-spacing: normal; }
+    .auth-btn {
+      background: #7B2FBE; border: none; color: #fff;
+      padding: 6px 14px; font-size: 11px; font-weight: 700;
+      letter-spacing: 0.06em; text-transform: uppercase; cursor: pointer;
+      transition: background 0.15s;
+    }
+    .auth-btn:hover { background: #8E3DD4; }
+    .auth-btn:disabled { background: #2A3A4A; color: #556677; cursor: not-allowed; }
+    .auth-btn.secondary {
+      background: transparent; color: #8899AA; border: 1px solid #2A3A4A;
+    }
+    .auth-btn.secondary:hover { color: #C8D4DC; border-color: #556677; background: #1A1A2E; }
+    .auth-error {
+      color: #C0392B; font-size: 10px; padding-left: 16px; padding-bottom: 6px;
+      background: #0A0E13; border-bottom: 1px solid #1A1A2E;
+      display: none;
+    }
+    .auth-error.show { display: block; }
+
     /* ── Tabs ── */
     .tabs {
       display: flex;
@@ -333,6 +382,17 @@
       <button type="button" id="btnClose" title="Close">✕</button>
     </div>
   </div>
+
+  <!-- Account link bar -->
+  <div class="auth-bar" id="authBar">
+    <div class="auth-dot" id="authDot"></div>
+    <div class="auth-status-text dim" id="authStatusText">Checking account...</div>
+    <div class="auth-spacer"></div>
+    <input type="text" class="auth-code-input" id="authCodeInput" placeholder="Link code" maxlength="32" autocomplete="off" style="display:none">
+    <button type="button" class="auth-btn" id="authLinkBtn" style="display:none">Link</button>
+    <button type="button" class="auth-btn secondary" id="authUnlinkBtn" style="display:none">Unlink</button>
+  </div>
+  <div class="auth-error" id="authError"></div>
 
   <!-- Tabs -->
   <div class="tabs">
@@ -825,6 +885,111 @@
         addStatus('liveStatusFeed', msg, level);
       });
     }
+
+    // ═══════════════════════════════════════════════
+    // ACCOUNT LINK BAR
+    // ═══════════════════════════════════════════════
+    const authDot         = document.getElementById('authDot');
+    const authStatusText  = document.getElementById('authStatusText');
+    const authCodeInput   = document.getElementById('authCodeInput');
+    const authLinkBtn     = document.getElementById('authLinkBtn');
+    const authUnlinkBtn   = document.getElementById('authUnlinkBtn');
+    const authError       = document.getElementById('authError');
+
+    function showAuthError(msg) {
+      if (!msg) {
+        authError.classList.remove('show');
+        authError.textContent = '';
+        return;
+      }
+      authError.textContent = msg;
+      authError.classList.add('show');
+    }
+
+    function renderAuthState(status) {
+      showAuthError('');
+      if (status && status.isLinked) {
+        authDot.className = 'auth-dot linked';
+        const name = status.displayName || status.userId || 'Linked account';
+        const charNote = status.characterCount ? ' · ' + status.characterCount + ' char' + (status.characterCount === 1 ? '' : 's') : '';
+        authStatusText.textContent = 'Linked as ' + name + charNote;
+        authStatusText.classList.remove('dim');
+        authCodeInput.style.display = 'none';
+        authLinkBtn.style.display = 'none';
+        authUnlinkBtn.style.display = 'inline-block';
+      } else {
+        authDot.className = 'auth-dot unlinked';
+        authStatusText.textContent = 'Account not linked — uploads will fail (401)';
+        authStatusText.classList.add('dim');
+        authCodeInput.style.display = 'inline-block';
+        authCodeInput.value = '';
+        authCodeInput.disabled = false;
+        authLinkBtn.style.display = 'inline-block';
+        authLinkBtn.disabled = false;
+        authLinkBtn.textContent = 'Link';
+        authUnlinkBtn.style.display = 'none';
+      }
+    }
+
+    async function refreshAuthStatus() {
+      try {
+        const status = await window.velara.getAuthStatus();
+        renderAuthState(status);
+      } catch (err) {
+        authDot.className = 'auth-dot unlinked';
+        authStatusText.textContent = 'Account status unavailable';
+        showAuthError(err.message || String(err));
+      }
+    }
+
+    authLinkBtn.addEventListener('click', async () => {
+      const code = authCodeInput.value.trim();
+      if (!code) {
+        showAuthError('Paste your link code from velaraintel.com → Account Settings');
+        authCodeInput.focus();
+        return;
+      }
+      authLinkBtn.disabled = true;
+      authLinkBtn.textContent = 'Linking...';
+      authCodeInput.disabled = true;
+      showAuthError('');
+      try {
+        const result = await window.velara.linkCompanion(code);
+        if (result && result.ok) {
+          addStatus('liveStatusFeed', 'Companion linked as ' + (result.displayName || 'account'), 'ok');
+          await refreshAuthStatus();
+        } else {
+          showAuthError(result && result.error ? result.error : 'Link failed');
+          authLinkBtn.disabled = false;
+          authLinkBtn.textContent = 'Link';
+          authCodeInput.disabled = false;
+        }
+      } catch (err) {
+        showAuthError(err.message || String(err));
+        authLinkBtn.disabled = false;
+        authLinkBtn.textContent = 'Link';
+        authCodeInput.disabled = false;
+      }
+    });
+
+    authCodeInput.addEventListener('keydown', (ev) => {
+      if (ev.key === 'Enter') { ev.preventDefault(); authLinkBtn.click(); }
+    });
+
+    authUnlinkBtn.addEventListener('click', async () => {
+      authUnlinkBtn.disabled = true;
+      try {
+        await window.velara.unlinkCompanion();
+        addStatus('liveStatusFeed', 'Companion unlinked', 'info');
+        await refreshAuthStatus();
+      } catch (err) {
+        showAuthError(err.message || String(err));
+      } finally {
+        authUnlinkBtn.disabled = false;
+      }
+    });
+
+    refreshAuthStatus();
 
     // Build info — keep titlebar + modal header in sync with package.json at runtime
     window.velara.getBuildInfo().then(info => {
