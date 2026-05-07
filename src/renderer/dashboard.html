@@ -35,6 +35,37 @@
     }
     .titlebar-btns button:hover { background: #1A1A2E; color: #C8D4DC; }
 
+    /* ── Scan section (Upload tab) ── */
+    .scan-section {
+      background: #0D1117; border: 1px solid #1A1A2E;
+      padding: 14px 16px; margin-bottom: 16px;
+    }
+    .scan-row {
+      display: flex; align-items: center; gap: 12px;
+    }
+    .scan-row .scan-btn {
+      background: #C9A84C; border: none; color: #0D1117;
+      padding: 10px 18px; font-size: 12px; font-weight: 700;
+      letter-spacing: 0.06em; text-transform: uppercase; cursor: pointer;
+      transition: background 0.15s; white-space: nowrap;
+    }
+    .scan-row .scan-btn:hover { background: #D6B558; }
+    .scan-row .scan-btn:disabled { background: #2A3A4A; color: #556677; cursor: not-allowed; }
+    .scan-row .scan-status {
+      font-size: 11px; color: #8899AA; flex: 1;
+      font-family: 'Consolas', monospace;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .scan-row .scan-status.ok   { color: #27AE60; }
+    .scan-row .scan-status.warn { color: #E8A030; }
+    .scan-row .scan-status.err  { color: #C0392B; }
+    .scan-section .scan-hint {
+      font-size: 10px; color: #667788; margin-top: 8px; line-height: 1.5;
+    }
+    .scan-divider {
+      height: 1px; background: #1A1A2E; margin: 18px 0 16px;
+    }
+
     /* ── Account link bar ── */
     .auth-bar {
       display: flex;
@@ -440,11 +471,24 @@
 
   <!-- Tab 2: Upload a Log -->
   <div class="tab-content" id="tab-upload">
-    <div class="field-label">Choose the file you want to upload</div>
+    <!-- Scan all logs in the WoW Logs directory -->
+    <div class="scan-section">
+      <div class="field-label">Backfill missed runs</div>
+      <div class="scan-row">
+        <button type="button" class="scan-btn" id="btnScanLogs">Scan Previous Logs</button>
+        <span class="scan-status" id="scanStatus">Scans every WoWCombatLog*.txt in your Logs folder</span>
+      </div>
+      <div class="scan-hint">Finds completed M+ runs in past combat logs and uploads any that aren't on velaraintel.com yet. Older runs are scanned first.</div>
+    </div>
+
+    <div class="scan-divider"></div>
+
+    <div class="field-label">Or upload one log at a time</div>
     <div class="path-row">
       <input type="text" class="path-input" id="uploadFileInput" readonly>
       <button class="btn-sm" id="btnChooseFile">Choose...</button>
     </div>
+    <div class="hint" style="margin-top:0">Pick a single combat log file to see and upload runs from it.</div>
 
     <div class="field-label">Or paste addon JSON export</div>
     <textarea class="paste-area" id="pasteArea" placeholder="Paste /vi export here..."></textarea>
@@ -874,6 +918,69 @@
         btn.textContent = 'GO!';
         updateUploadGoBtn();
       }, 3000);
+    });
+
+    // ═══════════════════════════════════════════════
+    // SCAN PREVIOUS LOGS — batch directory scan
+    // ═══════════════════════════════════════════════
+    const btnScanLogs = document.getElementById('btnScanLogs');
+    const scanStatus  = document.getElementById('scanStatus');
+    let scanInProgress = false;
+
+    function setScanStatus(text, level) {
+      scanStatus.textContent = text || '';
+      scanStatus.className = 'scan-status' + (level ? ' ' + level : '');
+    }
+
+    if (window.velara.onScanProgress) {
+      window.velara.onScanProgress((data) => {
+        if (data && data.message) {
+          setScanStatus(data.message, data.type);
+          addStatus('uploadStatusFeed', data.message, data.type || 'info');
+        }
+      });
+    }
+
+    if (window.velara.onScanComplete) {
+      window.velara.onScanComplete((data) => {
+        scanInProgress = false;
+        btnScanLogs.disabled = false;
+        btnScanLogs.textContent = 'Scan Again';
+        if (!data) { setScanStatus('Scan finished', 'ok'); return; }
+        const parts = [];
+        parts.push((data.uploaded || 0) + ' uploaded');
+        parts.push((data.skipped  || 0) + ' already on site');
+        if (data.errors) parts.push(data.errors + ' errors');
+        if (data.totalFiles) parts.push('across ' + (data.filesScanned || data.totalFiles) + '/' + data.totalFiles + ' files');
+        const summary = 'Done — ' + parts.join(', ');
+        setScanStatus(summary, data.uploaded > 0 ? 'ok' : (data.errors ? 'err' : 'warn'));
+        addStatus('uploadStatusFeed', summary, data.uploaded > 0 ? 'ok' : 'info');
+      });
+    }
+
+    btnScanLogs.addEventListener('click', async () => {
+      if (scanInProgress) return;
+      scanInProgress = true;
+      btnScanLogs.disabled = true;
+      btnScanLogs.textContent = 'Scanning...';
+      setScanStatus('Starting scan...', '');
+      try {
+        const result = await window.velara.scanMissedRuns();
+        // onScanComplete handler also fires via broadcast — guard against double-render
+        if (result && !result.ok) {
+          setScanStatus(result.error || 'Scan failed', 'err');
+          addStatus('uploadStatusFeed', 'Scan failed: ' + (result.error || 'unknown'), 'err');
+          scanInProgress = false;
+          btnScanLogs.disabled = false;
+          btnScanLogs.textContent = 'Scan Previous Logs';
+        }
+      } catch (err) {
+        setScanStatus(err.message || String(err), 'err');
+        addStatus('uploadStatusFeed', 'Scan error: ' + (err.message || String(err)), 'err');
+        scanInProgress = false;
+        btnScanLogs.disabled = false;
+        btnScanLogs.textContent = 'Scan Previous Logs';
+      }
     });
 
     // ═══════════════════════════════════════════════
