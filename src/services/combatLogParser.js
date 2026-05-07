@@ -173,6 +173,7 @@ const RACIAL_ABILITIES = new Map([
   [33697,  { race: "Orc",                  name: "Blood Fury",                       type: "offensive" }],
   [33702,  { race: "Orc",                  name: "Blood Fury",                       type: "offensive" }],
   [7744,   { race: "Undead",               name: "Will of the Forsaken",             type: "cleanse" }],
+  [59752,  { race: "Human",                name: "Every Man for Himself",            type: "cleanse" }],
   [20549,  { race: "Tauren",               name: "War Stomp",                        type: "cc" }],
   [69179,  { race: "Goblin",               name: "Rocket Barrage",                   type: "damage" }],
   [255661, { race: "Highmountain Tauren",  name: "Bull Rush",                        type: "cc" }],
