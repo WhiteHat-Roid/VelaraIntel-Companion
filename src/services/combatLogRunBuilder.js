@@ -309,6 +309,57 @@ const OFFENSIVE_COOLDOWNS = new Map([
   // ── Warrior (additions 2026-05-03) ──
   [376079, { name: "Spear of Bastion",       type: "personal_offensive", cd: 60 }],
   [262161, { name: "Warbreaker",             type: "personal_offensive", cd: 45 }],
+  // ── Spec coverage expansion 2026-05-07 (registry gap audit) ──
+  [391528, { name: "Convoke the Spirits",    type: "personal_offensive", cd: 120 }],  // Resto/Balance/Feral talented (modern ID)
+  [258860, { name: "Essence Break",          type: "personal_offensive", cd: 40  }],  // Havoc DH
+  [370965, { name: "The Hunt",               type: "personal_offensive", cd: 90  }],  // DH (Havoc + Vengeance)
+  [212084, { name: "Fel Devastation",        type: "personal_offensive", cd: 60  }],  // Vengeance DH
+  [84714,  { name: "Frozen Orb",             type: "personal_offensive", cd: 60  }],  // Frost Mage
+  [212283, { name: "Symbols of Death",       type: "personal_offensive", cd: 30  }],  // Sub Rogue
+  [185313, { name: "Shadow Dance",           type: "personal_offensive", cd: 60  }],  // Sub Rogue
+  [51690,  { name: "Killing Spree",          type: "personal_offensive", cd: 90  }],  // Outlaw Rogue
+  [193530, { name: "Aspect of the Wild",     type: "personal_offensive", cd: 120 }],  // BM Hunter
+  [152279, { name: "Breath of Sindragosa",   type: "personal_offensive", cd: 120 }],  // Frost DK
+  [63560,  { name: "Dark Transformation",    type: "personal_offensive", cd: 60  }],  // Unholy DK
+  [200183, { name: "Apotheosis",             type: "personal_offensive", cd: 90  }],  // Holy Priest
+  [64901,  { name: "Symbol of Hope",         type: "group_offensive",    cd: 300 }],  // Holy Priest (group)
+  [265202, { name: "Holy Word: Salvation",   type: "group_offensive",    cd: 720 }],  // Holy Priest (group heal CD)
+  [322118, { name: "Invoke Yu'lon, the Jade Serpent", type: "personal_offensive", cd: 180 }],  // Mistweaver
+  [399491, { name: "Sheilun's Gift",         type: "personal_offensive", cd: 60  }],  // Mistweaver
+]);
+
+// ── Player Stun Spells (player-cast stuns on enemies) ──────────────────────
+// Drives the Playbook "Crowd Control" pill. Tracked via SPELL_CAST_SUCCESS.
+// Verbatim copy of Overwolf shared/combatLogRunBuilder.js to keep the two
+// pipelines in shape parity. Narrower than CC_SPELLS (which also covers
+// incapacitates and roots).
+const PLAYER_STUN_SPELLS = new Set([
+  // Paladin
+  853,      // Hammer of Justice
+  // Monk
+  119381,   // Leg Sweep
+  // Warrior
+  46968,    // Shockwave
+  132169,   // Storm Bolt
+  // DK
+  91800,    // Gnaw (Ghoul stun)
+  // Druid
+  5211,     // Mighty Bash
+  // Hunter
+  24394,    // Intimidation
+  // DH
+  179057,   // Chaos Nova
+  211881,   // Fel Eruption
+  // Shaman
+  118905,   // Static Charge (Capacitor Totem)
+  // Warlock
+  30283,    // Shadowfury
+  89766,    // Axe Toss (Felguard)
+  // Priest
+  200200,   // Holy Word: Chastise (Censure)
+  // Racials
+  20549,    // War Stomp (Tauren)
+  255661,   // Bull Rush (Highmountain Tauren)
 ]);
 
 // ── On-Use Trinkets — Season 1 Midnight ────────────────────────────────────
@@ -643,6 +694,7 @@ class CombatLogRunBuilder extends EventEmitter {
       playerHealingReceived: {}, // { playerGuid: totalHealing } — who got healed
       playerDamageTakenSeg: {}, // { playerGuid: totalDmgTaken } — per-segment breakdown
       ccEvents: [],           // CC/debuffs applied to players by enemies (capped at 50)
+      stunEvents: [],         // player-cast stuns on enemies (drives Playbook CC pill, capped at 50)
       offensiveCDs: [],       // major offensive cooldowns used by players (capped at 30)
       // ── Week 2 data streams ──
       dispels: [],              // SPELL_DISPEL/SPELL_STOLEN events (capped at 50)
@@ -1298,7 +1350,9 @@ class CombatLogRunBuilder extends EventEmitter {
         // Spell/Range: spell prefix at fields 9-11, advanced info at field 12
         spellId     = parseInt(fields[9], 10) || 0;
         spellName   = (fields[10] || "").replace(/"/g, "");
-        spellSchool = parseInt(fields[11], 10) || 0;
+        // No radix on spellSchool — WoW sometimes sends hex (0x1, 0x20). Matches
+        // the enemy-cast school read at this file's CC branch (auto-detect base).
+        spellSchool = parseInt(fields[11]) || 0;
         const advStart = 12;
         const hasAdv = hasAdvancedInfo(fields, advStart);
         const suffixStart = hasAdv ? advStart + ADVANCED_INFO_FIELD_COUNT : advStart;
@@ -1464,7 +1518,11 @@ class CombatLogRunBuilder extends EventEmitter {
     }
 
     // ── Racial ability tracking (separate from defensives) ──────────────
-    if (isCast && isPlayerGuid(sourceGuid)) {
+    // Some racials (Fireblood 273104) emit only SPELL_AURA_APPLIED in CLEU and
+    // never SPELL_CAST_SUCCESS. Mirror the defensives gate (isCast||isAuraApplied)
+    // with a 1s per-(player,spellId) dedup so a single use that fires both events
+    // doesn't double-count.
+    if ((isCast || isAuraApplied) && isPlayerGuid(sourceGuid)) {
       const racialSpellId = parseInt(fields[9], 10) || 0;
       const racialInfo = RACIAL_ABILITIES.get(racialSpellId);
       if (racialInfo) {
@@ -1475,15 +1533,21 @@ class CombatLogRunBuilder extends EventEmitter {
         // Store the racial cast in the current segment
         if (this.currentSeg) {
           if (!this.currentSeg.racialCasts) this.currentSeg.racialCasts = [];
-          this.currentSeg.racialCasts.push({
-            ts, offsetMs: ts - this.currentSeg.startTs,
-            spellName: racialInfo.name, spellId: racialSpellId,
-            name: playerName,
-            class: this.guidToClass.get(sourceGuid) || "UNKNOWN",
-            role: this.guidToRole.get(sourceGuid) || "unknown",
-            race: racialInfo.race,
-            racialType: racialInfo.type,
-          });
+          const isDupe = this.currentSeg.racialCasts.some(r =>
+            r.spellId === racialSpellId && r.name === playerName &&
+            Math.abs(r.ts - ts) < 1000
+          );
+          if (!isDupe) {
+            this.currentSeg.racialCasts.push({
+              ts, offsetMs: ts - this.currentSeg.startTs,
+              spellName: racialInfo.name, spellId: racialSpellId,
+              name: playerName,
+              class: this.guidToClass.get(sourceGuid) || "UNKNOWN",
+              role: this.guidToRole.get(sourceGuid) || "unknown",
+              race: racialInfo.race,
+              racialType: racialInfo.type,
+            });
+          }
         }
       }
     }
@@ -1509,6 +1573,33 @@ class CombatLogRunBuilder extends EventEmitter {
             spellName: consInfo.name,
             consumableType: consInfo.type,
           });
+        }
+      }
+    }
+
+    // ── Player-cast stun on enemy — drives Playbook "Crowd Control" pill ─
+    // Mirrors Overwolf shared/combatLogRunBuilder.js. SPELL_CAST_SUCCESS only;
+    // dest is informational (1s dedup keys on player+spellId, not target).
+    if (isCast && isPlayerGuid(sourceGuid)) {
+      const stunSpellId = parseInt(fields[9], 10) || 0;
+      if (PLAYER_STUN_SPELLS.has(stunSpellId)) {
+        if (this.currentSeg && this.currentSeg.stunEvents.length < 50) {
+          const playerName = this.guidToName.get(sourceGuid) || "Unknown";
+          const isDupe = this.currentSeg.stunEvents.some(s =>
+            s.spellId === stunSpellId && s.playerName === playerName &&
+            Math.abs(s.ts - ts) < 1000
+          );
+          if (!isDupe) {
+            this.currentSeg.stunEvents.push({
+              ts, offsetMs: ts - this.currentSeg.startTs,
+              spellId: stunSpellId,
+              spellName: (fields[10] || "").replace(/"/g, ""),
+              playerName,
+              class: this.guidToClass.get(sourceGuid) || "UNKNOWN",
+              role: this.guidToRole.get(sourceGuid) || "unknown",
+              targetName: this.guidToName.get(destGuid) || destName || "Unknown",
+            });
+          }
         }
       }
     }
@@ -1711,9 +1802,11 @@ class CombatLogRunBuilder extends EventEmitter {
         for (const [guid, dmg] of Object.entries(seg.playerDamageTakenSeg || {})) {
           prev.playerDamageTakenSeg[guid] = (prev.playerDamageTakenSeg[guid] || 0) + dmg;
         }
-        // Merge ccEvents and offensiveCDs arrays
+        // Merge ccEvents, stunEvents, and offensiveCDs arrays
         prev.ccEvents = prev.ccEvents || [];
         prev.ccEvents.push(...(seg.ccEvents || []));
+        prev.stunEvents = prev.stunEvents || [];
+        prev.stunEvents.push(...(seg.stunEvents || []));
         prev.offensiveCDs = prev.offensiveCDs || [];
         prev.offensiveCDs.push(...(seg.offensiveCDs || []));
         // Merge Week 2 arrays
@@ -1836,6 +1929,7 @@ class CombatLogRunBuilder extends EventEmitter {
           ])
         ),
         ccEvents: seg.ccEvents || [],
+        stunEvents: seg.stunEvents || [],
         offensiveCDs: seg.offensiveCDs || [],
         // ── Week 2 data streams ──
         dispels: seg.dispels || [],
@@ -2064,6 +2158,7 @@ class CombatLogRunBuilder extends EventEmitter {
           hasPlayerHealingDone: finalSegments.some(s => Object.keys(s.playerHealingDone || {}).length > 0),
           hasPlayerHealingReceived: finalSegments.some(s => Object.keys(s.playerHealingReceived || {}).length > 0),
           hasCCEvents: finalSegments.some(s => (s.ccEvents || []).length > 0),
+          hasStunEvents: finalSegments.some(s => (s.stunEvents || []).length > 0),
           hasOffensiveCDs: finalSegments.some(s => (s.offensiveCDs || []).length > 0),
           hasEncounterData: this.bossEncounters.length > 0,
           // Week 2 capabilities

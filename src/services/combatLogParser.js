@@ -153,6 +153,23 @@ const OFFENSIVE_COOLDOWNS = new Map([
   [1719,   { name: "Recklessness",         type: "personal_offensive", cd: 90  }],
   [227847, { name: "Bladestorm",           type: "personal_offensive", cd: 90  }],
   [228920, { name: "Ravager",              type: "personal_offensive", cd: 90  }],
+  // ── Spec coverage expansion 2026-05-07 (registry gap audit) ──
+  [391528, { name: "Convoke the Spirits",    type: "personal_offensive", cd: 120 }],  // Resto/Balance/Feral talented (modern ID)
+  [258860, { name: "Essence Break",          type: "personal_offensive", cd: 40  }],  // Havoc DH
+  [370965, { name: "The Hunt",               type: "personal_offensive", cd: 90  }],  // DH (Havoc + Vengeance)
+  [212084, { name: "Fel Devastation",        type: "personal_offensive", cd: 60  }],  // Vengeance DH
+  [84714,  { name: "Frozen Orb",             type: "personal_offensive", cd: 60  }],  // Frost Mage
+  [212283, { name: "Symbols of Death",       type: "personal_offensive", cd: 30  }],  // Sub Rogue
+  [185313, { name: "Shadow Dance",           type: "personal_offensive", cd: 60  }],  // Sub Rogue
+  [51690,  { name: "Killing Spree",          type: "personal_offensive", cd: 90  }],  // Outlaw Rogue
+  [193530, { name: "Aspect of the Wild",     type: "personal_offensive", cd: 120 }],  // BM Hunter
+  [152279, { name: "Breath of Sindragosa",   type: "personal_offensive", cd: 120 }],  // Frost DK
+  [63560,  { name: "Dark Transformation",    type: "personal_offensive", cd: 60  }],  // Unholy DK
+  [200183, { name: "Apotheosis",             type: "personal_offensive", cd: 90  }],  // Holy Priest
+  [64901,  { name: "Symbol of Hope",         type: "group_offensive",    cd: 300 }],  // Holy Priest (group)
+  [265202, { name: "Holy Word: Salvation",   type: "group_offensive",    cd: 720 }],  // Holy Priest (group heal CD)
+  [322118, { name: "Invoke Yu'lon, the Jade Serpent", type: "personal_offensive", cd: 180 }],  // Mistweaver
+  [399491, { name: "Sheilun's Gift",         type: "personal_offensive", cd: 60  }],  // Mistweaver
 ]);
 
 // Racial Abilities — copied verbatim from combatLogRunBuilder.js RACIAL_ABILITIES (Overwolf parity).
@@ -909,21 +926,29 @@ function parseCombatLog({ run, combatLogLines, partyGuids = [] }) {
       }
     }
 
-    // Racial ability cast — Overwolf parity
+    // Racial ability cast — Overwolf parity. 1s per-(player,spellId) dedup
+    // mirrors processRacialAura so a single use that emits both
+    // SPELL_CAST_SUCCESS and SPELL_AURA_APPLIED only counts once.
     const racialInfo = RACIAL_ABILITIES.get(spellId);
     if (racialInfo) {
       const playerName = (fields[2] || "").replace(/"/g, "") || "Unknown";
-      segData.racialCasts.push({
-        ts         : normalizedTs,
-        offsetMs   : seg ? normalizedTs - seg.startTs : 0,
-        spellId,
-        spellName  : racialInfo.name,
-        name       : playerName,
-        class      : guidToClass.get(sourceGuid) || "UNKNOWN",
-        role       : guidToRole.get(sourceGuid)  || "unknown",
-        race       : racialInfo.race,
-        racialType : racialInfo.type,
-      });
+      const isDupe = segData.racialCasts.some(r =>
+        r.spellId === spellId && r.name === playerName &&
+        Math.abs(r.ts - normalizedTs) < 1000
+      );
+      if (!isDupe) {
+        segData.racialCasts.push({
+          ts         : normalizedTs,
+          offsetMs   : seg ? normalizedTs - seg.startTs : 0,
+          spellId,
+          spellName  : racialInfo.name,
+          name       : playerName,
+          class      : guidToClass.get(sourceGuid) || "UNKNOWN",
+          role       : guidToRole.get(sourceGuid)  || "unknown",
+          race       : racialInfo.race,
+          racialType : racialInfo.type,
+        });
+      }
     }
 
     // Consumable use (health potions, stat potions, flasks, Healthstone) — Overwolf parity
@@ -1111,6 +1136,45 @@ function parseCombatLog({ run, combatLogLines, partyGuids = [] }) {
     });
   }
 
+  // ── Racial aura tracking — for racials that emit only SPELL_AURA_APPLIED ───
+  // Fireblood (273104) and similar racials never fire SPELL_CAST_SUCCESS in CLEU.
+  // The cast-time racial branch in processPlayerCast handles racials that DO emit
+  // SPELL_CAST_SUCCESS (Shadowmeld, etc.); this handles aura-only racials. The
+  // 1s per-(player,spellId) dedup also catches the case where a single use fires
+  // both events for the same racial.
+  function processRacialAura(fields, normalizedTs, segmentId) {
+    const sourceGuid = (fields[1] || "").replace(/"/g, "");
+    if (!sourceGuid.startsWith("Player-")) return;
+
+    const spellId = parseInt((fields[9] || "").replace(/"/g, ""), 10);
+    if (!spellId) return;
+    const racialInfo = RACIAL_ABILITIES.get(spellId);
+    if (!racialInfo) return;
+
+    const seg     = getSegment(segmentId);
+    const segData = getSegData(segmentId);
+
+    const playerName = (fields[2] || "").replace(/"/g, "") || "Unknown";
+
+    const isDupe = segData.racialCasts.some(r =>
+      r.spellId === spellId && r.name === playerName &&
+      Math.abs(r.ts - normalizedTs) < 1000
+    );
+    if (isDupe) return;
+
+    segData.racialCasts.push({
+      ts         : normalizedTs,
+      offsetMs   : seg ? normalizedTs - seg.startTs : 0,
+      spellId,
+      spellName  : racialInfo.name,
+      name       : playerName,
+      class      : guidToClass.get(sourceGuid) || "UNKNOWN",
+      role       : guidToRole.get(sourceGuid)  || "unknown",
+      race       : racialInfo.race,
+      racialType : racialInfo.type,
+    });
+  }
+
   // ── SPELL_AURA_APPLIED — capture player-cast CC/stuns on NPCs ──────────────
   // Frontend Stuns overlay (UnifiedRunTimeline.tsx:522) consumes pull.ccEvents[].
   // Shape mirrors cooldownEvents: source + target names, spellId/spellName,
@@ -1234,6 +1298,7 @@ function parseCombatLog({ run, combatLogLines, partyGuids = [] }) {
         break;
       case "SPELL_AURA_APPLIED":
         processSpellAuraApplied(fields, normalizedTs, segmentId);
+        processRacialAura(fields, normalizedTs, segmentId);
         break;
     }
   }
