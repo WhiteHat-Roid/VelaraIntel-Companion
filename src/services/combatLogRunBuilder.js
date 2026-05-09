@@ -23,12 +23,12 @@ const ALWAYS_TRACK_DEFENSIVES = new Map([
   [48792,  { name: "Icebound Fortitude",     category: "defensive" }],
   [55233,  { name: "Vampiric Blood",         category: "defensive" }],
   [49028,  { name: "Dancing Rune Weapon",    category: "defensive" }],
-  [51052,  { name: "Anti-Magic Zone",        category: "defensive" }],
+  [51052,  { name: "Anti-Magic Zone",        category: "external"  }],
   [49039,  { name: "Lichborne",              category: "defensive" }],
 
   // ── Demon Hunter ──
   [198589, { name: "Blur",                   category: "defensive" }],
-  [196718, { name: "Darkness",               category: "defensive" }],
+  [196718, { name: "Darkness",               category: "external"  }],
   [196555, { name: "Netherwalk",             category: "defensive" }],
   [187827, { name: "Metamorphosis (Veng)",   category: "defensive" }],
   [204021, { name: "Fiery Brand",            category: "defensive" }],
@@ -39,7 +39,7 @@ const ALWAYS_TRACK_DEFENSIVES = new Map([
 
   // ── Evoker ──
   [374348, { name: "Obsidian Scales",        category: "defensive" }],
-  [374227, { name: "Zephyr",                 category: "defensive" }],
+  [374227, { name: "Zephyr",                 category: "external"  }],
   [370960, { name: "Emerald Communion",      category: "defensive" }],
 
   // ── Hunter ──
@@ -77,7 +77,7 @@ const ALWAYS_TRACK_DEFENSIVES = new Map([
   [33206,  { name: "Pain Suppression",       category: "external" }],
   [62618,  { name: "Power Word: Barrier",    category: "external" }],
   [271466, { name: "Luminous Barrier",       category: "external" }],
-  [15286,  { name: "Vampiric Embrace",       category: "defensive" }],
+  [15286,  { name: "Vampiric Embrace",       category: "external"  }],
   [64843,  { name: "Divine Hymn",            category: "external" }],
   [47585,  { name: "Dispersion",             category: "defensive" }],
 
@@ -608,8 +608,6 @@ const CONSUMABLE_SPELL_IDS = new Map([
   [431942,  { name: "Flask of Tempered Versatility",  type: "flask" }],
   [431943,  { name: "Flask of Tempered Swiftness",    type: "flask" }],
   [431944,  { name: "Flask of Tempered Aggression",   type: "flask" }],
-  // ── Augment Runes ──
-  [367405,  { name: "Draconic Augment Rune",          type: "augment" }],
   // ── Weapon Stones ──
   [29532,   { name: "Adamantite Weapon Stone",        type: "weapon" }],
 
@@ -631,7 +629,58 @@ const CONSUMABLE_SPELL_IDS = new Map([
   [241305,  { name: "Silvermoon Health Potion",        type: "health" }],  // UNVERIFIED CLEU
   [242275,  { name: "Royal Roast",                     type: "food" }],    // UNVERIFIED CLEU
   [255845,  { name: "Silvermoon Parade",               type: "food" }],    // UNVERIFIED CLEU
-  [259085,  { name: "Void-Touched Augment Rune",       type: "augment" }], // UNVERIFIED CLEU. Wowhead 259085 = "Summon Pet" (engineering toy) — ID likely wrong.
+  [1264426, { name: "Void-Touched Augment Rune",       type: "augment" }], // VERIFIED CLEU 2026-05-07 via Brian SpellID addon
+
+  // ── Midnight S1 Consumables (2026-05-08) — Archon.gg S1 meta + Wowhead verification ──
+
+  // ── FLASKS ──
+  // Flask of the Magisters (Archon S1: 58.6%)
+  [241322,  { name: "Flask of the Magisters",         type: "flask"  }],  // Item ID: 241322 | Craft: 1230876 | Buff: 1235108 | Midnight 12.0.5 verified | Source: Archon S1 meta + Wowhead 2026-05-08
+  [1230876, { name: "Flask of the Magisters",         type: "flask"  }],  // Item ID: 241322 | Effect spell: 1230876 | Midnight 12.0.5 verified | Source: Archon S1 meta + Wowhead 2026-05-08
+  [1235108, { name: "Flask of the Magisters",         type: "flask"  }],  // Item ID: 241322 | Effect spell: 1235108 | Midnight 12.0.5 verified | Source: Archon S1 meta + Wowhead 2026-05-08
+  // Flask of the Shattered Sun (Archon S1: 16.2%)
+  [241326,  { name: "Flask of the Shattered Sun",     type: "flask"  }],  // Item ID: 241326 | Craft: 1230878 | Buff: 1235111 | Midnight 12.0.5 verified | Source: Archon S1 meta + Wowhead 2026-05-08
+  [1230878, { name: "Flask of the Shattered Sun",     type: "flask"  }],  // Item ID: 241326 | Effect spell: 1230878 | Midnight 12.0.5 verified | Source: Archon S1 meta + Wowhead 2026-05-08
+  [1235111, { name: "Flask of the Shattered Sun",     type: "flask"  }],  // Item ID: 241326 | Effect spell: 1235111 | Midnight 12.0.5 verified | Source: Archon S1 meta + Wowhead 2026-05-08
+  // Flask of the Blood Knights (Archon S1: 3.8%) — item 241325 already registered; adding craft+buff IDs
+  [1230877, { name: "Flask of the Blood Knights",     type: "flask"  }],  // Item ID: 241325 | Effect spell: 1230877 | Midnight 12.0.5 verified | Source: Archon S1 meta + Wowhead 2026-05-08
+  [1235110, { name: "Flask of the Blood Knights",     type: "flask"  }],  // Item ID: 241325 | Effect spell: 1235110 | Midnight 12.0.5 verified | Source: Archon S1 meta + Wowhead 2026-05-08
+
+  // ── HEALTH POTIONS ──
+  // Silvermoon Health Potion (Archon S1: 31.4%) — item 241305 already registered; adding effect spell
+  [1234768, { name: "Silvermoon Health Potion",       type: "health" }],  // Item ID: 241305 | Effect spell: 1234768 | Midnight 12.0.5 verified | Source: Archon S1 meta + Wowhead 2026-05-08
+  // Potent Healing Potion (Archon S1: 6.4%)
+  [258138,  { name: "Potent Healing Potion",          type: "health" }],  // Item ID: 258138 | Effect spell: 1262857 | Midnight 12.0.5 verified | Source: Archon S1 meta + Wowhead 2026-05-08
+  [1262857, { name: "Potent Healing Potion",          type: "health" }],  // Item ID: 258138 | Effect spell: 1262857 | Midnight 12.0.5 verified | Source: Archon S1 meta + Wowhead 2026-05-08
+  // Invigorating Healing Potion (Archon S1: 1.1%)
+  [244839,  { name: "Invigorating Healing Potion",    type: "health" }],  // UNVERIFIED — may be wrong expansion (Wowhead shows TWW 11.2.0), Brian to confirm via SpellID addon
+  [1238009, { name: "Invigorating Healing Potion",    type: "health" }],  // UNVERIFIED — may be wrong expansion, Brian to confirm via SpellID addon
+
+  // ── COMBAT POTIONS ──
+  // Light's Potential (Archon S1: 63.8%)
+  [241309,  { name: "Light's Potential",              type: "stat"   }],  // Item ID: 241309 | Craft: 1243219 | Buff aura: 1230869 | Midnight 12.0.5 verified | Source: Archon S1 meta + Wowhead 2026-05-08
+  [1243219, { name: "Light's Potential",              type: "stat"   }],  // Item ID: 241309 | Effect spell: 1243219 | Midnight 12.0.5 verified | Source: Archon S1 meta + Wowhead 2026-05-08
+  [1230869, { name: "Light's Potential",              type: "stat"   }],  // Item ID: 241309 | Effect spell: 1230869 | Midnight 12.0.5 verified | Source: Wowhead spell 1243219 aura lookup 2026-05-08
+  // Potion of Recklessness (Archon S1: 5.4%)
+  [241288,  { name: "Potion of Recklessness",         type: "stat"   }],  // Item ID: 241288 | Buff spell: 1236994 | Midnight 12.0.5 verified | Source: Archon S1 meta + Wowhead 2026-05-08
+  [1236994, { name: "Potion of Recklessness",         type: "stat"   }],  // Item ID: 241288 | Effect spell: 1236994 | Midnight 12.0.5 verified | Source: Archon S1 meta + Wowhead 2026-05-08
+
+  // ── FOOD / FEASTS ──
+  // Hearty Harandar Celebration (Archon S1: 42.9%)
+  [266996,  { name: "Hearty Harandar Celebration",    type: "food"   }],  // Item ID: 266996 | Effect spell: 1278929 | UNVERIFIED — Well Fed buff spell unknown; Brian to confirm via SpellID addon | Midnight 12.0.5 verified | Source: Archon S1 meta 2026-05-08
+  [1278929, { name: "Hearty Harandar Celebration",    type: "food"   }],  // UNVERIFIED — may be craft/feast spell not Well Fed buff; Brian to confirm via SpellID addon
+  // Hearty Royal Roast (Archon S1: 20.9%)
+  [242747,  { name: "Hearty Royal Roast",             type: "food"   }],  // Item ID: 242747 | UNVERIFIED — buff spell unknown; Brian to confirm via SpellID addon | Midnight 12.0.5 verified | Source: Archon S1 meta 2026-05-08
+  // Hearty Glitter Skewers (Archon S1: 2.7%)
+  [242753,  { name: "Hearty Glitter Skewers",         type: "food"   }],  // Item ID: 242753 | UNVERIFIED — buff spell unknown; Brian to confirm via SpellID addon | Midnight 12.0.5 verified | Source: Archon S1 meta 2026-05-08
+
+  // ── WEAPON BUFFS ──
+  // Thalassian Phoenix Oil (Archon S1: 75.4%) — item 243733 already registered UNVERIFIED; adding verified item+buff IDs
+  [243734,  { name: "Thalassian Phoenix Oil",         type: "weapon" }],  // Item ID: 243734 | Buff: 1237006 | Midnight 12.0.5 verified | Source: Archon S1 meta + Wowhead 2026-05-08
+  [1237006, { name: "Thalassian Phoenix Oil",         type: "weapon" }],  // Item ID: 243734 | Effect spell: 1237006 | Midnight 12.0.5 verified | Source: Archon S1 meta + Wowhead 2026-05-08
+  // Refulgent Whetstone (Archon S1: 0.8%)
+  [237370,  { name: "Refulgent Whetstone",            type: "weapon" }],  // Item ID: 237370 | Buff: 1224328 | Midnight 12.0.5 verified | Source: Archon S1 meta + Wowhead 2026-05-08
+  [1224328, { name: "Refulgent Whetstone",            type: "weapon" }],  // Item ID: 237370 | Effect spell: 1224328 | Midnight 12.0.5 verified | Source: Archon S1 meta + Wowhead 2026-05-08
 ]);
 
 // Kept for reference only. No longer consulted by the consumables block.
