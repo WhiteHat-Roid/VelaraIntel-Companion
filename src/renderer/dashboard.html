@@ -6,6 +6,9 @@
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
       background: #080A0C;
       font-family: 'Segoe UI', sans-serif;
       color: #C8D4DC;
@@ -115,6 +118,8 @@
     }
     .auth-error.show { display: block; }
 
+    .titlebar, .auth-bar, .tabs { flex-shrink: 0; }
+
     /* ── Tabs ── */
     .tabs {
       display: flex;
@@ -140,8 +145,22 @@
       border-bottom-color: #7B2FBE;
       background: rgba(123, 47, 190, 0.04);
     }
-    .tab-content { display: none; padding: 16px 20px; overflow-y: auto; max-height: 420px; }
-    .tab-content.active { display: block; }
+    .tab-content {
+      display: none;
+      flex: 1;
+      overflow-y: auto;
+      overflow-x: hidden;
+      padding: 16px 20px;
+      min-height: 0;
+    }
+    .tab-content.active {
+      display: flex;
+      flex-direction: column;
+    }
+    .tab-content::-webkit-scrollbar { width: 4px; }
+    .tab-content::-webkit-scrollbar-track { background: #0A0E13; }
+    .tab-content::-webkit-scrollbar-thumb { background: #1A2535; border-radius: 2px; }
+    .tab-content::-webkit-scrollbar-thumb:hover { background: #2A3A4A; }
 
     /* ── Form elements ── */
     .field-label {
@@ -291,7 +310,7 @@
     /* ── Status feed ── */
     .status-feed {
       background: #0A0E13; border: 1px solid #1A1A2E; padding: 8px 12px;
-      max-height: 100px; overflow-y: auto; font-family: 'Consolas', monospace;
+      max-height: 120px; overflow: hidden; font-family: 'Consolas', monospace;
       font-size: 10px; line-height: 1.6;
     }
     .status-feed .line-ok { color: #27AE60; }

@@ -23,12 +23,12 @@ const ALWAYS_TRACK_DEFENSIVES = new Map([
   [48792,  { name: "Icebound Fortitude",     category: "defensive" }],
   [55233,  { name: "Vampiric Blood",         category: "defensive" }],
   [49028,  { name: "Dancing Rune Weapon",    category: "defensive" }],
-  [51052,  { name: "Anti-Magic Zone",        category: "defensive" }],
+  [51052,  { name: "Anti-Magic Zone",        category: "external"  }],
   [49039,  { name: "Lichborne",              category: "defensive" }],
 
   // ── Demon Hunter ──
   [198589, { name: "Blur",                   category: "defensive" }],
-  [196718, { name: "Darkness",               category: "defensive" }],
+  [196718, { name: "Darkness",               category: "external"  }],
   [196555, { name: "Netherwalk",             category: "defensive" }],
   [187827, { name: "Metamorphosis (Veng)",   category: "defensive" }],
   [204021, { name: "Fiery Brand",            category: "defensive" }],
@@ -39,7 +39,7 @@ const ALWAYS_TRACK_DEFENSIVES = new Map([
 
   // ── Evoker ──
   [374348, { name: "Obsidian Scales",        category: "defensive" }],
-  [374227, { name: "Zephyr",                 category: "defensive" }],
+  [374227, { name: "Zephyr",                 category: "external"  }],
   [370960, { name: "Emerald Communion",      category: "defensive" }],
 
   // ── Hunter ──
@@ -77,7 +77,7 @@ const ALWAYS_TRACK_DEFENSIVES = new Map([
   [33206,  { name: "Pain Suppression",       category: "external" }],
   [62618,  { name: "Power Word: Barrier",    category: "external" }],
   [271466, { name: "Luminous Barrier",       category: "external" }],
-  [15286,  { name: "Vampiric Embrace",       category: "defensive" }],
+  [15286,  { name: "Vampiric Embrace",       category: "external"  }],
   [64843,  { name: "Divine Hymn",            category: "external" }],
   [47585,  { name: "Dispersion",             category: "defensive" }],
 
@@ -101,6 +101,50 @@ const ALWAYS_TRACK_DEFENSIVES = new Map([
   [184364, { name: "Enraged Regeneration",   category: "defensive" }],
   [97462,  { name: "Rallying Cry",           category: "external" }],
   [118038, { name: "Die by the Sword",       category: "defensive" }],
+
+  // ── Registry expansion 2026-05-07 — Playbook deep audit ──
+  // Personal defensives missing from prior coverage. Master registry sourced from
+  // VELARA_COMPLETE_SPELL_REGISTRY.md (Patch 12.0.5). Categories follow existing
+  // shape: `defensive` (personal DR/heal), `external` (cast on others).
+  // ── Death Knight ──
+  [194679, { name: "Rune Tap",               category: "defensive" }],
+  [219809, { name: "Tombstone",              category: "defensive" }],
+  // ── Demon Hunter ──
+  [263648, { name: "Soul Barrier",           category: "defensive" }],
+  // ── Druid ──
+  [200851, { name: "Rage of the Sleeper",    category: "defensive" }],
+  [740,    { name: "Tranquility",            category: "external"  }],
+  // ── Evoker ──
+  [363916, { name: "Obsidian Scales",        category: "defensive" }],  // alt CLEU ID; 374348 already registered
+  [363534, { name: "Rewind",                 category: "external"  }],
+  [370984, { name: "Time Spiral",            category: "external"  }],
+  // ── Hunter ──
+  [264735, { name: "Survival of the Fittest", category: "defensive" }],
+  [5384,   { name: "Feign Death",            category: "defensive" }],
+  // ── Mage ──
+  [11426,  { name: "Ice Barrier",            category: "defensive" }],   // also absorb
+  [235313, { name: "Blazing Barrier",        category: "defensive" }],   // also absorb
+  [235450, { name: "Prismatic Barrier",      category: "defensive" }],   // also absorb
+  [110959, { name: "Greater Invisibility",   category: "defensive" }],
+  // ── Monk ──
+  [243435, { name: "Fortifying Brew (WW/MW)", category: "defensive" }],
+  [115310, { name: "Revival",                category: "external"  }],
+  // ── Paladin ──
+  [184662, { name: "Shield of Vengeance",    category: "defensive" }],   // also absorb
+  [205191, { name: "Eye for an Eye",         category: "defensive" }],
+  // ── Priest ──
+  [586,    { name: "Fade",                   category: "defensive" }],
+  // ── Rogue ──
+  [1856,   { name: "Vanish",                 category: "defensive" }],
+  [185311, { name: "Crimson Vial",           category: "defensive" }],
+  // ── Shaman ──
+  [198103, { name: "Earth Elemental",        category: "defensive" }],
+  [207399, { name: "Ancestral Protection Totem", category: "external"  }],
+  [325174, { name: "Spirit Link Totem",      category: "external"  }],   // alt CLEU ID; 98008 already registered
+  // ── Warlock ──
+  [6229,   { name: "Twilight Ward",          category: "defensive" }],
+  // ── Warrior ──
+  [23920,  { name: "Spell Reflection",       category: "defensive" }],
 ]);
 
 // Spells that are only tracked for SPECIFIC specs
@@ -170,7 +214,11 @@ const RACIAL_ABILITIES = new Map([
   [7744,   { race: "Undead",          name: "Will of the Forsaken", type: "cleanse" }],
   [59752,  { race: "Human",           name: "Every Man for Himself", type: "cleanse" }],
   [20549,  { race: "Tauren",          name: "War Stomp",         type: "cc" }],
-  [69179,  { race: "Goblin",          name: "Rocket Barrage",    type: "damage" }],
+  // 69179 was previously labeled "Goblin Rocket Barrage" — Wowhead 2026-05-07 verifies
+  // 69179 is actually the Blood Elf Warrior variant of Arcane Torrent. Real Goblin
+  // Rocket Barrage is 69041 (added below). Relabeling is data-integrity per CLAUDE.md
+  // Rule 9; the spell ID stays in the registry.
+  [69179,  { race: "Blood Elf",       name: "Arcane Torrent",    type: "offensive" }],
   [255661, { race: "Highmountain Tauren", name: "Bull Rush",     type: "cc" }],
   [260364, { race: "Nightborne",      name: "Arcane Pulse",      type: "damage" }],
   [274738, { race: "Mag'har Orc",     name: "Ancestral Call",    type: "offensive" }],
@@ -181,6 +229,25 @@ const RACIAL_ABILITIES = new Map([
   // ── Dracthyr (Evoker-only race) ──
   [368970, { race: "Dracthyr",        name: "Tail Swipe",        type: "cc" }],
   [357214, { race: "Dracthyr",        name: "Wing Buffet",       type: "knockback" }],
+
+  // ── Registry expansion 2026-05-07 — Playbook deep audit ──
+  // Blood Elf Arcane Torrent fires per-class spell IDs in CLEU. Register ALL of them.
+  // 69179 already relabeled above (Warrior variant). 28730 is the Wowhead spellbook
+  // root; the others are spec/class CLEU IDs.
+  [28730,  { race: "Blood Elf",       name: "Arcane Torrent",    type: "offensive" }],   // Mage/Warlock
+  [155145, { race: "Blood Elf",       name: "Arcane Torrent",    type: "offensive" }],   // Paladin
+  [80483,  { race: "Blood Elf",       name: "Arcane Torrent",    type: "offensive" }],   // Hunter
+  [129597, { race: "Blood Elf",       name: "Arcane Torrent",    type: "offensive" }],   // Monk
+  [25046,  { race: "Blood Elf",       name: "Arcane Torrent",    type: "offensive" }],   // Rogue
+  [50613,  { race: "Blood Elf",       name: "Arcane Torrent",    type: "offensive" }],   // Death Knight
+  [202719, { race: "Blood Elf",       name: "Arcane Torrent",    type: "offensive" }],   // Demon Hunter
+  [232633, { race: "Blood Elf",       name: "Arcane Torrent",    type: "offensive" }],   // Priest
+
+  // Worgen / Goblin / Kul Tiran / Dracthyr utility racials missing from prior set.
+  [68992,  { race: "Worgen",          name: "Darkflight",        type: "mobility" }],
+  [69041,  { race: "Goblin",          name: "Rocket Barrage",    type: "damage" }],     // real Rocket Barrage ID
+  [287712, { race: "Kul Tiran",       name: "Haymaker",          type: "cc" }],         // alt CLEU ID; 259930 also registered
+  [358733, { race: "Dracthyr",        name: "Glide",             type: "mobility" }],
   // ── Earthen (TWW) ──
   [446280, { race: "Earthen",         name: "Azerite Surge",     type: "damage" }],
   [448849, { race: "Earthen",         name: "Wide-Eyed Wonder",  type: "utility" }],
@@ -189,6 +256,17 @@ const RACIAL_ABILITIES = new Map([
 const INTERRUPT_SPELLS = new Set([
   47528, 183752, 78675, 106839, 351338, 147362, 187707,
   2139, 116705, 96231, 15487, 1766, 57994, 6552, 119910,
+  // ── Registry expansion 2026-05-07 — Playbook deep audit ──
+  // Pet interrupts: source GUID is the pet, parser must attribute to owner.
+  19647,   // Spell Lock (Felhunter pet bar)
+  132409,  // Spell Lock (Command Demon — player-cast variant)
+  212619,  // Call Felhunter (Demonology PvP talent — also interrupts)
+  89766,   // Axe Toss (Felguard) — also a stun, dual-purpose
+  // CLEU divergence: SPELL_INTERRUPT events fire under DIFFERENT spell IDs than the
+  // cast events for these abilities. Register both so either branch resolves.
+  97547,   // Solar Beam (interrupt event ID; cast 78675)
+  93985,   // Skull Bash (interrupt event ID; cast 106839)
+  220543,  // Silence (interrupt event ID; cast 15487)
 ]);
 
 // ── CC/Crowd Control spells — enemy abilities that incapacitate players ─────
@@ -309,6 +387,183 @@ const OFFENSIVE_COOLDOWNS = new Map([
   // ── Warrior (additions 2026-05-03) ──
   [376079, { name: "Spear of Bastion",       type: "personal_offensive", cd: 60 }],
   [262161, { name: "Warbreaker",             type: "personal_offensive", cd: 45 }],
+  // ── Spec coverage expansion 2026-05-07 (registry gap audit) ──
+  [391528, { name: "Convoke the Spirits",    type: "personal_offensive", cd: 120 }],  // Resto/Balance/Feral talented (modern ID)
+  [258860, { name: "Essence Break",          type: "personal_offensive", cd: 40  }],  // Havoc DH
+  [370965, { name: "The Hunt",               type: "personal_offensive", cd: 90  }],  // DH (Havoc + Vengeance)
+  [212084, { name: "Fel Devastation",        type: "personal_offensive", cd: 60  }],  // Vengeance DH
+  [84714,  { name: "Frozen Orb",             type: "personal_offensive", cd: 60  }],  // Frost Mage
+  [212283, { name: "Symbols of Death",       type: "personal_offensive", cd: 30  }],  // Sub Rogue
+  [185313, { name: "Shadow Dance",           type: "personal_offensive", cd: 60  }],  // Sub Rogue
+  [51690,  { name: "Killing Spree",          type: "personal_offensive", cd: 90  }],  // Outlaw Rogue
+  [193530, { name: "Aspect of the Wild",     type: "personal_offensive", cd: 120 }],  // BM Hunter
+  [152279, { name: "Breath of Sindragosa",   type: "personal_offensive", cd: 120 }],  // Frost DK
+  [63560,  { name: "Dark Transformation",    type: "personal_offensive", cd: 60  }],  // Unholy DK
+  [200183, { name: "Apotheosis",             type: "personal_offensive", cd: 90  }],  // Holy Priest
+  [64901,  { name: "Symbol of Hope",         type: "group_offensive",    cd: 300 }],  // Holy Priest (group)
+  [265202, { name: "Holy Word: Salvation",   type: "group_offensive",    cd: 720 }],  // Holy Priest (group heal CD)
+  [322118, { name: "Invoke Yu'lon, the Jade Serpent", type: "personal_offensive", cd: 180 }],  // Mistweaver
+  [399491, { name: "Sheilun's Gift",         type: "personal_offensive", cd: 60  }],  // Mistweaver
+
+  // ── Registry expansion 2026-05-07 — Playbook deep audit ──
+  // Spec-coverage gaps surfaced by VELARA_COMPLETE_SPELL_REGISTRY.md plus drum/lust
+  // variants. Every ID Wowhead-verified pre-commit. Existing entries (e.g. 360952
+  // Coordinated Assault, 114050 Ascendance) NOT removed even where the master
+  // suggests an alt ID — both kept to handle CLEU divergence.
+  // ── Death Knight ──
+  [49206,  { name: "Summon Gargoyle",        type: "personal_offensive", cd: 180 }],  // Unholy
+  [279302, { name: "Frostwyrm's Fury",       type: "personal_offensive", cd: 180 }],  // Frost
+  [343294, { name: "Soul Reaper",            type: "personal_offensive", cd: 6   }],  // tracking major hits per master
+  // ── Demon Hunter ──
+  [258925, { name: "Fel Barrage",            type: "personal_offensive", cd: 90  }],  // Havoc
+  // ── Druid ──
+  [50334,  { name: "Berserk (Guardian)",     type: "personal_offensive", cd: 180 }],
+  // ── Evoker ──
+  [370452, { name: "Shattering Star",        type: "personal_offensive", cd: 20  }],  // Devastation
+  [395152, { name: "Ebon Might",             type: "personal_offensive", cd: 30  }],  // Augmentation
+  [396286, { name: "Upheaval",               type: "personal_offensive", cd: 40  }],  // Augmentation
+  [404977, { name: "Time Skip",              type: "personal_offensive", cd: 180 }],  // Augmentation
+  // ── Hunter ──
+  [201430, { name: "Stampede",               type: "personal_offensive", cd: 120 }],  // talent
+  // ── Mage ──
+  [153561, { name: "Meteor",                 type: "personal_offensive", cd: 45  }],  // Fire talent
+  [321507, { name: "Touch of the Magi",      type: "personal_offensive", cd: 45  }],  // Arcane
+  [205021, { name: "Ray of Frost",           type: "personal_offensive", cd: 75  }],  // Frost talent
+  // ── Monk ──
+  [123904, { name: "Invoke Xuen, the White Tiger", type: "personal_offensive", cd: 120 }],  // WW
+  [387184, { name: "Weapons of Order",       type: "personal_offensive", cd: 120 }],  // WW talent
+  [325197, { name: "Invoke Chi-Ji, the Red Crane", type: "personal_offensive", cd: 180 }],  // MW (also tracked as external in defensives)
+  // ── Paladin ──
+  [375576, { name: "Divine Toll",            type: "personal_offensive", cd: 60  }],  // talent
+  [327193, { name: "Moment of Glory",        type: "personal_offensive", cd: 90  }],  // Protection
+  [389539, { name: "Sentinel",               type: "personal_offensive", cd: 120 }],  // Ret talent
+  // ── Priest ──
+  [200174, { name: "Mindbender",             type: "personal_offensive", cd: 60  }],  // master Mindbender ID; 123040 already registered as alt
+  [246287, { name: "Evangelism",             type: "personal_offensive", cd: 90  }],  // Disc
+  [421453, { name: "Ultimate Penitence",     type: "personal_offensive", cd: 60  }],  // Disc hero talent
+  // ── Rogue ──
+  [13877,  { name: "Blade Flurry",           type: "personal_offensive", cd: 30  }],  // Outlaw
+  [79140,  { name: "Vendetta",               type: "personal_offensive", cd: 120 }],  // Assassination (legacy ID; pre-Deathmark)
+  [385627, { name: "Kingsbane",              type: "personal_offensive", cd: 60  }],  // Assassination
+  // ── Shaman ──
+  [384352, { name: "Doom Winds",             type: "personal_offensive", cd: 60  }],  // Enhancement
+  [114051, { name: "Ascendance (Elemental)", type: "personal_offensive", cd: 180 }],  // alt Ascendance ID; 114050 retained
+  // ── Warlock ──
+  [267217, { name: "Nether Portal",          type: "personal_offensive", cd: 180 }],  // Demonology
+  [113860, { name: "Dark Soul: Misery",      type: "personal_offensive", cd: 120 }],  // Affliction
+  [386997, { name: "Soul Rot",               type: "personal_offensive", cd: 60  }],  // talent
+  // ── Warrior ──
+  [46924,  { name: "Bladestorm (Fury)",      type: "personal_offensive", cd: 60  }],  // Fury variant; 227847 retained for Arms
+  [152277, { name: "Ravager (Protection)",   type: "personal_offensive", cd: 45  }],  // Prot variant; 228920 retained for Arms talent
+  [167105, { name: "Colossus Smash",         type: "personal_offensive", cd: 45  }],  // Arms
+  [401150, { name: "Avatar (Fury)",          type: "personal_offensive", cd: 90  }],  // Fury variant; 107574 retained for Arms/Prot
+  // ── Drums (Bloodlust-class items) ──
+  [178207, { name: "Drums of Fury",          type: "group_offensive",    cd: 600 }],  // Leatherworking
+  [309658, { name: "Drums of Deathly Ferocity", type: "group_offensive", cd: 600 }],  // TWW drums
+  [381301, { name: "Feral Hide Drums",       type: "group_offensive",    cd: 600 }],  // DF drums
+]);
+
+// ── Player Stun Spells (player-cast stuns on enemies) ──────────────────────
+// Drives the Playbook "Crowd Control" pill. Tracked via SPELL_CAST_SUCCESS.
+// Verbatim copy of Overwolf shared/combatLogRunBuilder.js to keep the two
+// pipelines in shape parity. Narrower than CC_SPELLS (which also covers
+// incapacitates and roots).
+const PLAYER_STUN_SPELLS = new Set([
+  // Paladin
+  853,      // Hammer of Justice
+  // Monk
+  119381,   // Leg Sweep
+  // Warrior
+  46968,    // Shockwave
+  132169,   // Storm Bolt
+  // DK
+  91800,    // Gnaw (Ghoul stun)
+  // Druid
+  5211,     // Mighty Bash
+  // Hunter
+  24394,    // Intimidation
+  // DH
+  179057,   // Chaos Nova
+  211881,   // Fel Eruption
+  // Shaman
+  118905,   // Static Charge (Capacitor Totem)
+  // Warlock
+  30283,    // Shadowfury
+  89766,    // Axe Toss (Felguard)
+  // Priest
+  200200,   // Holy Word: Chastise (Censure)
+  // Racials
+  20549,    // War Stomp (Tauren)
+  255661,   // Bull Rush (Highmountain Tauren)
+
+  // ── Registry expansion 2026-05-07 — Playbook deep audit ──
+  // Per directive Phase 2: PLAYER_STUN_SPELLS expanded to cover the full CC palette
+  // (incaps, disorients, knockbacks, silences, roots) since the Playbook "Crowd
+  // Control" pill currently reads ONLY pull.stunEvents. PM directive: single-stream
+  // is fine; HALT only if a separate stream is required. The set name keeps its
+  // historical "STUN" prefix for compat — content is the broader CC allowlist.
+  // Hard stuns (additional)
+  107570,   // Storm Bolt (Warrior talent — caster variant; 132169 also registered)
+  221562,   // Asphyxiate (Unholy DK)
+  108194,   // Asphyxiate (DK alt)
+  408,      // Kidney Shot (Rogue)
+  1833,     // Cheap Shot (Rogue)
+  199804,   // Between the Eyes (Outlaw)
+  88625,    // Holy Word: Chastise (master ID; 200200 already registered as Censure)
+  305483,   // Lightning Lasso (Shaman talent)
+  199530,   // Sundering (Enhancement)
+  192058,   // Capacitor Totem placement (Shaman)
+  372245,   // Terror of the Skies (Evoker)
+  // Incapacitates
+  20066,    // Repentance (Paladin talent)
+  115078,   // Paralysis (Monk)
+  6770,     // Sap (Rogue)
+  1776,     // Gouge (Rogue)
+  217832,   // Imprison (DH)
+  118,      // Polymorph (Mage)
+  82691,    // Ring of Frost (Mage)
+  31661,    // Dragon's Breath (Fire)
+  51514,    // Hex (Shaman)
+  710,      // Banish (Warlock)
+  6789,     // Mortal Coil (Warlock — horror)
+  5484,     // Howl of Terror (Warlock — AoE fear)
+  605,      // Mind Control (Priest)
+  8122,     // Psychic Scream (Priest)
+  64044,    // Psychic Horror (Shadow)
+  2637,     // Hibernate (Druid)
+  99,       // Incapacitating Roar (Druid)
+  3355,     // Freezing Trap (Hunter — debuff ID)
+  187650,   // Freezing Trap (Hunter — alt CLEU ID)
+  19386,    // Wyvern Sting (Hunter talent)
+  213691,   // Scatter Shot (Hunter)
+  5246,     // Intimidating Shout (Warrior)
+  207167,   // Blinding Sleet (DK talent)
+  // Knockbacks
+  132469,   // Typhoon (Druid)
+  102793,   // Ursol's Vortex (Druid)
+  116844,   // Ring of Peace (Monk)
+  157981,   // Blast Wave (Fire)
+  51490,    // Thunderstorm (Elemental)
+  // Silences
+  202137,   // Sigil of Silence (DH)
+  204490,   // Sigil of Silence (DH — ground placement variant)
+  // Polymorph variants (Mage cosmetic forms emit different IDs)
+  28272,    // Polymorph: Pig
+  28271,    // Polymorph: Turtle
+  61305,    // Polymorph: Cat
+  61721,    // Polymorph: Rabbit
+  61780,    // Polymorph: Turkey
+  161354,   // Polymorph: Monkey
+  277787,   // Polymorph: Direhorn
+  277792,   // Polymorph: Bumblebee
+  391622,   // Polymorph: Duck
+  // Roots
+  339,      // Entangling Roots (Druid)
+  102359,   // Mass Entanglement (Druid)
+  122,      // Frost Nova (Mage)
+  // Pet CC — sourceGuid is the pet; parser must attribute to owner
+  6358,     // Seduction (Succubus)
+  9484,     // Shackle Undead (Priest — niche)
 ]);
 
 // ── On-Use Trinkets — Season 1 Midnight ────────────────────────────────────
@@ -353,10 +608,79 @@ const CONSUMABLE_SPELL_IDS = new Map([
   [431942,  { name: "Flask of Tempered Versatility",  type: "flask" }],
   [431943,  { name: "Flask of Tempered Swiftness",    type: "flask" }],
   [431944,  { name: "Flask of Tempered Aggression",   type: "flask" }],
-  // ── Augment Runes ──
-  [367405,  { name: "Draconic Augment Rune",          type: "augment" }],
   // ── Weapon Stones ──
   [29532,   { name: "Adamantite Weapon Stone",        type: "weapon" }],
+
+  // ── Registry expansion 2026-05-07 — Playbook deep audit ──
+  // WARNING: Every entry below is UNVERIFIED in CLEU. Spell IDs from
+  // VELARA_COMPLETE_SPELL_REGISTRY.md are spellbook/item-use IDs from Wowhead;
+  // the buff IDs that actually fire SPELL_AURA_APPLIED in the combat log may
+  // differ. Brian will swap with verified buff IDs from his SpellID addon.
+  // Wowhead names alongside each ID so wrong matches surface fast.
+  // ── TWW Flasks (Wowhead-verified) ──
+  [431972,  { name: "Flask of Tempered Swiftness",     type: "flask" }],   // UNVERIFIED CLEU
+  [431973,  { name: "Flask of Tempered Versatility",   type: "flask" }],   // UNVERIFIED CLEU
+  [431974,  { name: "Flask of Tempered Mastery",       type: "flask" }],   // UNVERIFIED CLEU
+  // 431975 master claimed flask but Wowhead resolves to "Condensed Shadowflame" — NOT a flask. Skipped.
+  // 431976 master claimed flask but Wowhead resolves to "[DNT] Win BULL-E" placeholder. Skipped.
+  // ── Brian-provided IDs (Wowhead-resolution noted; CLEU verification pending) ──
+  [241325,  { name: "Flask of the Blood Knights",      type: "flask" }],   // UNVERIFIED CLEU. Wowhead 241325 = "Fel Cannonball" — ID likely wrong.
+  [243733,  { name: "Thalassian Phoenix Oil",          type: "weapon" }],  // UNVERIFIED CLEU
+  [241305,  { name: "Silvermoon Health Potion",        type: "health" }],  // UNVERIFIED CLEU
+  [242275,  { name: "Royal Roast",                     type: "food" }],    // UNVERIFIED CLEU
+  [255845,  { name: "Silvermoon Parade",               type: "food" }],    // UNVERIFIED CLEU
+  [1264426, { name: "Void-Touched Augment Rune",       type: "augment" }], // VERIFIED CLEU 2026-05-07 via Brian SpellID addon
+
+  // ── Midnight S1 Consumables (2026-05-08) — Archon.gg S1 meta + Wowhead verification ──
+
+  // ── FLASKS ──
+  // Flask of the Magisters (Archon S1: 58.6%)
+  [241322,  { name: "Flask of the Magisters",         type: "flask"  }],  // Item ID: 241322 | Craft: 1230876 | Buff: 1235108 | Midnight 12.0.5 verified | Source: Archon S1 meta + Wowhead 2026-05-08
+  [1230876, { name: "Flask of the Magisters",         type: "flask"  }],  // Item ID: 241322 | Effect spell: 1230876 | Midnight 12.0.5 verified | Source: Archon S1 meta + Wowhead 2026-05-08
+  [1235108, { name: "Flask of the Magisters",         type: "flask"  }],  // Item ID: 241322 | Effect spell: 1235108 | Midnight 12.0.5 verified | Source: Archon S1 meta + Wowhead 2026-05-08
+  // Flask of the Shattered Sun (Archon S1: 16.2%)
+  [241326,  { name: "Flask of the Shattered Sun",     type: "flask"  }],  // Item ID: 241326 | Craft: 1230878 | Buff: 1235111 | Midnight 12.0.5 verified | Source: Archon S1 meta + Wowhead 2026-05-08
+  [1230878, { name: "Flask of the Shattered Sun",     type: "flask"  }],  // Item ID: 241326 | Effect spell: 1230878 | Midnight 12.0.5 verified | Source: Archon S1 meta + Wowhead 2026-05-08
+  [1235111, { name: "Flask of the Shattered Sun",     type: "flask"  }],  // Item ID: 241326 | Effect spell: 1235111 | Midnight 12.0.5 verified | Source: Archon S1 meta + Wowhead 2026-05-08
+  // Flask of the Blood Knights (Archon S1: 3.8%) — item 241325 already registered; adding craft+buff IDs
+  [1230877, { name: "Flask of the Blood Knights",     type: "flask"  }],  // Item ID: 241325 | Effect spell: 1230877 | Midnight 12.0.5 verified | Source: Archon S1 meta + Wowhead 2026-05-08
+  [1235110, { name: "Flask of the Blood Knights",     type: "flask"  }],  // Item ID: 241325 | Effect spell: 1235110 | Midnight 12.0.5 verified | Source: Archon S1 meta + Wowhead 2026-05-08
+
+  // ── HEALTH POTIONS ──
+  // Silvermoon Health Potion (Archon S1: 31.4%) — item 241305 already registered; adding effect spell
+  [1234768, { name: "Silvermoon Health Potion",       type: "health" }],  // Item ID: 241305 | Effect spell: 1234768 | Midnight 12.0.5 verified | Source: Archon S1 meta + Wowhead 2026-05-08
+  // Potent Healing Potion (Archon S1: 6.4%)
+  [258138,  { name: "Potent Healing Potion",          type: "health" }],  // Item ID: 258138 | Effect spell: 1262857 | Midnight 12.0.5 verified | Source: Archon S1 meta + Wowhead 2026-05-08
+  [1262857, { name: "Potent Healing Potion",          type: "health" }],  // Item ID: 258138 | Effect spell: 1262857 | Midnight 12.0.5 verified | Source: Archon S1 meta + Wowhead 2026-05-08
+  // Invigorating Healing Potion (Archon S1: 1.1%)
+  [244839,  { name: "Invigorating Healing Potion",    type: "health" }],  // UNVERIFIED — may be wrong expansion (Wowhead shows TWW 11.2.0), Brian to confirm via SpellID addon
+  [1238009, { name: "Invigorating Healing Potion",    type: "health" }],  // UNVERIFIED — may be wrong expansion, Brian to confirm via SpellID addon
+
+  // ── COMBAT POTIONS ──
+  // Light's Potential (Archon S1: 63.8%)
+  [241309,  { name: "Light's Potential",              type: "stat"   }],  // Item ID: 241309 | Craft: 1243219 | Buff aura: 1230869 | Midnight 12.0.5 verified | Source: Archon S1 meta + Wowhead 2026-05-08
+  [1243219, { name: "Light's Potential",              type: "stat"   }],  // Item ID: 241309 | Effect spell: 1243219 | Midnight 12.0.5 verified | Source: Archon S1 meta + Wowhead 2026-05-08
+  [1230869, { name: "Light's Potential",              type: "stat"   }],  // Item ID: 241309 | Effect spell: 1230869 | Midnight 12.0.5 verified | Source: Wowhead spell 1243219 aura lookup 2026-05-08
+  // Potion of Recklessness (Archon S1: 5.4%)
+  [241288,  { name: "Potion of Recklessness",         type: "stat"   }],  // Item ID: 241288 | Buff spell: 1236994 | Midnight 12.0.5 verified | Source: Archon S1 meta + Wowhead 2026-05-08
+  [1236994, { name: "Potion of Recklessness",         type: "stat"   }],  // Item ID: 241288 | Effect spell: 1236994 | Midnight 12.0.5 verified | Source: Archon S1 meta + Wowhead 2026-05-08
+
+  // ── FOOD / FEASTS ──
+  // Hearty Harandar Celebration (Archon S1: 42.9%)
+  [266996,  { name: "Hearty Harandar Celebration",    type: "food"   }],  // Item ID: 266996 | Effect spell: 1278929 | UNVERIFIED — Well Fed buff spell unknown; Brian to confirm via SpellID addon | Midnight 12.0.5 verified | Source: Archon S1 meta 2026-05-08
+  [1278929, { name: "Hearty Harandar Celebration",    type: "food"   }],  // UNVERIFIED — may be craft/feast spell not Well Fed buff; Brian to confirm via SpellID addon
+  // Hearty Royal Roast (Archon S1: 20.9%)
+  [242747,  { name: "Hearty Royal Roast",             type: "food"   }],  // Item ID: 242747 | UNVERIFIED — buff spell unknown; Brian to confirm via SpellID addon | Midnight 12.0.5 verified | Source: Archon S1 meta 2026-05-08
+  // Hearty Glitter Skewers (Archon S1: 2.7%)
+  [242753,  { name: "Hearty Glitter Skewers",         type: "food"   }],  // Item ID: 242753 | UNVERIFIED — buff spell unknown; Brian to confirm via SpellID addon | Midnight 12.0.5 verified | Source: Archon S1 meta 2026-05-08
+
+  // ── WEAPON BUFFS ──
+  // Thalassian Phoenix Oil (Archon S1: 75.4%) — item 243733 already registered UNVERIFIED; adding verified item+buff IDs
+  [243734,  { name: "Thalassian Phoenix Oil",         type: "weapon" }],  // Item ID: 243734 | Buff: 1237006 | Midnight 12.0.5 verified | Source: Archon S1 meta + Wowhead 2026-05-08
+  [1237006, { name: "Thalassian Phoenix Oil",         type: "weapon" }],  // Item ID: 243734 | Effect spell: 1237006 | Midnight 12.0.5 verified | Source: Archon S1 meta + Wowhead 2026-05-08
+  // Refulgent Whetstone (Archon S1: 0.8%)
+  [237370,  { name: "Refulgent Whetstone",            type: "weapon" }],  // Item ID: 237370 | Buff: 1224328 | Midnight 12.0.5 verified | Source: Archon S1 meta + Wowhead 2026-05-08
+  [1224328, { name: "Refulgent Whetstone",            type: "weapon" }],  // Item ID: 237370 | Effect spell: 1224328 | Midnight 12.0.5 verified | Source: Archon S1 meta + Wowhead 2026-05-08
 ]);
 
 // Kept for reference only. No longer consulted by the consumables block.
@@ -643,6 +967,7 @@ class CombatLogRunBuilder extends EventEmitter {
       playerHealingReceived: {}, // { playerGuid: totalHealing } — who got healed
       playerDamageTakenSeg: {}, // { playerGuid: totalDmgTaken } — per-segment breakdown
       ccEvents: [],           // CC/debuffs applied to players by enemies (capped at 50)
+      stunEvents: [],         // player-cast stuns on enemies (drives Playbook CC pill, capped at 50)
       offensiveCDs: [],       // major offensive cooldowns used by players (capped at 30)
       // ── Week 2 data streams ──
       dispels: [],              // SPELL_DISPEL/SPELL_STOLEN events (capped at 50)
@@ -1298,7 +1623,9 @@ class CombatLogRunBuilder extends EventEmitter {
         // Spell/Range: spell prefix at fields 9-11, advanced info at field 12
         spellId     = parseInt(fields[9], 10) || 0;
         spellName   = (fields[10] || "").replace(/"/g, "");
-        spellSchool = parseInt(fields[11], 10) || 0;
+        // No radix on spellSchool — WoW sometimes sends hex (0x1, 0x20). Matches
+        // the enemy-cast school read at this file's CC branch (auto-detect base).
+        spellSchool = parseInt(fields[11]) || 0;
         const advStart = 12;
         const hasAdv = hasAdvancedInfo(fields, advStart);
         const suffixStart = hasAdv ? advStart + ADVANCED_INFO_FIELD_COUNT : advStart;
@@ -1464,7 +1791,11 @@ class CombatLogRunBuilder extends EventEmitter {
     }
 
     // ── Racial ability tracking (separate from defensives) ──────────────
-    if (isCast && isPlayerGuid(sourceGuid)) {
+    // Some racials (Fireblood 273104) emit only SPELL_AURA_APPLIED in CLEU and
+    // never SPELL_CAST_SUCCESS. Mirror the defensives gate (isCast||isAuraApplied)
+    // with a 1s per-(player,spellId) dedup so a single use that fires both events
+    // doesn't double-count.
+    if ((isCast || isAuraApplied) && isPlayerGuid(sourceGuid)) {
       const racialSpellId = parseInt(fields[9], 10) || 0;
       const racialInfo = RACIAL_ABILITIES.get(racialSpellId);
       if (racialInfo) {
@@ -1475,15 +1806,21 @@ class CombatLogRunBuilder extends EventEmitter {
         // Store the racial cast in the current segment
         if (this.currentSeg) {
           if (!this.currentSeg.racialCasts) this.currentSeg.racialCasts = [];
-          this.currentSeg.racialCasts.push({
-            ts, offsetMs: ts - this.currentSeg.startTs,
-            spellName: racialInfo.name, spellId: racialSpellId,
-            name: playerName,
-            class: this.guidToClass.get(sourceGuid) || "UNKNOWN",
-            role: this.guidToRole.get(sourceGuid) || "unknown",
-            race: racialInfo.race,
-            racialType: racialInfo.type,
-          });
+          const isDupe = this.currentSeg.racialCasts.some(r =>
+            r.spellId === racialSpellId && r.name === playerName &&
+            Math.abs(r.ts - ts) < 1000
+          );
+          if (!isDupe) {
+            this.currentSeg.racialCasts.push({
+              ts, offsetMs: ts - this.currentSeg.startTs,
+              spellName: racialInfo.name, spellId: racialSpellId,
+              name: playerName,
+              class: this.guidToClass.get(sourceGuid) || "UNKNOWN",
+              role: this.guidToRole.get(sourceGuid) || "unknown",
+              race: racialInfo.race,
+              racialType: racialInfo.type,
+            });
+          }
         }
       }
     }
@@ -1509,6 +1846,33 @@ class CombatLogRunBuilder extends EventEmitter {
             spellName: consInfo.name,
             consumableType: consInfo.type,
           });
+        }
+      }
+    }
+
+    // ── Player-cast stun on enemy — drives Playbook "Crowd Control" pill ─
+    // Mirrors Overwolf shared/combatLogRunBuilder.js. SPELL_CAST_SUCCESS only;
+    // dest is informational (1s dedup keys on player+spellId, not target).
+    if (isCast && isPlayerGuid(sourceGuid)) {
+      const stunSpellId = parseInt(fields[9], 10) || 0;
+      if (PLAYER_STUN_SPELLS.has(stunSpellId)) {
+        if (this.currentSeg && this.currentSeg.stunEvents.length < 50) {
+          const playerName = this.guidToName.get(sourceGuid) || "Unknown";
+          const isDupe = this.currentSeg.stunEvents.some(s =>
+            s.spellId === stunSpellId && s.playerName === playerName &&
+            Math.abs(s.ts - ts) < 1000
+          );
+          if (!isDupe) {
+            this.currentSeg.stunEvents.push({
+              ts, offsetMs: ts - this.currentSeg.startTs,
+              spellId: stunSpellId,
+              spellName: (fields[10] || "").replace(/"/g, ""),
+              playerName,
+              class: this.guidToClass.get(sourceGuid) || "UNKNOWN",
+              role: this.guidToRole.get(sourceGuid) || "unknown",
+              targetName: this.guidToName.get(destGuid) || destName || "Unknown",
+            });
+          }
         }
       }
     }
@@ -1711,9 +2075,11 @@ class CombatLogRunBuilder extends EventEmitter {
         for (const [guid, dmg] of Object.entries(seg.playerDamageTakenSeg || {})) {
           prev.playerDamageTakenSeg[guid] = (prev.playerDamageTakenSeg[guid] || 0) + dmg;
         }
-        // Merge ccEvents and offensiveCDs arrays
+        // Merge ccEvents, stunEvents, and offensiveCDs arrays
         prev.ccEvents = prev.ccEvents || [];
         prev.ccEvents.push(...(seg.ccEvents || []));
+        prev.stunEvents = prev.stunEvents || [];
+        prev.stunEvents.push(...(seg.stunEvents || []));
         prev.offensiveCDs = prev.offensiveCDs || [];
         prev.offensiveCDs.push(...(seg.offensiveCDs || []));
         // Merge Week 2 arrays
@@ -1836,6 +2202,7 @@ class CombatLogRunBuilder extends EventEmitter {
           ])
         ),
         ccEvents: seg.ccEvents || [],
+        stunEvents: seg.stunEvents || [],
         offensiveCDs: seg.offensiveCDs || [],
         // ── Week 2 data streams ──
         dispels: seg.dispels || [],
@@ -2064,6 +2431,7 @@ class CombatLogRunBuilder extends EventEmitter {
           hasPlayerHealingDone: finalSegments.some(s => Object.keys(s.playerHealingDone || {}).length > 0),
           hasPlayerHealingReceived: finalSegments.some(s => Object.keys(s.playerHealingReceived || {}).length > 0),
           hasCCEvents: finalSegments.some(s => (s.ccEvents || []).length > 0),
+          hasStunEvents: finalSegments.some(s => (s.stunEvents || []).length > 0),
           hasOffensiveCDs: finalSegments.some(s => (s.offensiveCDs || []).length > 0),
           hasEncounterData: this.bossEncounters.length > 0,
           // Week 2 capabilities
