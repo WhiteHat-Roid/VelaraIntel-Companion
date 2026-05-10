@@ -958,6 +958,8 @@ class CombatLogRunBuilder extends EventEmitter {
       deaths: [],
       dmgPerSec: {},        // { secondOffset: totalDamage } — tiny
       healPerSec: {},       // { secondOffset: totalHealing }
+      overhealPerSec: {},   // { secondOffset: totalOverhealing }
+      healEvents: [],       // per-heal events (capped to top-200-by-effective at payload build)
       interrupts: [],       // max ~20 per segment
       defensives: [],       // max ~10
       enemyCasts: [],       // capped at 30
@@ -1742,7 +1744,10 @@ class CombatLogRunBuilder extends EventEmitter {
       const healHasAdv = hasAdvancedInfo(fields, healAdvStart);
       const healSuffixStart = healHasAdv ? healAdvStart + ADVANCED_INFO_FIELD_COUNT : healAdvStart;
       const healAmount = parseInt(fields[healSuffixStart], 10) || 0;
-      const overhealAmount = parseInt(fields[healSuffixStart + 1], 10) || 0;
+      // WoW 12.0.5 inserted a rawHeal field at +1, pushing overheal to +2.
+      // Reading +1 (old position) returned rawHeal ≈ healAmount → effective = 0
+      // on every heal, silently breaking _addHeal / partyHealingReceived.
+      const overhealAmount = parseInt(fields[healSuffixStart + 2], 10) || 0;
 
       // Healing done tracking (for post-run role heuristic)
       if (isPlayerGuid(sourceGuid)) {
@@ -1751,11 +1756,32 @@ class CombatLogRunBuilder extends EventEmitter {
         }
       }
 
-      // Healing received
+      // Healing received + per-event capture
       if (isPlayerGuid(destGuid) && this.currentSeg) {
         if (!isNaN(healAmount) && healAmount > 0) {
           const effective = Math.max(0, healAmount - overhealAmount);
           this._addHeal(ts, effective);
+          if (overhealAmount > 0) {
+            const ohSec = Math.floor((ts - this.currentSeg.startTs) / 1000);
+            this.currentSeg.overhealPerSec[ohSec] =
+              (this.currentSeg.overhealPerSec[ohSec] || 0) + overhealAmount;
+          }
+          // Per-heal event capture — truncated to top-200-by-effective at payload build
+          const healSpellId = parseInt(fields[9], 10) || 0;
+          const healSpellName = (fields[10] || "").replace(/"/g, "");
+          this.currentSeg.healEvents.push({
+            ts,
+            offsetMs: ts - this.currentSeg.startTs,
+            playerName: sourceName,
+            sourceGuid,
+            targetName: destName || this.guidToName.get(destGuid) || "",
+            targetGuid: destGuid,
+            spellId: healSpellId,
+            spellName: healSpellName,
+            amount: healAmount,
+            overheal: overhealAmount,
+            effective,
+          });
         }
       }
 
@@ -2128,6 +2154,13 @@ class CombatLogRunBuilder extends EventEmitter {
           const adjustedSec = parseInt(sec) + Math.floor((seg.startTs - prev.startTs) / 1000);
           prev.healPerSec[adjustedSec] = (prev.healPerSec[adjustedSec] || 0) + heal;
         }
+        prev.overhealPerSec = prev.overhealPerSec || {};
+        for (const [sec, oh] of Object.entries(seg.overhealPerSec || {})) {
+          const adjustedSec = parseInt(sec) + Math.floor((seg.startTs - prev.startTs) / 1000);
+          prev.overhealPerSec[adjustedSec] = (prev.overhealPerSec[adjustedSec] || 0) + oh;
+        }
+        prev.healEvents = prev.healEvents || [];
+        prev.healEvents.push(...(seg.healEvents || []));
         // Update outcome if merged segment was a wipe
         if (seg.rawOutcome === "wipe") prev.rawOutcome = "wipe";
 
@@ -2155,10 +2188,11 @@ class CombatLogRunBuilder extends EventEmitter {
 
     // Finalize segments — ultra-compact output
     const finalSegments = this.segments.map(seg => {
-      // Convert dmgPerSec/healPerSec to compact bucket array
+      // Convert dmgPerSec/healPerSec/overhealPerSec to compact bucket array
       const allSecs = new Set([
         ...Object.keys(seg.dmgPerSec || {}).map(Number),
         ...Object.keys(seg.healPerSec || {}).map(Number),
+        ...Object.keys(seg.overhealPerSec || {}).map(Number),
       ]);
       const buckets = [...allSecs].sort((a, b) => a - b).map(sec => ({
         segmentId: seg.segmentId,
@@ -2167,6 +2201,7 @@ class CombatLogRunBuilder extends EventEmitter {
         durationMs: 1000,
         partyDamageTaken: (seg.dmgPerSec || {})[sec] || 0,
         partyHealingReceived: (seg.healPerSec || {})[sec] || 0,
+        partyOverhealing: (seg.overhealPerSec || {})[sec] || 0,
         deathCountInBucket: (seg.deathBucketSecs || []).filter(s => s === sec).length,
       }));
 
@@ -2221,6 +2256,10 @@ class CombatLogRunBuilder extends EventEmitter {
         consumablesUsed: seg.consumablesUsed || [],
         absorbs: seg.absorbs || [],
         spikes: seg.spikes || [],
+        healEvents: ((seg.healEvents || [])
+          .slice()
+          .sort((a, b) => (b.effective || 0) - (a.effective || 0))
+          .slice(0, 200)),
       };
     });
 
@@ -2443,6 +2482,7 @@ class CombatLogRunBuilder extends EventEmitter {
           hasConsumableTracking: finalSegments.some(s => (s.consumablesUsed || []).length > 0),
           hasAbsorbs: finalSegments.some(s => (s.absorbs || []).length > 0),
           hasSpikes: finalSegments.some(s => (s.spikes || []).length > 0),
+          hasHealEvents: finalSegments.some(s => (s.healEvents || []).length > 0),
         },
         player: playerObj,
         partyMembers: otherMembers,

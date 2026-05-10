@@ -803,6 +803,7 @@ function parseCombatLog({ run, combatLogLines, partyGuids = [] }) {
         ccEvents       : [],
         spikes         : [],
         absorbs        : [],
+        healEvents     : [],
         buckets        : new Map(),
         deathCounter   : 0,
         cdCounter      : 0,
@@ -1066,10 +1067,27 @@ function parseCombatLog({ run, combatLogLines, partyGuids = [] }) {
 
       // WI 8 — per-player overhealing accumulation
       const sourceGuid = fields[1] || "";
+      const sourceName = (fields[2] || "").replace(/"/g, "");
+      const destName   = (fields[6] || "").replace(/"/g, "");
       if (isPlayerGuid(sourceGuid) && overhealing > 0) {
         segData.playerOverhealing[sourceGuid] =
           (segData.playerOverhealing[sourceGuid] || 0) + overhealing;
       }
+
+      // Per-heal event capture (unbounded here; truncated to top-200-by-effective at payload build)
+      segData.healEvents.push({
+        ts          : normalizedTs,
+        offsetMs    : normalizedTs - seg.startTs,
+        playerName  : sourceName,
+        sourceGuid,
+        targetName  : destName,
+        targetGuid  : destGuid,
+        spellId,
+        spellName,
+        amount      : amount,
+        overheal    : overhealing,
+        effective,
+      });
     }
   }
 
@@ -1636,6 +1654,7 @@ function parseCombatLog({ run, combatLogLines, partyGuids = [] }) {
         enemyCasts     : [],
         ccEvents       : [],
         spikes         : [],
+        healEvents     : [],
         damageBuckets  : [],
         deathChain     : null,
       });
@@ -1685,6 +1704,10 @@ function parseCombatLog({ run, combatLogLines, partyGuids = [] }) {
       ccEvents       : data.ccEvents.filter(cc => isPlayerGuid(cc.sourceGuid)),
       spikes         : data.spikes,
       absorbs        : data.absorbs,
+      healEvents     : (data.healEvents || [])
+        .slice()
+        .sort((a, b) => (b.effective || 0) - (a.effective || 0))
+        .slice(0, 200),
       damageBuckets,
       deathChain     : buildDeathChain(data.deaths),
     });
