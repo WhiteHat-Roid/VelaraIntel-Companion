@@ -731,7 +731,11 @@ function openRunInBrowser(uploadResult) {
   if (!body) return;
   const token = body.runToken;
   if (token && typeof token === "string" && token.startsWith("vr_")) {
-    shell.openExternal(`https://velaraintel.com/run/${token}`);
+    const accountName = store.get("accountName");
+    const url = accountName
+      ? `https://velaraintel.com/run/${token}?character=${encodeURIComponent(accountName)}`
+      : `https://velaraintel.com/run/${token}`;
+    shell.openExternal(url);
   } else {
     console.warn("[Uploader] Ingest succeeded but runToken missing or malformed:", token);
   }
