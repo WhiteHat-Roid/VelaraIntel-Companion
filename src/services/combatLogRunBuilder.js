@@ -2393,7 +2393,7 @@ class CombatLogRunBuilder extends EventEmitter {
         if (matched) {
           playerObj = pm;
           otherMembers = partyMembers.filter((_, idx) => idx !== i);
-          uploaderName = matched.fullName || pm.name;
+          uploaderName = pm.name || matched.fullName;
           identitySource = "combat_log_guid_match";
           console.log(`[RunBuilder] GUID identity match: ${pm.name} → ${matched.fullName} (${matched.class})`);
           break;
@@ -2412,6 +2412,7 @@ class CombatLogRunBuilder extends EventEmitter {
       if (uploaderIndex >= 0) {
         playerObj = partyMembers[uploaderIndex];
         otherMembers = partyMembers.filter((_, i) => i !== uploaderIndex);
+        uploaderName = playerObj.name || uploaderName;
         console.log(`[RunBuilder] SV identity match: ${playerObj.name} (${playerObj.class} ${playerObj.spec} ${playerObj.role})`);
       } else {
         console.warn(`[RunBuilder] SV identity "${this.uploaderIdentity}" not found in party list — using first player`);
