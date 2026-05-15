@@ -164,6 +164,11 @@ const SPEC_CONDITIONAL_DEFENSIVES = {
  * @param {number|null} specId - player's spec ID from COMBATANT_INFO (null if unknown)
  * @returns {boolean}
  */
+function stripRegionSuffix(name) {
+  if (!name || typeof name !== "string") return name;
+  return name.replace(/-(US|EU|KR|TW|CN)$/i, "");
+}
+
 function shouldTrackDefensive(spellId, specId) {
   // Check always-track list first
   if (ALWAYS_TRACK_DEFENSIVES.has(spellId)) return true;
@@ -2375,21 +2380,21 @@ class CombatLogRunBuilder extends EventEmitter {
     // Identity resolution priority:
     // 1. Combat log GUID match against authenticated character list (bulletproof)
     // 2. Addon SavedVariables uploaderIdentity (fixed in v0.8.9)
-    // 3. First party member (fallback)
     let uploaderName = "Unknown";
     let identitySource = "unknown";
-    let playerObj = partyMembers[0] || { name: "Unknown", class: "UNKNOWN", role: "dps" };
-    let otherMembers = partyMembers.slice(1);
+    let playerObj = null;        // null until identity resolves; never fabricate
+    let otherMembers = [];
 
     // Priority 1: GUID match — check if any party member name matches an auth character
     if (this._authCharacters.length > 0) {
       for (let i = 0; i < partyMembers.length; i++) {
         const pm = partyMembers[i];
-        const matched = this._authCharacters.find(c =>
-          c.fullName === pm.name ||
-          c.characterName === pm.name ||
-          (pm.name && pm.name.startsWith(c.fullName + "-"))
-        );
+        const pmBase = stripRegionSuffix(pm.name);
+        const matched = this._authCharacters.find(c => {
+          const cFullBase = stripRegionSuffix(c.fullName);
+          const cNameBase = stripRegionSuffix(c.characterName);
+          return cFullBase === pmBase || cNameBase === pmBase;
+        });
         if (matched) {
           playerObj = pm;
           otherMembers = partyMembers.filter((_, idx) => idx !== i);
@@ -2405,9 +2410,9 @@ class CombatLogRunBuilder extends EventEmitter {
     if (identitySource === "unknown" && this.uploaderIdentity) {
       uploaderName = this.uploaderIdentity;
       identitySource = "saved_variables";
+      const identityBase = stripRegionSuffix(this.uploaderIdentity);
       const uploaderIndex = partyMembers.findIndex(pm =>
-        pm.name === this.uploaderIdentity ||
-        pm.name.startsWith(this.uploaderIdentity + "-")
+        stripRegionSuffix(pm.name) === identityBase
       );
       if (uploaderIndex >= 0) {
         playerObj = partyMembers[uploaderIndex];
@@ -2415,14 +2420,22 @@ class CombatLogRunBuilder extends EventEmitter {
         uploaderName = playerObj.name || uploaderName;
         console.log(`[RunBuilder] SV identity match: ${playerObj.name} (${playerObj.class} ${playerObj.spec} ${playerObj.role})`);
       } else {
-        console.warn(`[RunBuilder] SV identity "${this.uploaderIdentity}" not found in party list — using first player`);
+        console.warn(`[RunBuilder] SV identity "${this.uploaderIdentity}" not found in party list — playerObj remains null`);
       }
     }
 
-    // Priority 3: fallback to first party member
-    if (identitySource === "unknown") {
-      uploaderName = playerObj.name || "Unknown";
-      identitySource = "fallback";
+    if (!playerObj) {
+      console.error(`[RunBuilder] IDENTITY UNRESOLVED: uploader "${uploaderName}" not found in party. partyMembers=[${partyMembers.map(p => p.name).join(", ")}]`);
+      identitySource = "unresolved";
+      // Use a sentinel that the backend can detect — not a fabricated party member
+      playerObj = {
+        name: uploaderName,
+        class: null,
+        spec: null,
+        role: null,
+        _unresolved: true,
+      };
+      otherMembers = partyMembers;  // ALL party members are "others" when uploader isn't found
     }
 
     // Attach Blizzard talent export string to the uploader's player object
