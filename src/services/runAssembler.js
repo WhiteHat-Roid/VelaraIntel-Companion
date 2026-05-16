@@ -140,6 +140,9 @@ function assembleRunPayload({ addonRun, parsedCombatEvidence, resolvedPulls, opt
       privacyMode: run.privacyMode || "shareable",
       addonVersion: run.addonVersion || "unknown",
       exportVersion: run.exportVersion || "1.0.0",
+      wowVersion: run.wowVersion || null,
+      wowBuild:   run.wowBuild   || null,
+      wowToc:     run.wowToc     || null,
       telemetryCapabilities: {
         hasCombatSegments: false, hasEnemyRegistry: false, hasPartySnapshot: false,
         hasDeathContext: false, hasDamageBuckets: false, hasEnemyCasts: false,
