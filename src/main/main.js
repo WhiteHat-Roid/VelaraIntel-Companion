@@ -725,15 +725,14 @@ function broadcast(channel, data) {
 }
 
 // ── Open run in browser via public token ──────────────────────────────────────
-function openRunInBrowser(uploadResult) {
+function openRunInBrowser(uploadResult, playerName) {
   if (!uploadResult || !uploadResult.ok) return;
   const body = uploadResult.body;
   if (!body) return;
   const token = body.runToken;
   if (token && typeof token === "string" && token.startsWith("vr_")) {
-    const accountName = store.get("accountName");
-    const url = accountName
-      ? `https://velaraintel.com/run/${token}?character=${encodeURIComponent(accountName)}`
+    const url = playerName
+      ? `https://velaraintel.com/run/${token}?character=${encodeURIComponent(playerName)}`
       : `https://velaraintel.com/run/${token}`;
     shell.openExternal(url);
   } else {
@@ -1081,7 +1080,7 @@ function startCombatLogWatcher() {
         apiUploader.upload(payload).then((result) => {
           if (result.ok) {
             broadcastStatus("Uploaded!", "ok");
-            openRunInBrowser(result);
+            openRunInBrowser(result, payload.run?.player?.name || null);
             broadcast("auto-upload-success", result);
           } else {
             broadcastStatus("Auto-upload failed: " + (result.error || result.status || "unknown"), "err");
@@ -1309,7 +1308,7 @@ function setupIPC() {
 
       if (result.ok) {
         broadcastStatus("Upload complete!", "ok");
-        openRunInBrowser(result);
+        openRunInBrowser(result, payload.run?.player?.name || null);
       } else {
         broadcastStatus("Upload failed: " + (result.error || result.status || "unknown"), "err");
       }
