@@ -40,6 +40,22 @@ class ApiUploader {
     if (!result.ok) {
       console.error(`[Uploader] FAILED (${result.status}):`, JSON.stringify(result.body || result.error));
 
+      // 429 — rate limited. Read retryAfter from response body and surface to UI.
+      // Do NOT cache the run as uploaded — allow future retry once window clears.
+      // Do NOT retry immediately — caller should wait for retryAfter seconds.
+      if (result.status === 429) {
+        const retryAfter = result.body?.retryAfter || result.body?.retry_after || 60;
+        const msg = `Rate limited — wait ${retryAfter}s before retrying`;
+        console.warn(`[Uploader] 429 RATE LIMITED: ${msg}. runId=${runId}`);
+        return {
+          ok: false,
+          status: 429,
+          error: msg,
+          retryAfter,
+          body: result.body,
+        };
+      }
+
       // Retry once on 422 after 5 seconds
       if (result.status === 422) {
         console.log("[Uploader] Retrying in 5 seconds...");

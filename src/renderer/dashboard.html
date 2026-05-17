@@ -299,7 +299,7 @@
 
     /* ── Paste area ── */
     .paste-area {
-      width: 100%; height: 80px; background: #0D1117; border: 1px solid #1A1A2E;
+      width: 100%; height: 140px; background: #0D1117; border: 1px solid #1A1A2E;
       color: #C8D4DC; padding: 8px 12px; font-size: 11px;
       font-family: 'Consolas', monospace; resize: none; outline: none;
       margin-bottom: 16px;
@@ -956,6 +956,7 @@
         if (data && data.message) {
           setScanStatus(data.message, data.type);
           addStatus('uploadStatusFeed', data.message, data.type || 'info');
+          addStatus('liveStatusFeed', data.message, data.type || 'info');
         }
       });
     }
@@ -974,6 +975,7 @@
         const summary = 'Done — ' + parts.join(', ');
         setScanStatus(summary, data.uploaded > 0 ? 'ok' : (data.errors ? 'err' : 'warn'));
         addStatus('uploadStatusFeed', summary, data.uploaded > 0 ? 'ok' : 'info');
+        addStatus('liveStatusFeed', summary, data.uploaded > 0 ? 'ok' : 'info');
       });
     }
 
