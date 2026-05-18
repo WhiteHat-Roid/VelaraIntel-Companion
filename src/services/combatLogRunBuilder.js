@@ -12,7 +12,8 @@ const { version: COMPANION_VERSION } = require("../../package.json");
 
 // ─── Defensive CD Tracking — Spec-Aware ─────────────────────────────────────
 // Rule: Track meaningful defensive decisions only. 2min+ CD as general threshold.
-// Rotational mitigation (Ignore Pain, Iron Fur, Shield of the Righteous, Demon Spikes) = NOT tracked.
+// Rotational mitigation: Ironfur, Demon Spikes, Ignore Pain, Shield Block,
+// Shield of the Righteous, Bone Shield — NOW TRACKED (Mitigation Phase 2, 2026-05-17).
 // Short-CD absorbs (Ice Barrier, Crimson Vial) = NOT tracked.
 // Exception: Feint IS tracked despite short CD — it's the primary Rogue M+ defensive.
 // Some spells are spec-conditional (e.g., Frenzied Regen is rotational for Guardian but defensive for others).
@@ -145,6 +146,23 @@ const ALWAYS_TRACK_DEFENSIVES = new Map([
   [6229,   { name: "Twilight Ward",          category: "defensive" }],
   // ── Warrior ──
   [23920,  { name: "Spell Reflection",       category: "defensive" }],
+
+  // ── Mitigation Phase 2 — 2026-05-17 — Rotational tank mitigation ──
+  // Previously excluded per original comment. Added to support Mitigation overlay.
+  // These are SPELL_AURA_APPLIED events (buff on tank), not SPELL_CAST_SUCCESS.
+  // shouldTrackDefensive() handles both isCast and isAuraApplied — no new
+  // event handler needed.
+  // ── Death Knight ──
+  [195181, { name: "Bone Shield",                category: "defensive" }],  // Blood DK — high freq, fires on each charge consumed
+  // ── Demon Hunter ──
+  [203720, { name: "Demon Spikes",               category: "defensive" }],  // Vengeance DH
+  // ── Druid ──
+  [792,    { name: "Ironfur",                    category: "defensive" }],  // Guardian Druid
+  // ── Paladin ──
+  [53600,  { name: "Shield of the Righteous",    category: "defensive" }],  // Prot Paladin
+  // ── Warrior ──
+  [190456, { name: "Ignore Pain",                category: "defensive" }],  // Prot Warrior
+  [2565,   { name: "Shield Block",               category: "defensive" }],  // Prot Warrior
 ]);
 
 // Spells that are only tracked for SPECIFIC specs
