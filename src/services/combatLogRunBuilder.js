@@ -2385,8 +2385,14 @@ class CombatLogRunBuilder extends EventEmitter {
     let playerObj = null;        // null until identity resolves; never fabricate
     let otherMembers = [];
 
-    // Priority 1: GUID match — check if any party member name matches an auth character
+    // Priority 1: GUID match — check if any party member name matches an auth character.
+    // Tiebreaker: when multiple auth characters are in the same run (e.g. Brian has
+    // Dkroid AND Druidroid both authenticated, and both are in the party), prefer the
+    // one that matches this.uploaderIdentity (SavedVariables from the active session).
+    // Fall back to first match only if SV identity is absent or unmatched.
     if (this._authCharacters.length > 0) {
+      // Collect all auth-character matches in the party
+      const authMatches = [];
       for (let i = 0; i < partyMembers.length; i++) {
         const pm = partyMembers[i];
         const pmBase = stripRegionSuffix(pm.name);
@@ -2395,14 +2401,27 @@ class CombatLogRunBuilder extends EventEmitter {
           const cNameBase = stripRegionSuffix(c.characterName);
           return cFullBase === pmBase || cNameBase === pmBase;
         });
-        if (matched) {
-          playerObj = pm;
-          otherMembers = partyMembers.filter((_, idx) => idx !== i);
-          uploaderName = pm.name || matched.fullName;
-          identitySource = "combat_log_guid_match";
-          console.log(`[RunBuilder] GUID identity match: ${pm.name} → ${matched.fullName} (${matched.class})`);
-          break;
+        if (matched) authMatches.push({ pm, matched, idx: i });
+      }
+
+      if (authMatches.length > 0) {
+        // Prefer the match that aligns with SavedVariables uploaderIdentity
+        let chosen = authMatches[0]; // default: first found
+        if (authMatches.length > 1 && this.uploaderIdentity) {
+          const svBase = stripRegionSuffix(this.uploaderIdentity);
+          const svMatch = authMatches.find(m => stripRegionSuffix(m.pm.name) === svBase);
+          if (svMatch) {
+            chosen = svMatch;
+            console.log(`[RunBuilder] GUID identity tiebreak: multiple auth chars in party, SV preferred ${chosen.pm.name}`);
+          } else {
+            console.warn(`[RunBuilder] GUID identity tiebreak: SV identity "${this.uploaderIdentity}" not in party — using first auth match ${chosen.pm.name}`);
+          }
         }
+        playerObj = chosen.pm;
+        otherMembers = partyMembers.filter((_, idx) => idx !== chosen.idx);
+        uploaderName = chosen.pm.name || chosen.matched.fullName;
+        identitySource = "combat_log_guid_match";
+        console.log(`[RunBuilder] GUID identity match: ${chosen.pm.name} → ${chosen.matched.fullName} (${chosen.matched.class})`);
       }
     }
 
