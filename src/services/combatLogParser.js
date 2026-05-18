@@ -142,6 +142,23 @@ const DEFENSIVE_CD_SPELLS = new Map([
   [132578, { name: "Invoke Niuzao, the Black Ox", category: "defensive" }],
   [322507, { name: "Celestial Brew",            category: "defensive" }],
   [115399, { name: "Black Ox Brew",             category: "defensive" }],
+
+  // ── Mitigation Phase 2 — 2026-05-17 — Rotational tank mitigation ──
+  // Previously excluded per original comment. Added to support Mitigation overlay.
+  // These are SPELL_AURA_APPLIED events (buff on tank), not SPELL_CAST_SUCCESS.
+  // shouldTrackDefensive() handles both isCast and isAuraApplied — no new
+  // event handler needed.
+  // ── Death Knight ──
+  [195181, { name: "Bone Shield",                category: "defensive" }],  // Blood DK — high freq, fires on each charge consumed
+  // ── Demon Hunter ──
+  [203720, { name: "Demon Spikes",               category: "defensive" }],  // Vengeance DH
+  // ── Druid ──
+  [792,    { name: "Ironfur",                    category: "defensive" }],  // Guardian Druid
+  // ── Paladin ──
+  [53600,  { name: "Shield of the Righteous",    category: "defensive" }],  // Prot Paladin
+  // ── Warrior ──
+  [190456, { name: "Ignore Pain",                category: "defensive" }],  // Prot Warrior
+  [2565,   { name: "Shield Block",               category: "defensive" }],  // Prot Warrior
 ]);
 
 // Offensive CDs — copied verbatim from combatLogRunBuilder.js OFFENSIVE_COOLDOWNS (Overwolf parity).
