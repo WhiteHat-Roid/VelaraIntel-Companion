@@ -19,7 +19,12 @@
     "files": [
       "src/**/*",
       "assets/**/*",
-      "package.json"
+      "package.json",
+      "!_quarantine/**/*",
+      "!node_modules/**/{benchmark,benchmarks,spec,specs,tests,test,tasks,examples,docs,doc}/**/*",
+      "!node_modules/**/*.{md,markdown,ts,tsx,map,test.js,spec.js,bench.js}",
+      "!node_modules/**/{.github,.vscode,.idea,coverage,scripts}/**/*",
+      "!node_modules/**/{CHANGELOG,CHANGES,HISTORY,README,LICENSE-MIT,AUTHORS,CONTRIBUTORS}*"
     ],
     "extraResources": [
       {
