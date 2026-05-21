@@ -157,7 +157,7 @@ const ALWAYS_TRACK_DEFENSIVES = new Map([
   // ── Demon Hunter ──
   [203720, { name: "Demon Spikes",               category: "defensive" }],  // Vengeance DH
   // ── Druid ──
-  [792,    { name: "Ironfur",                    category: "defensive" }],  // Guardian Druid
+  [192081, { name: "Ironfur",                    category: "defensive" }],  // Guardian Druid
   // ── Paladin ──
   [53600,  { name: "Shield of the Righteous",    category: "defensive" }],  // Prot Paladin
   // ── Warrior ──
