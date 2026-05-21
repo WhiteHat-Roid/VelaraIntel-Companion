@@ -141,6 +141,7 @@ const DEFENSIVE_CD_SPELLS = new Map([
   // Monk extras already in runBuilder but missing from parser
   [132578, { name: "Invoke Niuzao, the Black Ox", category: "defensive" }],
   [322507, { name: "Celestial Brew",            category: "defensive" }],
+  [1241059, { name: "Celestial Infusion",       category: "defensive" }],  // Talented CB variant — cast-path capture, mirrors 322507
   [115399, { name: "Black Ox Brew",             category: "defensive" }],
 
   // ── Mitigation Phase 2 — 2026-05-17 — Rotational tank mitigation ──
