@@ -1919,7 +1919,7 @@ class CombatLogRunBuilder extends EventEmitter {
               playerName,
               class: this.guidToClass.get(sourceGuid) || "UNKNOWN",
               role: this.guidToRole.get(sourceGuid) || "unknown",
-              targetName: this.guidToName.get(destGuid) || destName || "Unknown",
+              targetName: (this.guidToName.get(destGuid) || destName) || null,
             });
           }
         }
