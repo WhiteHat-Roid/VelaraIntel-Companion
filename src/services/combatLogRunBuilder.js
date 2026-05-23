@@ -934,9 +934,30 @@ class CombatLogRunBuilder extends EventEmitter {
     this.guidToFaction   = new Map();  // GUID → "Alliance" or "Horde"
     this.lineCount       = 0;
     this.eventCount      = 0;
+    this._wowVersion     = null;  // e.g. "12.0.5"  — from combat log header
+    this._wowBuild       = null;  // e.g. "56713"   — from combat log header
+    this._wowToc         = null;  // e.g. "120005"  — derived from BUILD_VERSION
     // setAuthCharacters — called from main.js with VelaraAuth character list
     // Enables combat log GUID matching for uploader identity
     // uploaderIdentity is set externally from SavedVariables — preserve across reset
+  }
+
+  /**
+   * Called by main.js when the combat log header line is detected.
+   * Header format: COMBAT_LOG_VERSION,20,ADVANCED_LOG_ENABLED,1,BUILD_VERSION,X.Y.Z,...
+   * @param {string} buildVersion - e.g. "12.0.5"
+   * @param {string} [buildNumber] - e.g. "56713" (optional, may be absent)
+   */
+  setWowVersion(buildVersion, buildNumber) {
+    this._wowVersion = buildVersion || null;
+    this._wowBuild   = buildNumber  || null;
+    if (buildVersion) {
+      const parts = buildVersion.split(".").map(Number);
+      if (parts.length >= 3 && parts.every(n => !isNaN(n))) {
+        this._wowToc = String(parts[0] * 10000 + parts[1] * 100 + parts[2]);
+      }
+    }
+    console.log(`[RunBuilder] WoW version: ${this._wowVersion} build: ${this._wowBuild} toc: ${this._wowToc}`);
   }
 
   // Get player name for a GUID
@@ -2506,6 +2527,9 @@ class CombatLogRunBuilder extends EventEmitter {
         privacyMode: "shareable",
         addonVersion: COMPANION_VERSION,
         exportVersion: COMPANION_VERSION,
+        wowVersion: this._wowVersion || undefined,
+        wowBuild:   this._wowBuild   || undefined,
+        wowToc:     this._wowToc     || undefined,
         telemetryCapabilities: {
           hasCombatSegments: finalSegments.length > 0,
           hasEnemyRegistry: false,
