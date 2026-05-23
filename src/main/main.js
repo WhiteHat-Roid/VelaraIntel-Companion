@@ -1036,9 +1036,26 @@ function startCombatLogWatcher() {
   }
   let lastCompletedPayload = null;
 
-  runBuilder.on("keyStart", (run) => {
+  runBuilder.on("keyStart", async (run) => {
     broadcast("run-opened", run);
     broadcastStatus("Key started: " + (run.dungeonName || "Unknown") + " +" + (run.keyLevel || "?"), "info");
+
+    // Ensure auth characters are loaded before the key ends. If startup initialize()
+    // failed (network not ready, timeout) and the electron-store cache was empty,
+    // _authCharacters is still empty here — and _buildPayload runs at keyEnd time
+    // before the keyEnd safety net, so identity resolution falls through to
+    // SavedVariables (wrong character). Refresh now while there's still time.
+    if (runBuilder._authCharacters.length === 0 && velaraAuth.isLinked) {
+      try {
+        await velaraAuth.initialize();
+        if (velaraAuth.characters.length > 0) {
+          runBuilder._authCharacters = velaraAuth.characters;
+          console.log(`[RunBuilder] keyStart: loaded ${velaraAuth.characters.length} auth characters`);
+        }
+      } catch (err) {
+        console.warn(`[RunBuilder] keyStart: character refresh failed: ${err.message}`);
+      }
+    }
   });
 
   runBuilder.on("keyEnd", (payload) => {
@@ -1104,6 +1121,16 @@ function startCombatLogWatcher() {
       broadcastStatus("Processed " + lineCounter + " combat log lines", "info");
     }
     try {
+      // WoW combat log header (always the first line of the file, no timestamp prefix).
+      // Format: COMBAT_LOG_VERSION,20,ADVANCED_LOG_ENABLED,1,BUILD_VERSION,X.Y.Z,...
+      if (line.startsWith("COMBAT_LOG_VERSION,")) {
+        const parts = line.split(",");
+        const bvIdx = parts.indexOf("BUILD_VERSION");
+        if (bvIdx >= 0 && parts[bvIdx + 1]) {
+          runBuilder.setWowVersion(parts[bvIdx + 1].trim(), null);
+        }
+        return;
+      }
       runBuilder.processLine(line);
     } catch (err) {
       console.error("[RunBuilder] Line error:", err.message);
