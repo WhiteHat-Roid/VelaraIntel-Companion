@@ -265,7 +265,33 @@ function assembleRunPayload({ addonRun, parsedCombatEvidence, resolvedPulls, opt
 
   for (const eseg of enrichedSegments) {
     const pull = pullForSegment(eseg.segmentId);
-    for (const d of (eseg.deaths || [])) { d._targetPull = pull; allDeaths.push(d); }
+
+    // Addon stamps subZone on every death at the moment of death
+    // (Core.lua death-polling tick + CloseSegment final sweep). The CLEU
+    // parser has no spatial context, so we copy subZone from the nearest
+    // addon-side death by timestamp. addonSeg.deaths[*].deathSec is in
+    // seconds (Export_Format.lua passthrough); parser deathTs is in ms.
+    const addonSeg = segmentMap.get(eseg.segmentId);
+    const addonDeaths = (addonSeg && Array.isArray(addonSeg.deaths)) ? addonSeg.deaths : [];
+    const addonDeathsMs = addonDeaths.map(ad => ({
+      tsMs: (ad.deathSec || 0) * 1000,
+      subZone: ad.subZone || "",
+    }));
+
+    for (const d of (eseg.deaths || [])) {
+      d._targetPull = pull;
+      let bestSubZone = "";
+      let bestDt = Infinity;
+      for (const ad of addonDeathsMs) {
+        const dt = Math.abs(ad.tsMs - (d.deathTs || 0));
+        if (dt < bestDt && dt <= 2000) {
+          bestDt = dt;
+          bestSubZone = ad.subZone;
+        }
+      }
+      if (bestSubZone) d.subZone = bestSubZone;
+      allDeaths.push(d);
+    }
     for (const c of (eseg.cooldownEvents || [])) { c._targetPull = pull; allCooldowns.push(c); }
     for (const it of (eseg.interrupts || [])) { it._targetPull = pull; allInterrupts.push(it); }
     for (const cc of (eseg.ccEvents || [])) { cc._targetPull = pull; allCCEvents.push(cc); }
