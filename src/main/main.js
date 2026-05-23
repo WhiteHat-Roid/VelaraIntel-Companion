@@ -1036,21 +1036,29 @@ function startCombatLogWatcher() {
   }
   let lastCompletedPayload = null;
 
-  runBuilder.on("keyStart", (run) => {
+  runBuilder.on("keyStart", async (run) => {
     broadcast("run-opened", run);
     broadcastStatus("Key started: " + (run.dungeonName || "Unknown") + " +" + (run.keyLevel || "?"), "info");
+
+    // Ensure auth characters are loaded before the key ends. If startup initialize()
+    // failed (network not ready, timeout) and the electron-store cache was empty,
+    // _authCharacters is still empty here — and _buildPayload runs at keyEnd time
+    // before the keyEnd safety net, so identity resolution falls through to
+    // SavedVariables (wrong character). Refresh now while there's still time.
+    if (runBuilder._authCharacters.length === 0 && velaraAuth.isLinked) {
+      try {
+        await velaraAuth.initialize();
+        if (velaraAuth.characters.length > 0) {
+          runBuilder._authCharacters = velaraAuth.characters;
+          console.log(`[RunBuilder] keyStart: loaded ${velaraAuth.characters.length} auth characters`);
+        }
+      } catch (err) {
+        console.warn(`[RunBuilder] keyStart: character refresh failed: ${err.message}`);
+      }
+    }
   });
 
   runBuilder.on("keyEnd", (payload) => {
-    // [IDENTITY DIAG] — develop-only recon for DIRECTIVE_RECON_IDENTITY_BLEED_FIELD_NAMES_2026-05-23
-    // REMOVE BEFORE SHIPPING TO MAIN
-    broadcastStatus(`[DIAG] authChars: ${runBuilder._authCharacters.length} | uploaderIdentity: ${runBuilder.uploaderIdentity || "null"}`, "info");
-    if (runBuilder._authCharacters.length > 0) {
-      const sample = runBuilder._authCharacters[0];
-      broadcastStatus(`[DIAG] sample keys: ${Object.keys(sample).join(",")}`, "info");
-      broadcastStatus(`[DIAG] characterName=${sample.characterName} fullName=${sample.fullName}`, "info");
-    }
-
     // Safety: late-load auth characters if race condition left the array empty
     if (runBuilder._authCharacters.length === 0 && velaraAuth.isLinked && velaraAuth.characters.length > 0) {
       runBuilder._authCharacters = velaraAuth.characters;
