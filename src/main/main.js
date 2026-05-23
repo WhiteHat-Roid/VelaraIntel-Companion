@@ -1042,6 +1042,16 @@ function startCombatLogWatcher() {
   });
 
   runBuilder.on("keyEnd", (payload) => {
+    // [IDENTITY DIAG] — develop-only recon for DIRECTIVE_RECON_IDENTITY_BLEED_FIELD_NAMES_2026-05-23
+    // REMOVE BEFORE SHIPPING TO MAIN
+    console.log(`[IDENTITY DIAG] _authCharacters count: ${runBuilder._authCharacters.length}`);
+    if (runBuilder._authCharacters.length > 0) {
+      const sample = runBuilder._authCharacters[0];
+      console.log(`[IDENTITY DIAG] Sample char fields: ${JSON.stringify(Object.keys(sample))}`);
+      console.log(`[IDENTITY DIAG] Sample char values: characterName=${sample.characterName} fullName=${sample.fullName} character_name=${sample.character_name} full_name=${sample.full_name}`);
+    }
+    console.log(`[IDENTITY DIAG] uploaderIdentity: ${runBuilder.uploaderIdentity}`);
+
     // Safety: late-load auth characters if race condition left the array empty
     if (runBuilder._authCharacters.length === 0 && velaraAuth.isLinked && velaraAuth.characters.length > 0) {
       runBuilder._authCharacters = velaraAuth.characters;
