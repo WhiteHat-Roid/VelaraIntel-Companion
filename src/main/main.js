@@ -1066,6 +1066,58 @@ function startCombatLogWatcher() {
     }
 
     lastCompletedPayload = payload;
+
+    // ── subZone copy: stamp addon subZone onto each parser death by timestamp ──
+    // The combat log has no subzone events. The SV watcher caches the addon's
+    // _activeRun (cachedActiveRun) which has deaths with subZone from GetSubZoneText().
+    // We match each parser death to the nearest addon death within ±2000ms.
+    // Mirrors runAssembler.js Pass 4 logic exactly.
+    if (cachedActiveRun) {
+      const addonSegs = cachedActiveRun.segments || cachedActiveRun.combatSegments || [];
+      const addonDeathsMs = [];
+      for (const adSeg of addonSegs) {
+        for (const ad of (adSeg.deaths || [])) {
+          if (ad.subZone) {
+            addonDeathsMs.push({
+              tsMs: (ad.deathSec || 0) * 1000,
+              subZone: ad.subZone,
+            });
+          }
+        }
+      }
+      if (addonDeathsMs.length > 0) {
+        const segs = (payload.run && payload.run.combatSegments) || [];
+        let stamped = 0;
+        for (const seg of segs) {
+          for (const d of (seg.deaths || [])) {
+            let bestSubZone = "";
+            let bestDt = Infinity;
+            for (const ad of addonDeathsMs) {
+              const dt = Math.abs(ad.tsMs - (d.deathTs || 0));
+              if (dt < bestDt && dt <= 2000) {
+                bestDt = dt;
+                bestSubZone = ad.subZone;
+              }
+            }
+            if (bestSubZone) {
+              d.subZone = bestSubZone;
+              stamped++;
+            }
+          }
+        }
+        if (stamped > 0) {
+          console.log(`[RunBuilder] subZone stamped on ${stamped} death(s) from cachedActiveRun`);
+        } else {
+          console.warn(`[RunBuilder] subZone: ${addonDeathsMs.length} addon deaths found but none matched within ±2000ms`);
+        }
+      } else {
+        console.warn(`[RunBuilder] subZone: cachedActiveRun present but no addon deaths with subZone`);
+      }
+    } else {
+      console.warn(`[RunBuilder] subZone: cachedActiveRun is null — subZone will be absent`);
+    }
+    // ── end subZone copy ──
+
     broadcast("run-completed", payload);
     broadcastStatus("Key completed: " + payload.run.dungeonName + " +" + payload.run.keyLevel, "info");
 
