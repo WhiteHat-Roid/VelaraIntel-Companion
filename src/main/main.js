@@ -133,9 +133,7 @@ function startWowPoll() {
       wowDetected = true;
       console.log("[WoW] Retail WoW detected — showing dashboard");
       broadcastStatus("WoW detected — companion active", "ok");
-      createDashboard();
-      const wowAutoShow = store.get("wowAutoShow", false);
-      if (wowAutoShow && dashboardWindow) { dashboardWindow.show(); dashboardWindow.focus(); }
+      createDashboard(true);
 
       // Start watchers if not already running
       if (!watchersStarted) {
@@ -628,8 +626,14 @@ function enrichPayloadWithCombatLog(payload, latest) {
   }
 }
 
-function createDashboard() {
-  if (dashboardWindow) { dashboardWindow.show(); dashboardWindow.focus(); return; }
+function createDashboard(fromWowLaunch = false) {
+  if (dashboardWindow) {
+    if (!fromWowLaunch || store.get("wowAutoShow", false)) {
+      dashboardWindow.show();
+      dashboardWindow.focus();
+    }
+    return;
+  }
   dashboardWindow = new BrowserWindow({
     width: 580, height: 680, minWidth: 520, minHeight: 580, frame: false, resizable: true,
     backgroundColor: "#080A0C", show: false,
@@ -640,7 +644,9 @@ function createDashboard() {
   });
   dashboardWindow.loadFile(path.join(__dirname, "..", "renderer", "dashboard.html"));
   dashboardWindow.once("ready-to-show", () => {
-    if (!store.get("startMinimized")) dashboardWindow.show();
+    const shouldShow = !store.get("startMinimized", false) &&
+                       (!fromWowLaunch || store.get("wowAutoShow", false));
+    if (shouldShow) dashboardWindow.show();
     // Enable DevTools with Ctrl+Shift+F12 (admin only — requires /videv mindset)
     dashboardWindow.webContents.on('before-input-event', (event, input) => {
       if (input.key === 'F12' && input.control && input.shift) {
