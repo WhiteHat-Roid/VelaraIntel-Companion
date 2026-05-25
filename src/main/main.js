@@ -48,6 +48,42 @@ const store = new Store({
   },
 });
 
+// ── Deep link handler (velara://) ─────────────────────────────────────────────
+// Handles velara://link?code=XXXX for one-click companion linking from the web.
+function handleDeepLink(url) {
+  try {
+    const parsed = new URL(url);
+    if (parsed.hostname === "link") {
+      const code = parsed.searchParams.get("code");
+      if (code && velaraAuth && !velaraAuth.isLinked) {
+        console.log("[DeepLink] Auto-linking with code from velara:// URL");
+        velaraAuth.linkWithCode(code)
+          .then(data => {
+            if (apiUploader) apiUploader.setAuthToken(velaraAuth.getAuthToken());
+            if (dashboardWindow) {
+              dashboardWindow.webContents.send("auth-status-changed", {
+                isLinked: true,
+                displayName: data.displayName,
+                characterCount: (data.characters || []).length,
+              });
+            }
+            broadcastStatus(`Companion linked to ${data.displayName}`, "info");
+            console.log("[DeepLink] Linked successfully:", data.displayName);
+          })
+          .catch(err => {
+            console.error("[DeepLink] Link failed:", err.message);
+            broadcastStatus("Deep link: failed to link — " + err.message, "error");
+          });
+      } else if (velaraAuth && velaraAuth.isLinked) {
+        console.log("[DeepLink] Already linked, ignoring.");
+        broadcastStatus("Companion is already linked.", "info");
+      }
+    }
+  } catch (err) {
+    console.error("[DeepLink] Failed to parse URL:", url, err.message);
+  }
+}
+
 // ── clientId — generate once on first launch ──────────────────────────────────
 function ensureClientId() {
   let id = store.get("clientId");
@@ -1480,6 +1516,30 @@ function setupIPC() {
   ipcMain.on("minimize-dashboard", () => { if (dashboardWindow) dashboardWindow.minimize(); });
 }
 
+// ── Single instance lock — required for second-instance deep link handling ───
+const gotTheLock = app.requestSingleInstanceLock();
+if (!gotTheLock) {
+  app.quit();
+}
+
+// ── Protocol handler registration (velara://) ─────────────────────────────────
+// Handles deep links from velaraintel.com for one-click companion linking.
+// Windows: fires via second-instance event with argv containing the URL.
+if (!app.isDefaultProtocolClient("velara")) {
+  app.setAsDefaultProtocolClient("velara");
+}
+
+// Handle deep link when Companion is already running (second instance)
+app.on("second-instance", (_event, argv) => {
+  const url = argv.find(arg => arg.startsWith("velara://"));
+  if (url) handleDeepLink(url);
+  if (dashboardWindow) {
+    if (dashboardWindow.isMinimized()) dashboardWindow.restore();
+    dashboardWindow.show();
+    dashboardWindow.focus();
+  }
+});
+
 app.whenReady().then(async () => {
   console.log(`[Velara] Companion v${app.getVersion()} — build ${BUILD_TIMESTAMP}`);
   if (!store.get("wowPath")) {
@@ -1508,6 +1568,9 @@ app.whenReady().then(async () => {
     // createOverlay();  // Overlay disabled in v1.3.3
     startSVWatcher();
     startCombatLogWatcher();
+    // Handle deep link on cold start — check argv for velara:// URL
+    const coldStartUrl = process.argv.find(arg => arg.startsWith("velara://"));
+    if (coldStartUrl) handleDeepLink(coldStartUrl);
     watchersStarted = true;
     startLogRescanTimer();
     // Auto-scan for missed runs on startup (delayed to let everything initialize)
