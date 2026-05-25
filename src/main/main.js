@@ -1568,9 +1568,6 @@ app.whenReady().then(async () => {
     // createOverlay();  // Overlay disabled in v1.3.3
     startSVWatcher();
     startCombatLogWatcher();
-    // Handle deep link on cold start — check argv for velara:// URL
-    const coldStartUrl = process.argv.find(arg => arg.startsWith("velara://"));
-    if (coldStartUrl) handleDeepLink(coldStartUrl);
     watchersStarted = true;
     startLogRescanTimer();
     // Auto-scan for missed runs on startup (delayed to let everything initialize)
@@ -1596,6 +1593,11 @@ app.whenReady().then(async () => {
     createDashboard();
     if (dashboardWindow) dashboardWindow.hide();
   }
+
+  // Handle deep link on cold start — check argv for velara:// URL.
+  // Must be outside the wowAlready branch so it fires regardless of WoW state.
+  const coldStartUrl = process.argv.find(arg => arg.startsWith("velara://"));
+  if (coldStartUrl) handleDeepLink(coldStartUrl);
 
   // Always poll — detects WoW launch/close transitions
   startWowPoll();
