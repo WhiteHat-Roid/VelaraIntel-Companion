@@ -14,11 +14,12 @@ const readline = require("readline");
 const { CombatLogRunBuilder } = require("./combatLogRunBuilder");
 
 class CombatLogScanner {
-  constructor({ uploader, velaraAuth, uploadedRunIds, onProgress } = {}) {
+  constructor({ uploader, velaraAuth, uploadedRunIds, onProgress, lookbackDays } = {}) {
     this.uploader       = uploader;
     this.velaraAuth     = velaraAuth;
     this.uploadedRunIds = uploadedRunIds || new Set();
     this.onProgress     = onProgress || (() => {});
+    this.lookbackDays   = lookbackDays ?? 7;  // default 7 days; 0 = scan all
   }
 
   async scanFile(logPath) {
@@ -85,6 +86,9 @@ class CombatLogScanner {
         if (uploadResult.ok) {
           this.onProgress(`Uploaded: ${dungeon} +${keyLevel}`, "ok");
           result.uploaded++;
+          // Pace uploads — stay under backend 60/min rate limit (30/min max).
+          // Only after a successful upload; skips/errors/retries don't add delay.
+          await new Promise(r => setTimeout(r, 2000));
         } else if (uploadResult.skipped) {
           result.skipped++;
         } else {
@@ -139,17 +143,32 @@ class CombatLogScanner {
       .filter(f => f.mtime > 0)
       .sort((a, b) => a.mtime - b.mtime);  // oldest first so newer dedup wins
 
-    agg.totalFiles = logFiles.length;
-    if (logFiles.length === 0) {
-      this.onProgress(`No WoWCombatLog*.txt files in ${logsDir}`, "warn");
+    // Limit to the lookback window (by file mtime). lookbackDays = 0 scans all.
+    const cutoff = Date.now() - (this.lookbackDays * 24 * 60 * 60 * 1000);
+    const filteredFiles = this.lookbackDays > 0
+      ? logFiles.filter(f => f.mtime >= cutoff)
+      : logFiles;
+
+    agg.totalFiles = filteredFiles.length;
+    if (filteredFiles.length === 0) {
+      const noneMsg = this.lookbackDays > 0
+        ? `No WoWCombatLog*.txt files from the last ${this.lookbackDays} days in ${logsDir}`
+        : `No WoWCombatLog*.txt files in ${logsDir}`;
+      this.onProgress(noneMsg, "warn");
       return agg;
     }
 
-    this.onProgress(`Found ${logFiles.length} combat log file(s) — scanning oldest first`, "info");
+    const windowMsg = this.lookbackDays > 0
+      ? ` from last ${this.lookbackDays} days`
+      : "";
+    this.onProgress(
+      `Found ${filteredFiles.length} combat log file(s)${windowMsg} — scanning oldest first`,
+      "info"
+    );
 
-    for (let i = 0; i < logFiles.length; i++) {
-      const f = logFiles[i];
-      this.onProgress(`Scanning file ${i + 1}/${logFiles.length}: ${f.name}`, "info");
+    for (let i = 0; i < filteredFiles.length; i++) {
+      const f = filteredFiles[i];
+      this.onProgress(`Scanning file ${i + 1}/${filteredFiles.length}: ${f.name}`, "info");
       const r = await this.scanFile(f.full);
       agg.filesScanned++;
       agg.found    += r.found    || 0;

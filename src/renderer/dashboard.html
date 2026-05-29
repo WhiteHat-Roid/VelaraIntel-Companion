@@ -497,7 +497,11 @@
         <button type="button" class="scan-btn" id="btnScanLogs">Scan Previous Logs</button>
         <span class="scan-status" id="scanStatus">Scans every WoWCombatLog*.txt in your Logs folder</span>
       </div>
-      <div class="scan-hint">Finds completed M+ runs in past combat logs and uploads any that aren't on velaraintel.com yet. Older runs are scanned first.</div>
+      <div class="scan-hint">Finds completed M+ runs from the last 7 days and uploads any that aren't on velaraintel.com yet. Older runs are scanned first.</div>
+      <div class="scan-row" style="margin-top:8px">
+        <button type="button" class="scan-btn" id="btnScanAll" style="background:#7a4a1a">Scan All History</button>
+        <span class="scan-status">Scans all log files — may take several minutes</span>
+      </div>
     </div>
 
     <div class="scan-divider"></div>
@@ -943,6 +947,7 @@
     // SCAN PREVIOUS LOGS — batch directory scan
     // ═══════════════════════════════════════════════
     const btnScanLogs = document.getElementById('btnScanLogs');
+    const btnScanAll  = document.getElementById('btnScanAll');
     const scanStatus  = document.getElementById('scanStatus');
     let scanInProgress = false;
 
@@ -966,6 +971,7 @@
         scanInProgress = false;
         btnScanLogs.disabled = false;
         btnScanLogs.textContent = 'Scan Again';
+        if (btnScanAll) { btnScanAll.disabled = false; btnScanAll.textContent = 'Scan All History'; }
         if (!data) { setScanStatus('Scan finished', 'ok'); return; }
         const parts = [];
         parts.push((data.uploaded || 0) + ' uploaded');
@@ -979,30 +985,44 @@
       });
     }
 
-    btnScanLogs.addEventListener('click', async () => {
+    // Shared runner for both scan buttons. activeBtn is the one clicked; both
+    // are disabled for the duration so the two scans can't overlap. On a hard
+    // failure we reset here; on success the onScanComplete broadcast resets.
+    async function runScan(scanFn, activeBtn, idleLabel) {
       if (scanInProgress) return;
       scanInProgress = true;
       btnScanLogs.disabled = true;
-      btnScanLogs.textContent = 'Scanning...';
+      if (btnScanAll) btnScanAll.disabled = true;
+      activeBtn.textContent = 'Scanning...';
       setScanStatus('Starting scan...', '');
       try {
-        const result = await window.velara.scanMissedRuns();
+        const result = await scanFn();
         // onScanComplete handler also fires via broadcast — guard against double-render
         if (result && !result.ok) {
           setScanStatus(result.error || 'Scan failed', 'err');
           addStatus('uploadStatusFeed', 'Scan failed: ' + (result.error || 'unknown'), 'err');
           scanInProgress = false;
           btnScanLogs.disabled = false;
-          btnScanLogs.textContent = 'Scan Previous Logs';
+          if (btnScanAll) btnScanAll.disabled = false;
+          activeBtn.textContent = idleLabel;
         }
       } catch (err) {
         setScanStatus(err.message || String(err), 'err');
         addStatus('uploadStatusFeed', 'Scan error: ' + (err.message || String(err)), 'err');
         scanInProgress = false;
         btnScanLogs.disabled = false;
-        btnScanLogs.textContent = 'Scan Previous Logs';
+        if (btnScanAll) btnScanAll.disabled = false;
+        activeBtn.textContent = idleLabel;
       }
-    });
+    }
+
+    btnScanLogs.addEventListener('click', () =>
+      runScan(() => window.velara.scanMissedRuns(), btnScanLogs, 'Scan Previous Logs'));
+
+    if (btnScanAll) {
+      btnScanAll.addEventListener('click', () =>
+        runScan(() => window.velara.scanAllHistory(), btnScanAll, 'Scan All History'));
+    }
 
     // ═══════════════════════════════════════════════
     // STATUS LOG LISTENER (from main process)

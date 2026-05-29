@@ -38,6 +38,7 @@ contextBridge.exposeInMainWorld("velara", {
 
   // Batch scan WoW Logs directory for missed M+ runs
   scanMissedRuns:    () => ipcRenderer.invoke("scan-missed-runs"),
+  scanAllHistory:    () => ipcRenderer.invoke("scan-all-history"),
   onScanProgress:    (cb) => ipcRenderer.on("scan-progress", (_, data) => cb(data)),
   onScanComplete:    (cb) => ipcRenderer.on("scan-complete", (_, data) => cb(data)),
 

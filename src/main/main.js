@@ -1340,6 +1340,25 @@ function setupIPC() {
       uploader: apiUploader,
       velaraAuth,
       uploadedRunIds: apiUploader ? apiUploader.uploadedKeys : new Set(),
+      lookbackDays: 7,  // default: last 7 days only
+      onProgress: (msg, type) => {
+        broadcast("scan-progress", { message: msg, type });
+      },
+    });
+    const result = await scanner.scanDirectory(logsDir);
+    broadcast("scan-complete", result);
+    return { ok: true, ...result };
+  });
+
+  ipcMain.handle("scan-all-history", async () => {
+    const logPath = getCombatLogPath();
+    if (!logPath) return { ok: false, error: "Combat log path not configured" };
+    const logsDir = path.dirname(logPath);
+    const scanner = new CombatLogScanner({
+      uploader: apiUploader,
+      velaraAuth,
+      uploadedRunIds: apiUploader ? apiUploader.uploadedKeys : new Set(),
+      lookbackDays: 0,  // scan everything
       onProgress: (msg, type) => {
         broadcast("scan-progress", { message: msg, type });
       },
