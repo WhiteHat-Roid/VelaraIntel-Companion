@@ -1341,7 +1341,6 @@ function setupIPC() {
       velaraAuth,
       uploadedRunIds: apiUploader ? apiUploader.uploadedKeys : new Set(),
       onProgress: (msg, type) => {
-        broadcastStatus(msg, type === "err" ? "err" : type === "ok" ? "ok" : "info");
         broadcast("scan-progress", { message: msg, type });
       },
     });

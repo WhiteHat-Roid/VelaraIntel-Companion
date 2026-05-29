@@ -70,7 +70,17 @@ class CombatLogScanner {
           }
         }
 
-        const uploadResult = await this.uploader.upload(payload);
+        let uploadResult = await this.uploader.upload(payload);
+
+        // Rate limited — wait and retry once
+        if (uploadResult.status === 429) {
+          const waitSec = uploadResult.retryAfter || 60;
+          this.onProgress(
+            `Rate limited — waiting ${waitSec}s before retry...`, "warn"
+          );
+          await new Promise(r => setTimeout(r, waitSec * 1000));
+          uploadResult = await this.uploader.upload(payload);
+        }
 
         if (uploadResult.ok) {
           this.onProgress(`Uploaded: ${dungeon} +${keyLevel}`, "ok");
