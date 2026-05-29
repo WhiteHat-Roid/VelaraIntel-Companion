@@ -671,7 +671,7 @@ function createDashboard(fromWowLaunch = false) {
     return;
   }
   dashboardWindow = new BrowserWindow({
-    width: 580, height: 680, minWidth: 520, minHeight: 580, frame: false, resizable: true,
+    width: 620, height: 920, minWidth: 520, minHeight: 580, frame: false, resizable: true,
     backgroundColor: "#080A0C", show: false,
     webPreferences: {
       preload: path.join(__dirname, "preload-dashboard.js"),
