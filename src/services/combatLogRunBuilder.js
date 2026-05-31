@@ -486,6 +486,71 @@ const OFFENSIVE_COOLDOWNS = new Map([
   [178207, { name: "Drums of Fury",          type: "group_offensive",    cd: 600 }],  // Leatherworking
   [309658, { name: "Drums of Deathly Ferocity", type: "group_offensive", cd: 600 }],  // TWW drums
   [381301, { name: "Feral Hide Drums",       type: "group_offensive",    cd: 600 }],  // DF drums
+
+  // ── Full roster expansion 2026-05-31 (OFFENSIVE_CD_05b) ──────────────────────
+  // Real emitted IDs, every one re-verified present in logs before writing (CD_05b Step 1).
+  // CAST id is the canonical "used it" event; aura/summon ids only where no cast exists.
+  // NOTE: parser matches OFFENSIVE_COOLDOWNS on SPELL_CAST_SUCCESS only — the aura/summon-only
+  // entries below (Bloodshed, Grimoire of Sacrifice, Feral Spirit, Fire/Storm Elemental,
+  // Shadowfiend) are INERT until a parser aura/summon branch is added (flagged to PM).
+  // ── Warrior ──
+  [446035, { name: "Bladestorm",             type: "personal_offensive", cd: 90  }],  // Arms/Fury (Midnight ID)
+  [260708, { name: "Sweeping Strikes",       type: "personal_offensive", cd: 30  }],  // Arms
+  [385062, { name: "Odyn's Fury",            type: "personal_offensive", cd: 45  }],  // Fury
+  // ── Mage ──
+  [108853, { name: "Fire Blast",             type: "personal_offensive", cd: 12  }],  // Fire (Mage only; 57984 is Shaman pet)
+  [157980, { name: "Supernova",              type: "personal_offensive", cd: 45  }],  // Arcane
+  [31661,  { name: "Dragon's Breath",        type: "personal_offensive", cd: 45  }],  // Fire (damage + CC)
+  // ── Hunter ──
+  [392060, { name: "Wailing Arrow",          type: "personal_offensive", cd: 60  }],  // MM/BM
+  [212431, { name: "Explosive Shot",         type: "personal_offensive", cd: 30  }],  // SV/MM
+  [321538, { name: "Bloodshed",              type: "personal_offensive", cd: 60  }],  // BM — AURA-ONLY (pet); inert until parser aura branch
+  // ── Warlock ──
+  [196099, { name: "Grimoire of Sacrifice",  type: "personal_offensive", cd: 30  }],  // AURA-ONLY; inert until parser aura branch
+  [1276672,{ name: "Summon Doomguard",       type: "personal_offensive", cd: 90  }],  // Demo
+  [104316, { name: "Call Dreadstalkers",     type: "personal_offensive", cd: 20  }],  // Demo (core CD despite cadence)
+  [1276452,{ name: "Grimoire: Imp Lord",     type: "personal_offensive", cd: 120 }],  // Demo
+  [1276467,{ name: "Grimoire: Fel Ravager",  type: "personal_offensive", cd: 120 }],  // Demo
+  // ── Priest ──
+  [1280172,{ name: "Shadowfiend",            type: "personal_offensive", cd: 180 }],  // Midnight ID — AURA+SUMMON, no cast; inert until parser branch
+  [263165, { name: "Void Torrent",           type: "personal_offensive", cd: 45  }],  // Shadow
+  [32379,  { name: "Shadow Word: Death",     type: "personal_offensive", cd: 20  }],  // execute (borderline)
+  // ── Rogue ──
+  [381623, { name: "Thistle Tea",            type: "personal_offensive", cd: 60  }],
+  [381989, { name: "Keep It Rolling",        type: "personal_offensive", cd: 420 }],  // Outlaw
+  // ── Monk ──
+  [322109, { name: "Touch of Death",         type: "personal_offensive", cd: 120 }],
+  [443028, { name: "Celestial Conduit",      type: "personal_offensive", cd: 90  }],
+  [132578, { name: "Invoke Niuzao, the Black Ox", type: "personal_offensive", cd: 90 }],  // BrM
+  [152175, { name: "Whirling Dragon Punch",  type: "personal_offensive", cd: 24  }],  // WW (borderline)
+  // ── Shaman ──
+  [469270, { name: "Doom Winds",             type: "personal_offensive", cd: 60  }],  // Enh (Midnight ID)
+  [469332, { name: "Feral Spirit",           type: "personal_offensive", cd: 90  }],  // SUMMON-only (alt build); inert until parser branch
+  [469322, { name: "Feral Spirit",           type: "personal_offensive", cd: 90  }],  // SUMMON-only (alt build); inert until parser branch
+  [188592, { name: "Fire Elemental",         type: "personal_offensive", cd: 150 }],  // Midnight ID — AURA+SUMMON, no cast; inert until parser branch
+  [157299, { name: "Storm Elemental",        type: "personal_offensive", cd: 150 }],  // SUMMON-only; inert until parser branch
+  [1218090,{ name: "Primordial Storm",       type: "personal_offensive", cd: 30  }],  // Enh
+  [197214, { name: "Sundering",              type: "personal_offensive", cd: 40  }],  // Enh
+  // ── Druid ──
+  [102558, { name: "Incarnation: Guardian of Ursoc", type: "personal_offensive", cd: 180 }],
+  [274837, { name: "Feral Frenzy",           type: "personal_offensive", cd: 45  }],  // Feral
+  [202770, { name: "Fury of Elune",          type: "personal_offensive", cd: 60  }],  // Balance (borderline)
+  [204066, { name: "Lunar Beam",             type: "personal_offensive", cd: 75  }],  // Guardian
+  // ── Demon Hunter ──
+  [187827, { name: "Metamorphosis (Veng)",   type: "personal_offensive", cd: 180 }],  // Veng cast (distinct spec from 191427/200166)
+  [370966, { name: "The Hunt",               type: "personal_offensive", cd: 90  }],  // emitted cast ID (alt to 370965)
+  [204596, { name: "Sigil of Flame",         type: "personal_offensive", cd: 30  }],
+  [452497, { name: "Abyssal Gaze",           type: "personal_offensive", cd: 120 }],  // Veng
+  // ── Evoker ──
+  [370553, { name: "Tip the Scales",         type: "personal_offensive", cd: 120 }],
+  [442204, { name: "Breath of Eons",         type: "personal_offensive", cd: 120 }],  // Aug
+  [357210, { name: "Deep Breath",            type: "personal_offensive", cd: 120 }],  // Deva
+  [357208, { name: "Fire Breath",            type: "personal_offensive", cd: 30  }],  // empower core CD
+  // ── Death Knight ──
+  [439843, { name: "Reaper's Mark",          type: "personal_offensive", cd: 45  }],  // Deathbringer hero burst
+  [49028,  { name: "Dancing Rune Weapon",    type: "personal_offensive", cd: 120 }],  // Blood
+  [1249658,{ name: "Breath of Sindragosa",   type: "personal_offensive", cd: 120 }],  // Frost (Midnight ID; 152279 retained)
+  [46585,  { name: "Raise Dead",             type: "personal_offensive", cd: 120 }],  // Unholy/Frost pet summon
 ]);
 
 // ── Player Stun Spells (player-cast stuns on enemies) ──────────────────────
