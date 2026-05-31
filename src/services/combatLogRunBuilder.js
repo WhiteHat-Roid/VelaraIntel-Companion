@@ -492,9 +492,9 @@ const OFFENSIVE_COOLDOWNS = new Map([
   // ── Full roster expansion 2026-05-31 (OFFENSIVE_CD_05b) ──────────────────────
   // Real emitted IDs, every one re-verified present in logs before writing (CD_05b Step 1).
   // CAST id is the canonical "used it" event; aura/summon ids only where no cast exists.
-  // NOTE: parser matches OFFENSIVE_COOLDOWNS on SPELL_CAST_SUCCESS only — the aura/summon-only
-  // entries below (Bloodshed, Grimoire of Sacrifice, Feral Spirit, Fire/Storm Elemental,
-  // Shadowfiend) are INERT until a parser aura/summon branch is added (flagged to PM).
+  // NOTE: aura/summon-only entries below are handled by the AURA_ONLY_OFFENSIVE_CDS branch
+  // added in OFFENSIVE_CD_05c (2026-05-31). They now fire on SPELL_AURA_APPLIED.
+  // IDs must remain in OFFENSIVE_COOLDOWNS for the aura branch's offInfo lookup to work.
   // ── Warrior ──
   [446035, { name: "Bladestorm",             type: "personal_offensive", cd: 90  }],  // Arms/Fury (Midnight ID)
   [260708, { name: "Sweeping Strikes",       type: "personal_offensive", cd: 30  }],  // Arms
@@ -556,6 +556,21 @@ const OFFENSIVE_COOLDOWNS = new Map([
   [49028,  { name: "Dancing Rune Weapon",    type: "personal_offensive", cd: 120 }],  // Blood
   [1249658,{ name: "Breath of Sindragosa",   type: "personal_offensive", cd: 120 }],  // Frost (Midnight ID; 152279 retained)
   [46585,  { name: "Raise Dead",             type: "personal_offensive", cd: 120 }],  // Unholy/Frost pet summon
+]);
+
+// ── Aura/Summon-only offensive CDs ─────────────────────────────────────────
+// These abilities never fire SPELL_CAST_SUCCESS from the player.
+// They are tracked via SPELL_AURA_APPLIED on the PLAYER sourceGuid instead.
+// Subset of OFFENSIVE_COOLDOWNS — IDs here MUST also exist in OFFENSIVE_COOLDOWNS.
+// Added 2026-05-31 (OFFENSIVE_CD_05c).
+const AURA_ONLY_OFFENSIVE_CDS = new Set([
+  321538,   // Bloodshed (BM Hunter) — aura on player after pet use
+  196099,   // Grimoire of Sacrifice (Warlock) — aura applied on player
+  469332,   // Feral Spirit (Shaman) — aura variant
+  469322,   // Feral Spirit alt (Shaman) — aura variant
+  188592,   // Fire Elemental (Shaman Midnight ID) — aura on player
+  157299,   // Storm Elemental (Shaman) — aura on player
+  1280172,  // Shadowfiend (Priest Midnight ID) — aura on player
 ]);
 
 // ── Player Stun Spells (player-cast stuns on enemies) ──────────────────────
@@ -2041,6 +2056,31 @@ class CombatLogRunBuilder extends EventEmitter {
               class: this.guidToClass.get(sourceGuid) || "UNKNOWN",
               role: this.guidToRole.get(sourceGuid) || "unknown",
               cdType: offInfo.type,
+            });
+          }
+        }
+      }
+
+      // ── Aura/summon-only offensive CDs (OFFENSIVE_CD_05c) ────────────
+      // Handles abilities that never emit SPELL_CAST_SUCCESS from the player.
+      // Only fires on SPELL_AURA_APPLIED where sourceGuid is the player.
+      // IDs here are a subset of OFFENSIVE_COOLDOWNS — offInfo lookup is safe.
+      if (isAuraApplied && AURA_ONLY_OFFENSIVE_CDS.has(spellId)) {
+        const auraOffInfo = OFFENSIVE_COOLDOWNS.get(spellId);
+        if (auraOffInfo && this.currentSeg && this.currentSeg.offensiveCDs.length < 60) {
+          const auraPlayerName = this.guidToName.get(sourceGuid) || "Unknown";
+          const isAuraDupe = this.currentSeg.offensiveCDs.some(o =>
+            o.spellId === spellId && o.name === auraPlayerName &&
+            Math.abs(o.ts - ts) < 1000
+          );
+          if (!isAuraDupe) {
+            this.currentSeg.offensiveCDs.push({
+              ts, offsetMs: ts - this.currentSeg.startTs,
+              spellName: auraOffInfo.name, spellId,
+              name: auraPlayerName,
+              class: this.guidToClass.get(sourceGuid) || "UNKNOWN",
+              role: this.guidToRole.get(sourceGuid) || "unknown",
+              cdType: auraOffInfo.type,
             });
           }
         }
