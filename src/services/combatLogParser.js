@@ -55,7 +55,10 @@ const DEFENSIVE_CD_SPELLS = new Map([
   [102342, { name: "Ironbark",                  category: "external"  }],
   [22842,  { name: "Frenzied Regeneration",     category: "defensive" }],
   [102558, { name: "Incarnation: Guardian of Ursoc", category: "defensive" }],
-  [319454, { name: "Heart of the Wild",         category: "defensive" }],
+  // [319454, { name: "Heart of the Wild",         category: "defensive" }],
+  // RETIRED 2026-05-31 — old spellbook ID never fires in Midnight CLEU.
+  // Real IDs 1261870 + 1261868 now tracked in OFFENSIVE_COOLDOWNS. Do not delete.
+  // NOTE: this copy stores HotW in DEFENSIVE_CD_SPELLS (not SPEC_CONDITIONAL_DEFENSIVES like the other 2 copies) — flagged to PM.
   // ── Evoker ──
   [374348, { name: "Obsidian Scales",           category: "defensive" }],
   [374227, { name: "Zephyr",                    category: "external"  }],
@@ -378,6 +381,9 @@ const OFFENSIVE_COOLDOWNS = new Map([
   [274837, { name: "Feral Frenzy",           type: "personal_offensive", cd: 45  }],  // Feral
   [202770, { name: "Fury of Elune",          type: "personal_offensive", cd: 60  }],  // Balance (borderline)
   [204066, { name: "Lunar Beam",             type: "personal_offensive", cd: 75  }],  // Guardian
+  // ── Druid — Heart of the Wild (Midnight 12.0 emitted IDs — 319454 never fires in CLEU) ──
+  [1261870, { name: "Heart of the Wild", type: "personal_offensive", cd: 180 }],  // primary emitted ID (Balance/Feral/Resto confirmed SPELL_CAST_FAILED Druidroid 2026-05-31)
+  [1261868, { name: "Heart of the Wild", type: "personal_offensive", cd: 180 }],  // alt emitted ID (spec variant — both register; first SPELL_CAST_SUCCESS wins dedup)
   // ── Demon Hunter ──
   [187827, { name: "Metamorphosis (Veng)",   type: "personal_offensive", cd: 180 }],  // Veng cast (distinct spec from 191427/200166)
   [370966, { name: "The Hunt",               type: "personal_offensive", cd: 90  }],  // emitted cast ID (alt to 370965)
