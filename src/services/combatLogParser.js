@@ -341,7 +341,7 @@ const OFFENSIVE_COOLDOWNS = new Map([
   // ── Warrior ──
   [446035, { name: "Bladestorm",             type: "personal_offensive", cd: 90  }],  // Arms/Fury (Midnight ID)
   [260708, { name: "Sweeping Strikes",       type: "personal_offensive", cd: 30  }],  // Arms
-  [385062, { name: "Odyn's Fury",            type: "personal_offensive", cd: 45  }],  // Fury
+  [385059, { name: "Odyn's Fury",            type: "personal_offensive", cd: 45  }],  // Fury (385059 cast ID; 385062 was wrong — OFFENSIVE_CD_ICONS_01)
   // ── Mage ──
   [108853, { name: "Fire Blast",             type: "personal_offensive", cd: 12  }],  // Fire (Mage only; 57984 is Shaman pet)
   [157980, { name: "Supernova",              type: "personal_offensive", cd: 45  }],  // Arcane
