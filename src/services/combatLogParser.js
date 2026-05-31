@@ -165,45 +165,95 @@ const DEFENSIVE_CD_SPELLS = new Map([
 // Offensive CDs — copied verbatim from combatLogRunBuilder.js OFFENSIVE_COOLDOWNS (Overwolf parity).
 // type: "group_offensive" = Bloodlust-class raid buff, "personal_offensive" = personal DPS CD.
 const OFFENSIVE_COOLDOWNS = new Map([
-  [2825,   { name: "Bloodlust",            type: "group_offensive",    cd: 300 }],
-  [32182,  { name: "Heroism",              type: "group_offensive",    cd: 300 }],
-  [80353,  { name: "Time Warp",            type: "group_offensive",    cd: 300 }],
-  [264667, { name: "Primal Rage",          type: "group_offensive",    cd: 300 }],
-  [390386, { name: "Fury of the Aspects",  type: "group_offensive",    cd: 300 }],
-  [47568,  { name: "Empower Rune Weapon",  type: "personal_offensive", cd: 120 }],
-  [207289, { name: "Unholy Assault",       type: "personal_offensive", cd: 90  }],
-  [51271,  { name: "Pillar of Frost",      type: "personal_offensive", cd: 60  }],
-  [275699, { name: "Apocalypse",           type: "personal_offensive", cd: 75  }],
+  // ── Group-wide ──
+  [2825,   { name: "Bloodlust",          type: "group_offensive",  cd: 300 }],
+  [32182,  { name: "Heroism",            type: "group_offensive",  cd: 300 }],
+  [80353,  { name: "Time Warp",          type: "group_offensive",  cd: 300 }],
+  [264667, { name: "Primal Rage",        type: "group_offensive",  cd: 300 }],
+  [272678, { name: "Primal Rage",        type: "group_offensive",  cd: 300 }],  // pet-cast ID — inert until OFFENSIVE_CD_03 pet attribution (OFFENSIVE_CD_02)
+  [390386, { name: "Fury of the Aspects", type: "group_offensive", cd: 300 }],
+  // ── Death Knight ──
+  [47568,  { name: "Empower Rune Weapon", type: "personal_offensive", cd: 120 }],
+  [207289, { name: "Unholy Assault",      type: "personal_offensive", cd: 90 }],
+  [51271,  { name: "Pillar of Frost",     type: "personal_offensive", cd: 60 }],
+  // Apocalypse (275699) removed — deleted from the game in Midnight 12.0 (OFFENSIVE_CD_02)
+  // ── Demon Hunter ──
   [191427, { name: "Metamorphosis (Havoc)", type: "personal_offensive", cd: 240 }],
-  [258920, { name: "Immolation Aura",      type: "personal_offensive", cd: 30  }],
+  [258920, { name: "Immolation Aura",      type: "personal_offensive", cd: 30 }],
+  // ── Druid ──
   [194223, { name: "Celestial Alignment",  type: "personal_offensive", cd: 180 }],
   [106951, { name: "Berserk (Feral)",      type: "personal_offensive", cd: 180 }],
+  // ── Evoker ──
   [375087, { name: "Dragonrage",           type: "personal_offensive", cd: 120 }],
+  // ── Hunter ──
   [288613, { name: "Trueshot",             type: "personal_offensive", cd: 120 }],
-  [19574,  { name: "Bestial Wrath",        type: "personal_offensive", cd: 90  }],
+  [19574,  { name: "Bestial Wrath",        type: "personal_offensive", cd: 90 }],
   [360952, { name: "Coordinated Assault",  type: "personal_offensive", cd: 120 }],
+  // ── Mage ──
   [12472,  { name: "Icy Veins",            type: "personal_offensive", cd: 120 }],
   [190319, { name: "Combustion",           type: "personal_offensive", cd: 120 }],
-  [365350, { name: "Arcane Surge",         type: "personal_offensive", cd: 90  }],
+  [365350, { name: "Arcane Surge",         type: "personal_offensive", cd: 90 }],
+  // ── Monk ──
   [137639, { name: "Storm, Earth, and Fire", type: "personal_offensive", cd: 90 }],
-  [152173, { name: "Serenity",             type: "personal_offensive", cd: 90  }],
+  [152173, { name: "Serenity",              type: "personal_offensive", cd: 90 }],
+  // ── Paladin ──
   [31884,  { name: "Avenging Wrath",       type: "personal_offensive", cd: 120 }],
+  [454351, { name: "Avenging Wrath",       type: "personal_offensive", cd: 120 }],  // Midnight 12.0 alt cast ID (both fire; OFFENSIVE_CD_02)
   [231895, { name: "Crusade",              type: "personal_offensive", cd: 120 }],
+  // ── Priest ──
   [10060,  { name: "Power Infusion",       type: "personal_offensive", cd: 120 }],
-  [228260, { name: "Void Eruption",        type: "personal_offensive", cd: 90  }],
+  [228260, { name: "Void Eruption",        type: "personal_offensive", cd: 90 }],
+  // ── Rogue ──
   [13750,  { name: "Adrenaline Rush",      type: "personal_offensive", cd: 180 }],
   [121471, { name: "Shadow Blades",        type: "personal_offensive", cd: 180 }],
   [360194, { name: "Deathmark",            type: "personal_offensive", cd: 120 }],
+  // ── Shaman ──
   [114050, { name: "Ascendance",           type: "personal_offensive", cd: 180 }],
-  [191634, { name: "Stormkeeper",          type: "personal_offensive", cd: 60  }],
-  [51533,  { name: "Feral Spirit",         type: "personal_offensive", cd: 90  }],
+  [191634, { name: "Stormkeeper",          type: "personal_offensive", cd: 60 }],
+  [51533,  { name: "Feral Spirit",         type: "personal_offensive", cd: 90 }],
+  // ── Warlock ──
   [1122,   { name: "Summon Infernal",      type: "personal_offensive", cd: 180 }],
   [111898, { name: "Grimoire: Felguard",   type: "personal_offensive", cd: 120 }],
   [205180, { name: "Summon Darkglare",     type: "personal_offensive", cd: 120 }],
-  [107574, { name: "Avatar",               type: "personal_offensive", cd: 90  }],
-  [1719,   { name: "Recklessness",         type: "personal_offensive", cd: 90  }],
-  [227847, { name: "Bladestorm",           type: "personal_offensive", cd: 90  }],
-  [228920, { name: "Ravager",              type: "personal_offensive", cd: 90  }],
+  // ── Warrior ──
+  [107574, { name: "Avatar",              type: "personal_offensive", cd: 90 }],
+  [1719,   { name: "Recklessness",        type: "personal_offensive", cd: 90 }],
+  [227847, { name: "Bladestorm",          type: "personal_offensive", cd: 90 }],
+  [228920, { name: "Ravager",             type: "personal_offensive", cd: 90 }],
+  // ── Death Knight (additions 2026-05-03) ──
+  [48265,  { name: "Death's Advance",        type: "personal_offensive", cd: 45 }],  // Midnight 12.0 emitted ID (was 96268; OFFENSIVE_CD_02)
+  // ── Demon Hunter (additions 2026-05-03) ──
+  [198013, { name: "Eye Beam",               type: "personal_offensive", cd: 30 }],
+  [200166, { name: "Metamorphosis (Veng)",   type: "personal_offensive", cd: 240 }],
+  // ── Druid (additions 2026-05-03) ──
+  [323764, { name: "Convoke the Spirits",    type: "personal_offensive", cd: 120 }],
+  [102560, { name: "Incarnation: Chosen of Elune", type: "personal_offensive", cd: 180 }],
+  [102543, { name: "Incarnation: King of the Jungle", type: "personal_offensive", cd: 180 }],
+  // ── Hunter (additions 2026-05-03) ──
+  [260243, { name: "Volley",                 type: "personal_offensive", cd: 45 }],
+  [400456, { name: "Salvo",                  type: "personal_offensive", cd: 45 }],
+  // ── Mage (additions 2026-05-03) ──
+  [55342,  { name: "Mirror Image",           type: "personal_offensive", cd: 120 }],
+  // ── Paladin (additions 2026-05-03) ──
+  [255937, { name: "Wake of Ashes",          type: "personal_offensive", cd: 60 }],
+  [343721, { name: "Final Reckoning",        type: "personal_offensive", cd: 60 }],
+  [343527, { name: "Execution Sentence",     type: "personal_offensive", cd: 60 }],
+  // ── Priest (additions 2026-05-03) ──
+  [123040, { name: "Mindbender",             type: "personal_offensive", cd: 60 }],
+  [34433,  { name: "Shadowfiend",            type: "personal_offensive", cd: 180 }],
+  [47536,  { name: "Rapture",                type: "personal_offensive", cd: 90 }],
+  [391109, { name: "Dark Ascension",         type: "personal_offensive", cd: 60 }],
+  // ── Rogue (additions 2026-05-03) ──
+  [343142, { name: "Dreadblades",            type: "personal_offensive", cd: 90 }],
+  // ── Shaman (additions 2026-05-03) ──
+  [192249, { name: "Storm Elemental",        type: "personal_offensive", cd: 150 }],
+  [198067, { name: "Fire Elemental",         type: "personal_offensive", cd: 150 }],
+  // ── Warlock (additions 2026-05-03) ──
+  [265187, { name: "Summon Demonic Tyrant",  type: "personal_offensive", cd: 90 }],
+  [113858, { name: "Dark Soul: Instability", type: "personal_offensive", cd: 120 }],
+  // ── Warrior (additions 2026-05-03) ──
+  [376079, { name: "Spear of Bastion",       type: "personal_offensive", cd: 60 }],
+  [262161, { name: "Warbreaker",             type: "personal_offensive", cd: 45 }],
   // ── Spec coverage expansion 2026-05-07 (registry gap audit) ──
   [391528, { name: "Convoke the Spirits",    type: "personal_offensive", cd: 120 }],  // Resto/Balance/Feral talented (modern ID)
   [258860, { name: "Essence Break",          type: "personal_offensive", cd: 40  }],  // Havoc DH
@@ -215,7 +265,7 @@ const OFFENSIVE_COOLDOWNS = new Map([
   [51690,  { name: "Killing Spree",          type: "personal_offensive", cd: 90  }],  // Outlaw Rogue
   [193530, { name: "Aspect of the Wild",     type: "personal_offensive", cd: 120 }],  // BM Hunter
   [152279, { name: "Breath of Sindragosa",   type: "personal_offensive", cd: 120 }],  // Frost DK
-  [63560,  { name: "Dark Transformation",    type: "personal_offensive", cd: 60  }],  // Unholy DK
+  [1233448, { name: "Dark Transformation",   type: "personal_offensive", cd: 60  }],  // Unholy DK — Midnight 12.0 emitted ID (was 63560; OFFENSIVE_CD_02)
   [200183, { name: "Apotheosis",             type: "personal_offensive", cd: 90  }],  // Holy Priest
   [64901,  { name: "Symbol of Hope",         type: "group_offensive",    cd: 300 }],  // Holy Priest (group)
   [265202, { name: "Holy Word: Salvation",   type: "group_offensive",    cd: 720 }],  // Holy Priest (group heal CD)
@@ -223,44 +273,61 @@ const OFFENSIVE_COOLDOWNS = new Map([
   [399491, { name: "Sheilun's Gift",         type: "personal_offensive", cd: 60  }],  // Mistweaver
 
   // ── Registry expansion 2026-05-07 — Playbook deep audit ──
-  // Mirrors combatLogRunBuilder.js OFFENSIVE_COOLDOWNS additions for parity.
-  [49206,  { name: "Summon Gargoyle",        type: "personal_offensive", cd: 180 }],
-  [279302, { name: "Frostwyrm's Fury",       type: "personal_offensive", cd: 180 }],
-  [343294, { name: "Soul Reaper",            type: "personal_offensive", cd: 6   }],
-  [258925, { name: "Fel Barrage",            type: "personal_offensive", cd: 90  }],
+  // Spec-coverage gaps surfaced by VELARA_COMPLETE_SPELL_REGISTRY.md plus drum/lust
+  // variants. Every ID Wowhead-verified pre-commit. Existing entries (e.g. 360952
+  // Coordinated Assault, 114050 Ascendance) NOT removed even where the master
+  // suggests an alt ID — both kept to handle CLEU divergence.
+  // ── Death Knight ──
+  [42650,  { name: "Army of the Dead",       type: "personal_offensive", cd: 90  }],  // Unholy — tracked burst; Gargoyle (49206) removed, now auto-summoned by Army in 12.0 (OFFENSIVE_CD_02)
+  [1265384, { name: "Frostwyrm's Fury",      type: "personal_offensive", cd: 180 }],  // Frost — Midnight 12.0 emitted ID (was 279302; OFFENSIVE_CD_02)
+  [343294, { name: "Soul Reaper",            type: "personal_offensive", cd: 6   }],  // tracking major hits per master
+  // ── Demon Hunter ──
+  [258925, { name: "Fel Barrage",            type: "personal_offensive", cd: 90  }],  // Havoc
+  // ── Druid ──
   [50334,  { name: "Berserk (Guardian)",     type: "personal_offensive", cd: 180 }],
-  [370452, { name: "Shattering Star",        type: "personal_offensive", cd: 20  }],
-  [395152, { name: "Ebon Might",             type: "personal_offensive", cd: 30  }],
-  [396286, { name: "Upheaval",               type: "personal_offensive", cd: 40  }],
-  [404977, { name: "Time Skip",              type: "personal_offensive", cd: 180 }],
-  [201430, { name: "Stampede",               type: "personal_offensive", cd: 120 }],
-  [153561, { name: "Meteor",                 type: "personal_offensive", cd: 45  }],
-  [321507, { name: "Touch of the Magi",      type: "personal_offensive", cd: 45  }],
-  [205021, { name: "Ray of Frost",           type: "personal_offensive", cd: 75  }],
-  [123904, { name: "Invoke Xuen, the White Tiger", type: "personal_offensive", cd: 120 }],
-  [387184, { name: "Weapons of Order",       type: "personal_offensive", cd: 120 }],
-  [325197, { name: "Invoke Chi-Ji, the Red Crane", type: "personal_offensive", cd: 180 }],
-  [375576, { name: "Divine Toll",            type: "personal_offensive", cd: 60  }],
-  [327193, { name: "Moment of Glory",        type: "personal_offensive", cd: 90  }],
-  [389539, { name: "Sentinel",               type: "personal_offensive", cd: 120 }],
-  [200174, { name: "Mindbender",             type: "personal_offensive", cd: 60  }],
-  [246287, { name: "Evangelism",             type: "personal_offensive", cd: 90  }],
-  [421453, { name: "Ultimate Penitence",     type: "personal_offensive", cd: 60  }],
-  [13877,  { name: "Blade Flurry",           type: "personal_offensive", cd: 30  }],
-  [79140,  { name: "Vendetta",               type: "personal_offensive", cd: 120 }],
-  [385627, { name: "Kingsbane",              type: "personal_offensive", cd: 60  }],
-  [384352, { name: "Doom Winds",             type: "personal_offensive", cd: 60  }],
-  [114051, { name: "Ascendance (Elemental)", type: "personal_offensive", cd: 180 }],
-  [267217, { name: "Nether Portal",          type: "personal_offensive", cd: 180 }],
-  [113860, { name: "Dark Soul: Misery",      type: "personal_offensive", cd: 120 }],
-  [386997, { name: "Soul Rot",               type: "personal_offensive", cd: 60  }],
-  [46924,  { name: "Bladestorm (Fury)",      type: "personal_offensive", cd: 60  }],
-  [152277, { name: "Ravager (Protection)",   type: "personal_offensive", cd: 45  }],
-  [167105, { name: "Colossus Smash",         type: "personal_offensive", cd: 45  }],
-  [401150, { name: "Avatar (Fury)",          type: "personal_offensive", cd: 90  }],
-  [178207, { name: "Drums of Fury",          type: "group_offensive",    cd: 600 }],
-  [309658, { name: "Drums of Deathly Ferocity", type: "group_offensive", cd: 600 }],
-  [381301, { name: "Feral Hide Drums",       type: "group_offensive",    cd: 600 }],
+  // ── Evoker ──
+  [370452, { name: "Shattering Star",        type: "personal_offensive", cd: 20  }],  // Devastation
+  [395152, { name: "Ebon Might",             type: "personal_offensive", cd: 30  }],  // Augmentation
+  [396286, { name: "Upheaval",               type: "personal_offensive", cd: 40  }],  // Augmentation
+  [404977, { name: "Time Skip",              type: "personal_offensive", cd: 180 }],  // Augmentation
+  // ── Hunter ──
+  [201430, { name: "Stampede",               type: "personal_offensive", cd: 120 }],  // talent
+  // ── Mage ──
+  [153561, { name: "Meteor",                 type: "personal_offensive", cd: 45  }],  // Fire talent
+  [321507, { name: "Touch of the Magi",      type: "personal_offensive", cd: 45  }],  // Arcane
+  [205021, { name: "Ray of Frost",           type: "personal_offensive", cd: 75  }],  // Frost talent
+  // ── Monk ──
+  [123904, { name: "Invoke Xuen, the White Tiger", type: "personal_offensive", cd: 120 }],  // WW
+  [387184, { name: "Weapons of Order",       type: "personal_offensive", cd: 120 }],  // WW talent
+  [325197, { name: "Invoke Chi-Ji, the Red Crane", type: "personal_offensive", cd: 180 }],  // MW (also tracked as external in defensives)
+  // ── Paladin ──
+  [375576, { name: "Divine Toll",            type: "personal_offensive", cd: 60  }],  // talent
+  [327193, { name: "Moment of Glory",        type: "personal_offensive", cd: 90  }],  // Protection
+  [389539, { name: "Sentinel",               type: "personal_offensive", cd: 120 }],  // Ret talent
+  // ── Priest ──
+  [200174, { name: "Mindbender",             type: "personal_offensive", cd: 60  }],  // master Mindbender ID; 123040 already registered as alt
+  [472433, { name: "Evangelism",             type: "personal_offensive", cd: 90  }],  // Disc — Midnight 12.0 emitted ID (was 246287; OFFENSIVE_CD_02)
+  [421453, { name: "Ultimate Penitence",     type: "personal_offensive", cd: 60  }],  // Disc hero talent
+  // ── Rogue ──
+  [13877,  { name: "Blade Flurry",           type: "personal_offensive", cd: 30  }],  // Outlaw
+  [79140,  { name: "Vendetta",               type: "personal_offensive", cd: 120 }],  // Assassination (legacy ID; pre-Deathmark)
+  [385627, { name: "Kingsbane",              type: "personal_offensive", cd: 60  }],  // Assassination
+  // ── Shaman ──
+  [384352, { name: "Doom Winds",             type: "personal_offensive", cd: 60  }],  // Enhancement
+  [114051, { name: "Ascendance (Elemental)", type: "personal_offensive", cd: 180 }],  // alt Ascendance ID; 114050 retained
+  // ── Warlock ──
+  [267217, { name: "Nether Portal",          type: "personal_offensive", cd: 180 }],  // Demonology
+  [113860, { name: "Dark Soul: Misery",      type: "personal_offensive", cd: 120 }],  // Affliction
+  [386997, { name: "Soul Rot",               type: "personal_offensive", cd: 60  }],  // talent
+  // ── Warrior ──
+  [46924,  { name: "Bladestorm (Fury)",      type: "personal_offensive", cd: 60  }],  // Fury variant; 227847 retained for Arms
+  [152277, { name: "Ravager (Protection)",   type: "personal_offensive", cd: 45  }],  // Prot variant; 228920 retained for Arms talent
+  [167105, { name: "Colossus Smash",         type: "personal_offensive", cd: 45  }],  // Arms
+  [401150, { name: "Avatar (Fury)",          type: "personal_offensive", cd: 90  }],  // Fury variant; 107574 retained for Arms/Prot
+  // ── Drums (Bloodlust-class items) ──
+  [178207, { name: "Drums of Fury",          type: "group_offensive",    cd: 600 }],  // Leatherworking
+  [309658, { name: "Drums of Deathly Ferocity", type: "group_offensive", cd: 600 }],  // TWW drums
+  [381301, { name: "Feral Hide Drums",       type: "group_offensive",    cd: 600 }],  // DF drums
 ]);
 
 // Racial Abilities — copied verbatim from combatLogRunBuilder.js RACIAL_ABILITIES (Overwolf parity).
@@ -1155,7 +1222,7 @@ function parseCombatLog({ run, combatLogLines, partyGuids = [] }) {
 
     // Offensive cooldown (Bloodlust, personal DPS CDs) — Overwolf parity
     const offInfo = OFFENSIVE_COOLDOWNS.get(spellId);
-    if (offInfo && segData.offensiveCDs.length < 30) {
+    if (offInfo && segData.offensiveCDs.length < 60) {
       const playerName = (fields[2] || "").replace(/"/g, "") || "Unknown";
       const isDupe = segData.offensiveCDs.some(o =>
         o.spellId === spellId && o.name === playerName && Math.abs(o.ts - normalizedTs) < 1000

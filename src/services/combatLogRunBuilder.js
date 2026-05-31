@@ -328,12 +328,13 @@ const OFFENSIVE_COOLDOWNS = new Map([
   [32182,  { name: "Heroism",            type: "group_offensive",  cd: 300 }],
   [80353,  { name: "Time Warp",          type: "group_offensive",  cd: 300 }],
   [264667, { name: "Primal Rage",        type: "group_offensive",  cd: 300 }],
+  [272678, { name: "Primal Rage",        type: "group_offensive",  cd: 300 }],  // pet-cast ID — inert until OFFENSIVE_CD_03 pet attribution (OFFENSIVE_CD_02)
   [390386, { name: "Fury of the Aspects", type: "group_offensive", cd: 300 }],
   // ── Death Knight ──
   [47568,  { name: "Empower Rune Weapon", type: "personal_offensive", cd: 120 }],
   [207289, { name: "Unholy Assault",      type: "personal_offensive", cd: 90 }],
   [51271,  { name: "Pillar of Frost",     type: "personal_offensive", cd: 60 }],
-  [275699, { name: "Apocalypse",          type: "personal_offensive", cd: 75 }],
+  // Apocalypse (275699) removed — deleted from the game in Midnight 12.0 (OFFENSIVE_CD_02)
   // ── Demon Hunter ──
   [191427, { name: "Metamorphosis (Havoc)", type: "personal_offensive", cd: 240 }],
   [258920, { name: "Immolation Aura",      type: "personal_offensive", cd: 30 }],
@@ -355,6 +356,7 @@ const OFFENSIVE_COOLDOWNS = new Map([
   [152173, { name: "Serenity",              type: "personal_offensive", cd: 90 }],
   // ── Paladin ──
   [31884,  { name: "Avenging Wrath",       type: "personal_offensive", cd: 120 }],
+  [454351, { name: "Avenging Wrath",       type: "personal_offensive", cd: 120 }],  // Midnight 12.0 alt cast ID (both fire; OFFENSIVE_CD_02)
   [231895, { name: "Crusade",              type: "personal_offensive", cd: 120 }],
   // ── Priest ──
   [10060,  { name: "Power Infusion",       type: "personal_offensive", cd: 120 }],
@@ -377,7 +379,7 @@ const OFFENSIVE_COOLDOWNS = new Map([
   [227847, { name: "Bladestorm",          type: "personal_offensive", cd: 90 }],
   [228920, { name: "Ravager",             type: "personal_offensive", cd: 90 }],
   // ── Death Knight (additions 2026-05-03) ──
-  [96268,  { name: "Death's Advance",        type: "personal_offensive", cd: 45 }],
+  [48265,  { name: "Death's Advance",        type: "personal_offensive", cd: 45 }],  // Midnight 12.0 emitted ID (was 96268; OFFENSIVE_CD_02)
   // ── Demon Hunter (additions 2026-05-03) ──
   [198013, { name: "Eye Beam",               type: "personal_offensive", cd: 30 }],
   [200166, { name: "Metamorphosis (Veng)",   type: "personal_offensive", cd: 240 }],
@@ -421,7 +423,7 @@ const OFFENSIVE_COOLDOWNS = new Map([
   [51690,  { name: "Killing Spree",          type: "personal_offensive", cd: 90  }],  // Outlaw Rogue
   [193530, { name: "Aspect of the Wild",     type: "personal_offensive", cd: 120 }],  // BM Hunter
   [152279, { name: "Breath of Sindragosa",   type: "personal_offensive", cd: 120 }],  // Frost DK
-  [63560,  { name: "Dark Transformation",    type: "personal_offensive", cd: 60  }],  // Unholy DK
+  [1233448, { name: "Dark Transformation",   type: "personal_offensive", cd: 60  }],  // Unholy DK — Midnight 12.0 emitted ID (was 63560; OFFENSIVE_CD_02)
   [200183, { name: "Apotheosis",             type: "personal_offensive", cd: 90  }],  // Holy Priest
   [64901,  { name: "Symbol of Hope",         type: "group_offensive",    cd: 300 }],  // Holy Priest (group)
   [265202, { name: "Holy Word: Salvation",   type: "group_offensive",    cd: 720 }],  // Holy Priest (group heal CD)
@@ -434,8 +436,8 @@ const OFFENSIVE_COOLDOWNS = new Map([
   // Coordinated Assault, 114050 Ascendance) NOT removed even where the master
   // suggests an alt ID — both kept to handle CLEU divergence.
   // ── Death Knight ──
-  [49206,  { name: "Summon Gargoyle",        type: "personal_offensive", cd: 180 }],  // Unholy
-  [279302, { name: "Frostwyrm's Fury",       type: "personal_offensive", cd: 180 }],  // Frost
+  [42650,  { name: "Army of the Dead",       type: "personal_offensive", cd: 90  }],  // Unholy — tracked burst; Gargoyle (49206) removed, now auto-summoned by Army in 12.0 (OFFENSIVE_CD_02)
+  [1265384, { name: "Frostwyrm's Fury",      type: "personal_offensive", cd: 180 }],  // Frost — Midnight 12.0 emitted ID (was 279302; OFFENSIVE_CD_02)
   [343294, { name: "Soul Reaper",            type: "personal_offensive", cd: 6   }],  // tracking major hits per master
   // ── Demon Hunter ──
   [258925, { name: "Fel Barrage",            type: "personal_offensive", cd: 90  }],  // Havoc
@@ -462,7 +464,7 @@ const OFFENSIVE_COOLDOWNS = new Map([
   [389539, { name: "Sentinel",               type: "personal_offensive", cd: 120 }],  // Ret talent
   // ── Priest ──
   [200174, { name: "Mindbender",             type: "personal_offensive", cd: 60  }],  // master Mindbender ID; 123040 already registered as alt
-  [246287, { name: "Evangelism",             type: "personal_offensive", cd: 90  }],  // Disc
+  [472433, { name: "Evangelism",             type: "personal_offensive", cd: 90  }],  // Disc — Midnight 12.0 emitted ID (was 246287; OFFENSIVE_CD_02)
   [421453, { name: "Ultimate Penitence",     type: "personal_offensive", cd: 60  }],  // Disc hero talent
   // ── Rogue ──
   [13877,  { name: "Blade Flurry",           type: "personal_offensive", cd: 30  }],  // Outlaw
@@ -1955,7 +1957,7 @@ class CombatLogRunBuilder extends EventEmitter {
       // ── Offensive cooldown tracking ───────────────────────────────────
       const offInfo = OFFENSIVE_COOLDOWNS.get(spellId);
       if (offInfo && isCast) {
-        if (this.currentSeg && this.currentSeg.offensiveCDs.length < 30) {
+        if (this.currentSeg && this.currentSeg.offensiveCDs.length < 60) {
           // Dedup: skip if same spell+player within 1s
           const isDupe = this.currentSeg.offensiveCDs.some(o =>
             o.spellId === spellId && o.name === (this.guidToName.get(sourceGuid) || "Unknown") &&
@@ -1990,7 +1992,7 @@ class CombatLogRunBuilder extends EventEmitter {
             });
           } else if (trinketInfo.category === "trinket_offensive") {
             // Offensive trinkets go into offensiveCDs[]
-            if (this.currentSeg.offensiveCDs && this.currentSeg.offensiveCDs.length < 30) {
+            if (this.currentSeg.offensiveCDs && this.currentSeg.offensiveCDs.length < 60) {
               this.currentSeg.offensiveCDs.push({
                 ts, offsetMs: ts - this.currentSeg.startTs,
                 spellName: trinketInfo.name, spellId,
