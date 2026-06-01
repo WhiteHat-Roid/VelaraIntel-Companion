@@ -382,8 +382,11 @@ const OFFENSIVE_COOLDOWNS = new Map([
   [202770, { name: "Fury of Elune",          type: "personal_offensive", cd: 60  }],  // Balance (borderline)
   [204066, { name: "Lunar Beam",             type: "personal_offensive", cd: 75  }],  // Guardian
   // ── Druid — Heart of the Wild (Midnight 12.0 emitted IDs — 319454 never fires in CLEU) ──
-  [1261870, { name: "Heart of the Wild", type: "personal_offensive", cd: 180 }],  // primary emitted ID (Balance/Feral/Resto confirmed SPELL_CAST_FAILED Druidroid 2026-05-31)
-  [1261868, { name: "Heart of the Wild", type: "personal_offensive", cd: 180 }],  // alt emitted ID (spec variant — both register; first SPELL_CAST_SUCCESS wins dedup)
+  // Each Druid form emits a different spell ID (Brian-confirmed 2026-06-01):
+  [1261867, { name: "Heart of the Wild", type: "personal_offensive", cd: 180 }],  // non-shapeshifted
+  [1261868, { name: "Heart of the Wild", type: "personal_offensive", cd: 180 }],  // Cat form
+  [1261870, { name: "Heart of the Wild", type: "personal_offensive", cd: 180 }],  // Boomkin
+  [1261872, { name: "Heart of the Wild", type: "personal_offensive", cd: 180 }],  // Bear / Healer
   // ── Demon Hunter ──
   [187827, { name: "Metamorphosis (Veng)",   type: "personal_offensive", cd: 180 }],  // Veng cast (distinct spec from 191427/200166)
   [370966, { name: "The Hunt",               type: "personal_offensive", cd: 90  }],  // emitted cast ID (alt to 370965)
