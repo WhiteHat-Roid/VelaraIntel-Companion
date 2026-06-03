@@ -1146,6 +1146,7 @@ class CombatLogRunBuilder extends EventEmitter {
           category: buf.category || "defensive",
           mapX: buf.mapX ?? null,
           mapY: buf.mapY ?? null,
+          mapId: buf.mapId ?? null,
         });
       }
     }
@@ -2108,6 +2109,7 @@ class CombatLogRunBuilder extends EventEmitter {
               cdType: offInfo.type,
               mapX: (this.guidToPosition.get(sourceGuid) || {}).x ?? null,
               mapY: (this.guidToPosition.get(sourceGuid) || {}).y ?? null,
+              mapId: (this.guidToPosition.get(sourceGuid) || {}).mapId ?? null,
             });
           }
         }
@@ -2135,6 +2137,7 @@ class CombatLogRunBuilder extends EventEmitter {
               cdType: auraOffInfo.type,
               mapX: (this.guidToPosition.get(sourceGuid) || {}).x ?? null,
               mapY: (this.guidToPosition.get(sourceGuid) || {}).y ?? null,
+              mapId: (this.guidToPosition.get(sourceGuid) || {}).mapId ?? null,
             });
           }
         }
@@ -2153,6 +2156,8 @@ class CombatLogRunBuilder extends EventEmitter {
               class: this.guidToClass.get(sourceGuid) || "UNKNOWN",
               role: this.guidToRole.get(sourceGuid) || "unknown",
               category: "trinket_defensive",
+              mapX: (this.guidToPosition.get(sourceGuid) || {}).x ?? null,
+              mapY: (this.guidToPosition.get(sourceGuid) || {}).y ?? null,
             });
           } else if (trinketInfo.category === "trinket_offensive") {
             // Offensive trinkets go into offensiveCDs[]
@@ -2164,6 +2169,8 @@ class CombatLogRunBuilder extends EventEmitter {
                 class: this.guidToClass.get(sourceGuid) || "UNKNOWN",
                 role: this.guidToRole.get(sourceGuid) || "unknown",
                 cdType: "trinket_offensive",
+                mapX: (this.guidToPosition.get(sourceGuid) || {}).x ?? null,
+                mapY: (this.guidToPosition.get(sourceGuid) || {}).y ?? null,
               });
             }
           }
@@ -2186,7 +2193,7 @@ class CombatLogRunBuilder extends EventEmitter {
         if (!this.currentSeg) {
           // No active segment — buffer for next segment open
           console.warn(`[RunBuilder] DEFENSIVE DROPPED (no segment): ${playerName} cast ${spellName} (${spellId}) via ${event}`);
-          this._defensiveBuffer.push({ ts, spellId, spellName, sourceGuid, name: playerName, cls: playerClass, role: playerRole, category, mapX: (this.guidToPosition.get(sourceGuid) || {}).x ?? null, mapY: (this.guidToPosition.get(sourceGuid) || {}).y ?? null });
+          this._defensiveBuffer.push({ ts, spellId, spellName, sourceGuid, name: playerName, cls: playerClass, role: playerRole, category, mapX: (this.guidToPosition.get(sourceGuid) || {}).x ?? null, mapY: (this.guidToPosition.get(sourceGuid) || {}).y ?? null, mapId: (this.guidToPosition.get(sourceGuid) || {}).mapId ?? null });
         } else {
           // Dedup: skip if same spell+player within 1s (prevents CAST_SUCCESS + AURA_APPLIED double-count)
           const isDupe = this.currentSeg.defensives.some(d =>
@@ -2201,6 +2208,7 @@ class CombatLogRunBuilder extends EventEmitter {
               category,
               mapX: (this.guidToPosition.get(sourceGuid) || {}).x ?? null,
               mapY: (this.guidToPosition.get(sourceGuid) || {}).y ?? null,
+              mapId: (this.guidToPosition.get(sourceGuid) || {}).mapId ?? null,
             });
           }
         }
