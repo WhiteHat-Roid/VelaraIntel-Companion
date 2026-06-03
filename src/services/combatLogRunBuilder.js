@@ -1131,6 +1131,7 @@ class CombatLogRunBuilder extends EventEmitter {
       consumablesUsed: [],      // healthstones, potions (capped at 30)
       absorbs: [],              // SPELL_ABSORBED events (capped at 100)
       spikes: [],               // high-damage spike events for Deadliest Enemy Abilities chart
+      engagedNpcIds: [],        // deduplicated hostile NPC IDs that dealt damage this pull
     };
     this.segCounters = { death: 0, cd: 0, int: 0, ec: 0, spike: 0, absorb: 0 };
 
@@ -1825,6 +1826,14 @@ class CombatLogRunBuilder extends EventEmitter {
         }
       }
 
+      // Track every hostile NPC that dealt damage this pull (for map centroid)
+      if (this.currentSeg && isCreatureGuid(sourceGuid)) {
+        const npcId = npcIdFromGuid(sourceGuid);
+        if (npcId && !this.currentSeg.engagedNpcIds.includes(npcId)) {
+          this.currentSeg.engagedNpcIds.push(npcId);
+        }
+      }
+
       // Accumulate damage taken per player for post-run role heuristic
       this.playerDamageTaken.set(destGuid, (this.playerDamageTaken.get(destGuid) || 0) + amount);
 
@@ -2339,6 +2348,13 @@ class CombatLogRunBuilder extends EventEmitter {
         prev.absorbs.push(...(seg.absorbs || []));
         prev.spikes = prev.spikes || [];
         prev.spikes.push(...(seg.spikes || []));
+        // Merge engagedNpcIds (deduplicated)
+        prev.engagedNpcIds = prev.engagedNpcIds || [];
+        for (const npcId of (seg.engagedNpcIds || [])) {
+          if (!prev.engagedNpcIds.includes(npcId)) {
+            prev.engagedNpcIds.push(npcId);
+          }
+        }
         // Merge damageTakenByAbility maps
         prev.damageTakenByAbility = prev.damageTakenByAbility || {};
         for (const [guid, abilities] of Object.entries(seg.damageTakenByAbility || {})) {
@@ -2476,6 +2492,7 @@ class CombatLogRunBuilder extends EventEmitter {
         consumablesUsed: seg.consumablesUsed || [],
         absorbs: seg.absorbs || [],
         spikes: seg.spikes || [],
+        engagedNpcIds: seg.engagedNpcIds || [],
         healEvents: ((seg.healEvents || [])
           .slice()
           .sort((a, b) => (b.effective || 0) - (a.effective || 0))
@@ -2733,6 +2750,7 @@ class CombatLogRunBuilder extends EventEmitter {
           hasConsumableTracking: finalSegments.some(s => (s.consumablesUsed || []).length > 0),
           hasAbsorbs: finalSegments.some(s => (s.absorbs || []).length > 0),
           hasSpikes: finalSegments.some(s => (s.spikes || []).length > 0),
+          hasEngagedNpcIds: finalSegments.some(s => (s.engagedNpcIds || []).length > 0),
           hasHealEvents: finalSegments.some(s => (s.healEvents || []).length > 0),
         },
         player: playerObj,
