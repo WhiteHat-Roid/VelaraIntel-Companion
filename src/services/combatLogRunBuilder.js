@@ -1018,6 +1018,8 @@ class CombatLogRunBuilder extends EventEmitter {
     this._pendingHunterDeaths = []; // deferred deaths awaiting lookahead confirmation
     this._authCharacters = [];     // character list from VelaraAuth (for GUID-based identity)
     this._feignDeathCasts = new Map(); // GUID → last Feign Death cast timestamp
+    this.guidToPosition  = new Map();  // GUID → { x, y, mapId, ts } last known WoW world position
+    this._positionsCaptured = 0;       // count of positions captured (drives telemetry flag)
     this.guidToTalents   = new Map();  // GUID → raw talent data from COMBATANT_INFO
     this.guidToStats     = new Map();  // GUID → parsed stats object from COMBATANT_INFO
     this.guidToRace      = new Map();  // GUID → race name (from auth characters or racial spell inference)
@@ -1065,6 +1067,22 @@ class CombatLogRunBuilder extends EventEmitter {
     buf.push(hit);
     const cutoff = hit.ts - PRE_DEATH_WINDOW_MS * 1.2;
     while (buf.length > 0 && buf[0].ts < cutoff) buf.shift();
+  }
+
+  /**
+   * Extract WoW world position from an advanced info block.
+   * @param {string[]} fields  - split combat log fields
+   * @param {number}   advStart - index where the 19-field advanced block starts
+   * @returns {{ x: number, y: number, mapId: number } | null}
+   */
+  _extractPosition(fields, advStart) {
+    if (!hasAdvancedInfo(fields, advStart)) return null;
+    const x = parseFloat(fields[advStart + 13]);
+    const y = parseFloat(fields[advStart + 14]);
+    const mapId = parseInt(fields[advStart + 15], 10) || 0;
+    // Reject zero/NaN coords — means the unit had no valid position at this moment
+    if (!isFinite(x) || !isFinite(y) || (x === 0 && y === 0)) return null;
+    return { x, y, mapId };
   }
 
   // ── Dynamic segment gap threshold (safety net only) ────────────────────
@@ -1126,6 +1144,8 @@ class CombatLogRunBuilder extends EventEmitter {
           spellName: buf.spellName, spellId: buf.spellId,
           name: buf.name, class: buf.cls, role: buf.role,
           category: buf.category || "defensive",
+          mapX: buf.mapX ?? null,
+          mapY: buf.mapY ?? null,
         });
       }
     }
@@ -1469,6 +1489,15 @@ class CombatLogRunBuilder extends EventEmitter {
       const spellId = parseInt(fields[9], 10) || 0;
       this._detectClassFromSpell(sourceGuid, spellId);
 
+      // ── Position capture from cast events (caster = source) ──────────
+      {
+        const castPos = this._extractPosition(fields, 12);
+        if (castPos) {
+          this.guidToPosition.set(sourceGuid, { ...castPos, ts });
+          this._positionsCaptured++;
+        }
+      }
+
       // Track Feign Death casts for death suppression
       if (spellId === FEIGN_DEATH_SPELL_ID && isPlayerGuid(sourceGuid)) {
         this._feignDeathCasts.set(sourceGuid, ts);
@@ -1592,6 +1621,9 @@ class CombatLogRunBuilder extends EventEmitter {
             class: playerClass,
             role: this.guidToRole.get(destGuid) || "unknown",
             firstDeathInPull: false, // will be set when finalized
+            mapX: (this.guidToPosition.get(destGuid) || {}).x ?? null,
+            mapY: (this.guidToPosition.get(destGuid) || {}).y ?? null,
+            mapId: (this.guidToPosition.get(destGuid) || {}).mapId ?? null,
             killingBlow: kb ? { spellName: kb.spellName, amount: kb.amount } : null,
             isEnvironmental: isEnvDeath || false,
             environmentalType: envType,
@@ -1632,6 +1664,9 @@ class CombatLogRunBuilder extends EventEmitter {
         class: this.guidToClass.get(destGuid) || "UNKNOWN",
         role: this.guidToRole.get(destGuid) || "unknown",
         firstDeathInPull: seg.deaths.length === 0,
+        mapX: (this.guidToPosition.get(destGuid) || {}).x ?? null,
+        mapY: (this.guidToPosition.get(destGuid) || {}).y ?? null,
+        mapId: (this.guidToPosition.get(destGuid) || {}).mapId ?? null,
         killingBlow: kb ? { spellName: kb.spellName, amount: kb.amount } : null,
         isEnvironmental: isEnvDeath || false,
         environmentalType: envType,
@@ -1776,6 +1811,18 @@ class CombatLogRunBuilder extends EventEmitter {
         sourceNpcId: npcIdFromGuid(sourceGuid),
         sourceNpcName: isCreatureGuid(sourceGuid) ? sourceName : null,
       });
+
+      // ── Position capture from advanced info block ─────────────────────
+      // The advanced block describes the DESTINATION unit (player being hit).
+      // Store as last known position for use when recording deaths and CDs.
+      {
+        const advS = event === "SWING_DAMAGE" ? 9 : 12;
+        const pos = this._extractPosition(fields, advS);
+        if (pos) {
+          this.guidToPosition.set(destGuid, { ...pos, ts });
+          this._positionsCaptured++;
+        }
+      }
 
       // Accumulate damage taken per player for post-run role heuristic
       this.playerDamageTaken.set(destGuid, (this.playerDamageTaken.get(destGuid) || 0) + amount);
@@ -2059,6 +2106,8 @@ class CombatLogRunBuilder extends EventEmitter {
               class: this.guidToClass.get(sourceGuid) || "UNKNOWN",
               role: this.guidToRole.get(sourceGuid) || "unknown",
               cdType: offInfo.type,
+              mapX: (this.guidToPosition.get(sourceGuid) || {}).x ?? null,
+              mapY: (this.guidToPosition.get(sourceGuid) || {}).y ?? null,
             });
           }
         }
@@ -2084,6 +2133,8 @@ class CombatLogRunBuilder extends EventEmitter {
               class: this.guidToClass.get(sourceGuid) || "UNKNOWN",
               role: this.guidToRole.get(sourceGuid) || "unknown",
               cdType: auraOffInfo.type,
+              mapX: (this.guidToPosition.get(sourceGuid) || {}).x ?? null,
+              mapY: (this.guidToPosition.get(sourceGuid) || {}).y ?? null,
             });
           }
         }
@@ -2135,7 +2186,7 @@ class CombatLogRunBuilder extends EventEmitter {
         if (!this.currentSeg) {
           // No active segment — buffer for next segment open
           console.warn(`[RunBuilder] DEFENSIVE DROPPED (no segment): ${playerName} cast ${spellName} (${spellId}) via ${event}`);
-          this._defensiveBuffer.push({ ts, spellId, spellName, sourceGuid, name: playerName, cls: playerClass, role: playerRole, category });
+          this._defensiveBuffer.push({ ts, spellId, spellName, sourceGuid, name: playerName, cls: playerClass, role: playerRole, category, mapX: (this.guidToPosition.get(sourceGuid) || {}).x ?? null, mapY: (this.guidToPosition.get(sourceGuid) || {}).y ?? null });
         } else {
           // Dedup: skip if same spell+player within 1s (prevents CAST_SUCCESS + AURA_APPLIED double-count)
           const isDupe = this.currentSeg.defensives.some(d =>
@@ -2148,6 +2199,8 @@ class CombatLogRunBuilder extends EventEmitter {
               spellName, spellId,
               name: playerName, class: playerClass, role: playerRole,
               category,
+              mapX: (this.guidToPosition.get(sourceGuid) || {}).x ?? null,
+              mapY: (this.guidToPosition.get(sourceGuid) || {}).y ?? null,
             });
           }
         }
@@ -2654,7 +2707,7 @@ class CombatLogRunBuilder extends EventEmitter {
           hasEnemyCasts: totalECs > 0,
           hasInterrupts: totalInts > 0,
           hasEnemyHealthSnapshots: false,
-          hasEnemyPositions: false,
+          hasEnemyPositions: this._positionsCaptured > 0,
           hasDefensives: totalDefs > 0,
           hasPlayerDamageDone: finalSegments.some(s => Object.keys(s.playerDamageDone || {}).length > 0),
           hasPlayerHealingDone: finalSegments.some(s => Object.keys(s.playerHealingDone || {}).length > 0),
