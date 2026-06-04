@@ -975,6 +975,21 @@ function _deterministicRunId(mapId, startTs, keyLevel) {
 
 const ADVANCED_INFO_FIELD_COUNT = 19;
 
+// Trailing-field count after the advanced-params block, per event type.
+// Position fields (posX, posY, uiMapID) sit at the END of the advanced block,
+// BEFORE this suffix. Counting from the end is robust against the
+// variable-length power-stat fields that break front-counted offsets.
+const POSITION_SUFFIX_LEN = {
+  SWING_DAMAGE: 11,
+  SWING_DAMAGE_LANDED: 11,
+  SPELL_DAMAGE: 11,
+  SPELL_PERIODIC_DAMAGE: 11,
+  RANGE_DAMAGE: 11,
+  SPELL_HEAL: 5,
+  SPELL_PERIODIC_HEAL: 5,
+  SPELL_CAST_SUCCESS: 0,
+};
+
 function hasAdvancedInfo(fields, checkIndex) {
   const val = fields[checkIndex] || "";
   return val.includes("-") || val === "0000000000000000";
@@ -1070,18 +1085,31 @@ class CombatLogRunBuilder extends EventEmitter {
   }
 
   /**
-   * Extract WoW world position from an advanced info block.
-   * @param {string[]} fields  - split combat log fields
-   * @param {number}   advStart - index where the 19-field advanced block starts
+   * Extract WoW world position from an advanced-logging event.
+   * Position fields are the last fields of the advanced block, before the
+   * event's trailing suffix. Counts from the end using POSITION_SUFFIX_LEN.
+   * @param {string[]} fields   - split combat log fields (event is fields[0])
+   * @param {string}   eventType - the CLEU event name
    * @returns {{ x: number, y: number, mapId: number } | null}
    */
-  _extractPosition(fields, advStart) {
-    if (!hasAdvancedInfo(fields, advStart)) return null;
-    const x = parseFloat(fields[advStart + 13]);
-    const y = parseFloat(fields[advStart + 14]);
-    const mapId = parseInt(fields[advStart + 15], 10) || 0;
-    // Reject zero/NaN coords — means the unit had no valid position at this moment
-    if (!isFinite(x) || !isFinite(y) || (x === 0 && y === 0)) return null;
+  _extractPosition(fields, eventType) {
+    const suffix = POSITION_SUFFIX_LEN[eventType];
+    if (suffix === undefined) return null;
+
+    const n  = fields.length;
+    const xi = n - suffix - 5;
+    const yi = n - suffix - 4;
+    const mi = n - suffix - 3;
+    if (xi < 0) return null;
+
+    const x     = parseFloat(fields[xi]);
+    const y     = parseFloat(fields[yi]);
+    const mapId = parseInt(fields[mi], 10);
+
+    // Validate: uiMapID must be a positive integer (catches miscounts / non-advanced lines)
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+    if (!(mapId > 0)) return null;
+    if (x === 0 && y === 0) return null;
     return { x, y, mapId };
   }
 
@@ -1493,7 +1521,7 @@ class CombatLogRunBuilder extends EventEmitter {
 
       // ── Position capture from cast events (caster = source) ──────────
       {
-        const castPos = this._extractPosition(fields, 12);
+        const castPos = this._extractPosition(fields, event);
         if (castPos) {
           this.guidToPosition.set(sourceGuid, { ...castPos, ts });
           this._positionsCaptured++;
@@ -1814,12 +1842,11 @@ class CombatLogRunBuilder extends EventEmitter {
         sourceNpcName: isCreatureGuid(sourceGuid) ? sourceName : null,
       });
 
-      // ── Position capture from advanced info block ─────────────────────
+      // ── Position capture (end-counted by event type) ──────────────────
       // The advanced block describes the DESTINATION unit (player being hit).
       // Store as last known position for use when recording deaths and CDs.
       {
-        const advS = event === "SWING_DAMAGE" ? 9 : 12;
-        const pos = this._extractPosition(fields, advS);
+        const pos = this._extractPosition(fields, event);
         if (pos) {
           this.guidToPosition.set(destGuid, { ...pos, ts });
           this._positionsCaptured++;
