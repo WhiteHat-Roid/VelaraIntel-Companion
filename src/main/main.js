@@ -217,6 +217,7 @@ let lastKnownUploaderIdentity = null;
 let lastActiveRunId  = null;
 let cachedActiveRun  = null;  // In-memory copy of _activeRun for key-end upload
 let cachedAddonRaces = {};    // name→race from VelaraIntelDB.races — used to fill partyMember race on upload
+let cachedAddonMapBounds = {}; // uiMapID→{x0,y0,x1,y1,continentID} from VelaraIntelDB.mapBounds — world→pixel transform data
 
 // Fill race on player + partyMembers from the addon's SavedVariables map.
 // Called immediately before upload. Only sets race where it was missing —
@@ -232,6 +233,17 @@ function injectAddonRaces(payload) {
       if (pm && pm.name && !pm.race && races[pm.name]) pm.race = races[pm.name];
     }
   }
+  return payload;
+}
+
+// Attach the world→pixel bounds table to the upload payload.
+// Frontend uses run.mapBounds[uiMapID] to transform world coords → pixel pos.
+// Only attaches if we have at least one entry — safe to call when cache is empty.
+function injectMapBounds(payload) {
+  if (!payload || !payload.run) return payload;
+  const bounds = cachedAddonMapBounds || {};
+  if (Object.keys(bounds).length === 0) return payload;
+  payload.run.mapBounds = bounds;
   return payload;
 }
 let logRescanTimer   = null;  // 30-second periodic combat log re-scan
@@ -803,6 +815,14 @@ function startSVWatcher() {
         cachedAddonRaces = db.races;
       }
 
+      // Cache the addon's uiMapID→worldBounds map for world→pixel transform.
+      // Accumulated over sessions — new uiMapIDs merge in, existing ones preserved.
+      if (db.mapBounds && typeof db.mapBounds === "object") {
+        cachedAddonMapBounds = { ...cachedAddonMapBounds, ...db.mapBounds };
+        const mapCount = Object.keys(cachedAddonMapBounds).length;
+        if (mapCount > 0) console.log(`[SV] mapBounds: ${mapCount} uiMapID(s) cached`);
+      }
+
       // Extract uploader identity from SavedVariables
       const uploaderIdentity = db.uploaderIdentity || null;
       if (uploaderIdentity) {
@@ -1188,6 +1208,7 @@ function startCombatLogWatcher() {
 
         broadcastStatus("Uploading to velaraintel.com...", "info");
         injectAddonRaces(payload);
+        injectMapBounds(payload);
         apiUploader.upload(payload).then((result) => {
           if (result.ok) {
             broadcastStatus("Uploaded!", "ok");
@@ -1439,6 +1460,7 @@ function setupIPC() {
       payload.run.runMode = runMode;
       payload.run.privacyMode = privacyMode;
       injectAddonRaces(payload);
+      injectMapBounds(payload);
 
       const payloadSize = JSON.stringify(payload).length;
       broadcastStatus("Uploading " + (payloadSize / 1024).toFixed(1) + " KB to velaraintel.com...", "info");
