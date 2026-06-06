@@ -1890,6 +1890,11 @@ class CombatLogRunBuilder extends EventEmitter {
         this.segCounters.spike++;
         const segId = this.currentSeg.segmentId;
         const runId = this.run ? this.run.runId : "unk";
+        // sourceFlags is block-scoped to the isDamage timestamp check above and
+        // not in scope here — re-read fields[3] so we can reject friendly,
+        // player-owned "Creature-" units (totems, guardians) that aren't enemies.
+        const sourceFlags = fields[3] || "0";
+        const sourceIsHostileCreature = isCreatureGuid(sourceGuid) && isHostileUnit(sourceFlags);
         this.currentSeg.spikes.push({
           spikeId       : `${runId}-${segId}-sp${this.segCounters.spike}`,
           segmentId     : segId,
@@ -1901,8 +1906,8 @@ class CombatLogRunBuilder extends EventEmitter {
           spellId,
           spellName,
           spellSchool,
-          sourceNpcId   : npcIdFromGuid(sourceGuid),
-          sourceNpcName : isCreatureGuid(sourceGuid) ? sourceName : null,
+          sourceNpcId   : sourceIsHostileCreature ? npcIdFromGuid(sourceGuid) : null,
+          sourceNpcName : sourceIsHostileCreature ? sourceName : null,
         });
       }
 
