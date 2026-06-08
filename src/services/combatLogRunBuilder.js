@@ -1146,6 +1146,8 @@ class CombatLogRunBuilder extends EventEmitter {
       deathBucketSecs: [],  // which seconds had deaths
       playerDamageDone: {}, // { playerGuid: totalDamage } — per-player DPS context
       playerHealingDone: {},  // { playerGuid: totalHealing } — per-player HPS context
+      playerDamageDoneByAbility: {}, // { playerGuid: { spellKey: { spellId, spellName, spellSchool, amount, hits } } }
+      playerHealingDoneByAbility: {}, // { playerGuid: { spellKey: { spellId, spellName, spellSchool, amount, overheal, hits } } }
       playerHealingReceived: {}, // { playerGuid: totalHealing } — who got healed
       playerDamageTakenSeg: {}, // { playerGuid: totalDmgTaken } — per-segment breakdown
       ccEvents: [],           // CC/debuffs applied to players by enemies (capped at 50)
@@ -1933,6 +1935,20 @@ class CombatLogRunBuilder extends EventEmitter {
         if (amount > 0) {
           this.currentSeg.playerDamageDone[sourceGuid] =
             (this.currentSeg.playerDamageDone[sourceGuid] || 0) + amount;
+          // ── Per-ability damage tracking ──────────────────────────────
+          const dmgSpellId   = event === "SWING_DAMAGE" ? 0 : (parseInt(fields[9], 10) || 0);
+          const dmgSpellName = event === "SWING_DAMAGE" ? "Melee" : ((fields[10] || "").replace(/"/g, "") || "Unknown");
+          const dmgSpellSchool = event === "SWING_DAMAGE" ? 1 : (parseInt(fields[11], 10) || 1);
+          const dmgKey = String(dmgSpellId || dmgSpellName);
+          if (!this.currentSeg.playerDamageDoneByAbility[sourceGuid]) {
+            this.currentSeg.playerDamageDoneByAbility[sourceGuid] = {};
+          }
+          const dmgAbil = this.currentSeg.playerDamageDoneByAbility[sourceGuid];
+          if (!dmgAbil[dmgKey]) {
+            dmgAbil[dmgKey] = { spellId: dmgSpellId, spellName: dmgSpellName, spellSchool: dmgSpellSchool, amount: 0, hits: 0 };
+          }
+          dmgAbil[dmgKey].amount += amount;
+          dmgAbil[dmgKey].hits   += 1;
         }
       }
       return null;
@@ -2016,6 +2032,21 @@ class CombatLogRunBuilder extends EventEmitter {
           if (healAmt > 0) {
             this.currentSeg.playerHealingDone[sourceGuid] =
               (this.currentSeg.playerHealingDone[sourceGuid] || 0) + healAmt;
+            // ── Per-ability healing tracking ────────────────────────────
+            const healSpellId   = parseInt(fields[9], 10) || 0;
+            const healSpellName = (fields[10] || "").replace(/"/g, "");
+            const healSchool    = parseInt(fields[11], 10) || 8;
+            const healKey = String(healSpellId || healSpellName || "unknown");
+            if (!this.currentSeg.playerHealingDoneByAbility[sourceGuid]) {
+              this.currentSeg.playerHealingDoneByAbility[sourceGuid] = {};
+            }
+            const healAbil = this.currentSeg.playerHealingDoneByAbility[sourceGuid];
+            if (!healAbil[healKey]) {
+              healAbil[healKey] = { spellId: healSpellId, spellName: healSpellName || "Unknown", spellSchool: healSchool, amount: 0, overheal: 0, hits: 0 };
+            }
+            healAbil[healKey].amount   += healAmt;
+            healAbil[healKey].overheal += (overhealAmount > 0 ? overhealAmount : 0);
+            healAbil[healKey].hits     += 1;
           }
         }
         // Healing received by this player (dest)
@@ -2352,6 +2383,31 @@ class CombatLogRunBuilder extends EventEmitter {
         for (const [guid, heal] of Object.entries(seg.playerHealingDone || {})) {
           prev.playerHealingDone[guid] = (prev.playerHealingDone[guid] || 0) + heal;
         }
+        // Merge playerDamageDoneByAbility
+        prev.playerDamageDoneByAbility = prev.playerDamageDoneByAbility || {};
+        for (const [guid, abilities] of Object.entries(seg.playerDamageDoneByAbility || {})) {
+          if (!prev.playerDamageDoneByAbility[guid]) prev.playerDamageDoneByAbility[guid] = {};
+          for (const [key, a] of Object.entries(abilities)) {
+            if (!prev.playerDamageDoneByAbility[guid][key]) {
+              prev.playerDamageDoneByAbility[guid][key] = { ...a, amount: 0, hits: 0 };
+            }
+            prev.playerDamageDoneByAbility[guid][key].amount += a.amount;
+            prev.playerDamageDoneByAbility[guid][key].hits   += a.hits;
+          }
+        }
+        // Merge playerHealingDoneByAbility
+        prev.playerHealingDoneByAbility = prev.playerHealingDoneByAbility || {};
+        for (const [guid, abilities] of Object.entries(seg.playerHealingDoneByAbility || {})) {
+          if (!prev.playerHealingDoneByAbility[guid]) prev.playerHealingDoneByAbility[guid] = {};
+          for (const [key, a] of Object.entries(abilities)) {
+            if (!prev.playerHealingDoneByAbility[guid][key]) {
+              prev.playerHealingDoneByAbility[guid][key] = { ...a, amount: 0, overheal: 0, hits: 0 };
+            }
+            prev.playerHealingDoneByAbility[guid][key].amount  += a.amount;
+            prev.playerHealingDoneByAbility[guid][key].overheal += a.overheal;
+            prev.playerHealingDoneByAbility[guid][key].hits     += a.hits;
+          }
+        }
         // Merge playerHealingReceived totals
         prev.playerHealingReceived = prev.playerHealingReceived || {};
         for (const [guid, heal] of Object.entries(seg.playerHealingReceived || {})) {
@@ -2492,6 +2548,18 @@ class CombatLogRunBuilder extends EventEmitter {
         playerHealingDone: Object.fromEntries(
           Object.entries(seg.playerHealingDone || {}).map(([guid, heal]) => [
             this.guidToName.get(guid) || guid, heal
+          ])
+        ),
+        playerDamageDoneByAbility: Object.fromEntries(
+          Object.entries(seg.playerDamageDoneByAbility || {}).map(([guid, abilities]) => [
+            this.guidToName.get(guid) || guid,
+            Object.values(abilities),
+          ])
+        ),
+        playerHealingDoneByAbility: Object.fromEntries(
+          Object.entries(seg.playerHealingDoneByAbility || {}).map(([guid, abilities]) => [
+            this.guidToName.get(guid) || guid,
+            Object.values(abilities),
           ])
         ),
         playerHealingReceived: Object.fromEntries(
