@@ -1039,6 +1039,7 @@ class CombatLogRunBuilder extends EventEmitter {
     this.guidToStats     = new Map();  // GUID → parsed stats object from COMBATANT_INFO
     this.guidToRace      = new Map();  // GUID → race name (from auth characters or racial spell inference)
     this.guidToFaction   = new Map();  // GUID → "Alliance" or "Horde"
+    this.petToOwner = new Map();  // pet/guardian GUID → summoner GUID (run-scoped, from SPELL_SUMMON). Resolves to a player via _resolveSourcePlayer().
     this.lineCount       = 0;
     this.eventCount      = 0;
     this._wowVersion     = null;  // e.g. "12.0.5"  — from combat log header
@@ -1205,11 +1206,13 @@ class CombatLogRunBuilder extends EventEmitter {
     const event = fields ? fields[0] : "";
     const sourceGuid = fields ? (fields[1] || "") : "";
 
-    // Activity events that prove the player is alive
+    // Activity events that prove the player is alive.
+    // Periodic ticks (SPELL_PERIODIC_DAMAGE/HEAL) are residual effects from before
+    // death — a dead hunter still emits lingering DoTs/bleeds as source — so they do
+    // NOT prove the player is alive and are deliberately excluded here.
     const activityEvents = new Set([
       "SPELL_CAST_SUCCESS", "SPELL_DAMAGE", "RANGE_DAMAGE",
-      "SWING_DAMAGE", "SPELL_HEAL", "SPELL_PERIODIC_HEAL",
-      "SPELL_PERIODIC_DAMAGE", "SPELL_CAST_START",
+      "SWING_DAMAGE", "SPELL_HEAL", "SPELL_CAST_START",
     ]);
 
     const resolved = [];
@@ -1266,6 +1269,22 @@ class CombatLogRunBuilder extends EventEmitter {
 
     const deathSec = Math.floor((pending.ts - pending.segStartTs) / 1000);
     seg.deathBucketSecs.push(deathSec);
+  }
+
+  // Resolve a damage/heal/absorb SOURCE to the player who should be credited.
+  // Players resolve to themselves; pets/guardians walk the summon chain to their
+  // player owner. Depth-capped to avoid cycles. Returns a player GUID or null.
+  _resolveSourcePlayer(guid) {
+    if (!guid) return null;
+    if (isPlayerGuid(guid)) return guid;
+    let cur = guid;
+    for (let i = 0; i < 4 && cur; i++) {
+      const owner = this.petToOwner.get(cur);
+      if (!owner) return null;
+      if (isPlayerGuid(owner)) return owner;
+      cur = owner;
+    }
+    return null;
   }
 
   _addDmg(ts, amount) {
@@ -1479,8 +1498,9 @@ class CombatLogRunBuilder extends EventEmitter {
     const isDispel = event === "SPELL_DISPEL" || event === "SPELL_STOLEN";
     const isResurrect = event === "SPELL_RESURRECT";
     const isAbsorbed = event === "SPELL_ABSORBED";
+    const isSummon = event === "SPELL_SUMMON";
 
-    if (!isDamage && !isEnvironmental && !isHeal && !isCast && !isCastStart && !isAuraApplied && !isDied && !isInterrupt && !isDispel && !isResurrect && !isAbsorbed) return null;
+    if (!isDamage && !isEnvironmental && !isHeal && !isCast && !isCastStart && !isAuraApplied && !isDied && !isInterrupt && !isDispel && !isResurrect && !isAbsorbed && !isSummon) return null;
 
     const sourceGuid = fields[1] || "";
     const sourceName = (fields[2] || "").replace(/"/g, "");
@@ -1514,6 +1534,16 @@ class CombatLogRunBuilder extends EventEmitter {
     }
     if (isPlayerGuid(destGuid) && destName && !this.guidToName.has(destGuid)) {
       this.guidToName.set(destGuid, destName);
+    }
+
+    // ── Pet/guardian ownership (SPELL_SUMMON) — run-scoped, for WCL-style
+    //    attribution of pet damage/healing/absorbs to the owner. destGUID is the
+    //    summoned unit; sourceGUID is the summoner. Chain pet→sub-pet is allowed
+    //    (resolved transitively); enemy summons are ignored. ──
+    if (isSummon && sourceGuid && destGuid &&
+        (isPlayerGuid(sourceGuid) || this.petToOwner.has(sourceGuid))) {
+      this.petToOwner.set(destGuid, sourceGuid);
+      return null;
     }
 
     // ── Spell-based class/role detection ────────────────────────────────
@@ -1768,7 +1798,7 @@ class CombatLogRunBuilder extends EventEmitter {
     //   Form 2 (SPELL_* absorbed): source-spell prefix (3 fields) before caster block
     // Absorb block layout (last 6 fields): [absorbSpellId, absorbSpellName,
     //   absorbSpellSchool, absorbedAmount, totalAmount, critical].
-    if (isAbsorbed && this.currentSeg && this.currentSeg.absorbs.length < 100) {
+    if (isAbsorbed && this.currentSeg) {
       const SPELL_ABSORBED_BASE = 9;
       const fieldAtBase = fields[SPELL_ABSORBED_BASE] || "";
       const isFormTwo = /^\d+$/.test(fieldAtBase);
@@ -1780,34 +1810,56 @@ class CombatLogRunBuilder extends EventEmitter {
       const absorbedAmount = parseInt(fields[absorbBlockStart + 3], 10) || 0;
 
       if (absorbedAmount > 0 && destGuid) {
-        let sourceHitSpellId = 0;
-        let sourceHitSpellName = "";
-        if (isFormTwo) {
-          sourceHitSpellId = parseInt(fields[SPELL_ABSORBED_BASE], 10) || 0;
-          sourceHitSpellName = (fields[SPELL_ABSORBED_BASE + 1] || "").replace(/"/g, "");
+        // The absorbs[] event list is capped at 100; the heal-credit below must
+        // NOT be gated by that cap, so the push lives in its own length guard.
+        if (this.currentSeg.absorbs.length < 100) {
+          let sourceHitSpellId = 0;
+          let sourceHitSpellName = "";
+          if (isFormTwo) {
+            sourceHitSpellId = parseInt(fields[SPELL_ABSORBED_BASE], 10) || 0;
+            sourceHitSpellName = (fields[SPELL_ABSORBED_BASE + 1] || "").replace(/"/g, "");
+          }
+
+          this.segCounters.absorb++;
+          const segId = this.currentSeg.segmentId;
+          const runId = this.run ? this.run.runId : "unk";
+          this.currentSeg.absorbs.push({
+            absorbId       : `${runId}-${segId}-ab${this.segCounters.absorb}`,
+            segmentId      : segId,
+            absorbTs       : ts,
+            offsetMs       : ts - this.currentSeg.startTs,
+            destGuid,
+            destName,
+            destRole       : this.guidToRole.get(destGuid) || "unknown",
+            destClass      : this.guidToClass.get(destGuid) || "UNKNOWN",
+            absorbSpellId,
+            absorbSpellName,
+            absorbSpellSchool,
+            absorbedAmount,
+            sourceHitSpellId,
+            sourceHitSpellName,
+            sourceNpcId    : npcIdFromGuid(sourceGuid),
+            sourceNpcName  : isCreatureGuid(sourceGuid) ? sourceName : null,
+          });
         }
 
-        this.segCounters.absorb++;
-        const segId = this.currentSeg.segmentId;
-        const runId = this.run ? this.run.runId : "unk";
-        this.currentSeg.absorbs.push({
-          absorbId       : `${runId}-${segId}-ab${this.segCounters.absorb}`,
-          segmentId      : segId,
-          absorbTs       : ts,
-          offsetMs       : ts - this.currentSeg.startTs,
-          destGuid,
-          destName,
-          destRole       : this.guidToRole.get(destGuid) || "unknown",
-          destClass      : this.guidToClass.get(destGuid) || "UNKNOWN",
-          absorbSpellId,
-          absorbSpellName,
-          absorbSpellSchool,
-          absorbedAmount,
-          sourceHitSpellId,
-          sourceHitSpellName,
-          sourceNpcId    : npcIdFromGuid(sourceGuid),
-          sourceNpcName  : isCreatureGuid(sourceGuid) ? sourceName : null,
-        });
+        // Absorbs count as effective healing (WCL HPS parity). Credit the shield
+        // CASTER (fields[casterStart]), resolved pet→owner. Distinct event from
+        // SPELL_HEAL, so no double-count.
+        const absorbCasterGuid = fields[casterStart] || "";
+        const absorbOwner = this._resolveSourcePlayer(absorbCasterGuid);
+        if (absorbOwner) {
+          const isPetAbsorb = absorbOwner !== absorbCasterGuid;
+          this.currentSeg.playerHealingDone[absorbOwner] =
+            (this.currentSeg.playerHealingDone[absorbOwner] || 0) + absorbedAmount;
+          const aName = (absorbSpellName || "Absorb") + (isPetAbsorb ? " (Pet)" : "");
+          const aKey  = `absorb:${absorbSpellId || absorbSpellName || "shield"}${isPetAbsorb ? ":pet" : ""}`;
+          if (!this.currentSeg.playerHealingDoneByAbility[absorbOwner]) this.currentSeg.playerHealingDoneByAbility[absorbOwner] = {};
+          const hb = this.currentSeg.playerHealingDoneByAbility[absorbOwner];
+          if (!hb[aKey]) hb[aKey] = { spellId: absorbSpellId, spellName: aName, spellSchool: absorbSpellSchool, amount: 0, overheal: 0, hits: 0, isAbsorb: true, isPet: isPetAbsorb };
+          hb[aKey].amount += absorbedAmount;
+          hb[aKey].hits   += 1;
+        }
       }
       return null;
     }
@@ -1917,9 +1969,13 @@ class CombatLogRunBuilder extends EventEmitter {
       return null;
     }
 
-    // ── Player damage DONE (to creatures) — per-segment tracking ────────
-    if (isDamage && isPlayerGuid(sourceGuid) && isCreatureGuid(destGuid)) {
-      if (this.currentSeg) {
+    // ── Player + pet/guardian damage DONE (to creatures) — per-segment ──
+    // Pet/guardian damage is attributed to the resolved player owner (WCL parity)
+    // and tagged "(Pet)" in the per-ability breakdown.
+    if (isDamage && isCreatureGuid(destGuid)) {
+      const ownerGuid = this._resolveSourcePlayer(sourceGuid);
+      if (ownerGuid && this.currentSeg) {
+        const isPet = ownerGuid !== sourceGuid;
         let amount = 0;
         if (event === "SWING_DAMAGE") {
           const swingAdvStart = 9;
@@ -1933,19 +1989,20 @@ class CombatLogRunBuilder extends EventEmitter {
           amount = parseInt(fields[suffixStart], 10) || 0;
         }
         if (amount > 0) {
-          this.currentSeg.playerDamageDone[sourceGuid] =
-            (this.currentSeg.playerDamageDone[sourceGuid] || 0) + amount;
+          this.currentSeg.playerDamageDone[ownerGuid] =
+            (this.currentSeg.playerDamageDone[ownerGuid] || 0) + amount;
           // ── Per-ability damage tracking ──────────────────────────────
-          const dmgSpellId   = event === "SWING_DAMAGE" ? 0 : (parseInt(fields[9], 10) || 0);
-          const dmgSpellName = event === "SWING_DAMAGE" ? "Melee" : ((fields[10] || "").replace(/"/g, "") || "Unknown");
+          const dmgSpellId    = event === "SWING_DAMAGE" ? 0 : (parseInt(fields[9], 10) || 0);
+          const dmgSpellName0  = event === "SWING_DAMAGE" ? "Melee" : ((fields[10] || "").replace(/"/g, "") || "Unknown");
           const dmgSpellSchool = event === "SWING_DAMAGE" ? 1 : (parseInt(fields[11], 10) || 1);
-          const dmgKey = String(dmgSpellId || dmgSpellName);
-          if (!this.currentSeg.playerDamageDoneByAbility[sourceGuid]) {
-            this.currentSeg.playerDamageDoneByAbility[sourceGuid] = {};
+          const dmgSpellName  = isPet ? `${dmgSpellName0} (Pet)` : dmgSpellName0;
+          const dmgKey        = isPet ? `pet:${dmgSpellId || dmgSpellName0}` : String(dmgSpellId || dmgSpellName0);
+          if (!this.currentSeg.playerDamageDoneByAbility[ownerGuid]) {
+            this.currentSeg.playerDamageDoneByAbility[ownerGuid] = {};
           }
-          const dmgAbil = this.currentSeg.playerDamageDoneByAbility[sourceGuid];
+          const dmgAbil = this.currentSeg.playerDamageDoneByAbility[ownerGuid];
           if (!dmgAbil[dmgKey]) {
-            dmgAbil[dmgKey] = { spellId: dmgSpellId, spellName: dmgSpellName, spellSchool: dmgSpellSchool, amount: 0, hits: 0 };
+            dmgAbil[dmgKey] = { spellId: dmgSpellId, spellName: dmgSpellName, spellSchool: dmgSpellSchool, amount: 0, hits: 0, isPet };
           }
           dmgAbil[dmgKey].amount += amount;
           dmgAbil[dmgKey].hits   += 1;
@@ -1988,10 +2045,12 @@ class CombatLogRunBuilder extends EventEmitter {
       // on every heal, silently breaking _addHeal / partyHealingReceived.
       const overhealAmount = parseInt(fields[healSuffixStart + 2], 10) || 0;
 
-      // Healing done tracking (for post-run role heuristic)
-      if (isPlayerGuid(sourceGuid)) {
+      // Healing done tracking (for post-run role heuristic) — pet heals count
+      // toward the resolved owner, consistent with per-segment attribution.
+      const ho = this._resolveSourcePlayer(sourceGuid);
+      if (ho) {
         if (!isNaN(healAmount) && healAmount > 0) {
-          this.playerHealingDone.set(sourceGuid, (this.playerHealingDone.get(sourceGuid) || 0) + healAmount);
+          this.playerHealingDone.set(ho, (this.playerHealingDone.get(ho) || 0) + healAmount);
         }
       }
 
@@ -2027,22 +2086,25 @@ class CombatLogRunBuilder extends EventEmitter {
       // ── Per-segment healing tracking ──────────────────────────────────
       if (this.currentSeg) {
         // Healing done by this player (source)
-        if (isPlayerGuid(sourceGuid)) {
+        const healOwner = this._resolveSourcePlayer(sourceGuid);
+        if (healOwner) {
           const healAmt = (!isNaN(healAmount) && healAmount > 0) ? healAmount : 0;
           if (healAmt > 0) {
-            this.currentSeg.playerHealingDone[sourceGuid] =
-              (this.currentSeg.playerHealingDone[sourceGuid] || 0) + healAmt;
+            const isPetHeal = healOwner !== sourceGuid;
+            this.currentSeg.playerHealingDone[healOwner] =
+              (this.currentSeg.playerHealingDone[healOwner] || 0) + healAmt;
             // ── Per-ability healing tracking ────────────────────────────
-            const healSpellId   = parseInt(fields[9], 10) || 0;
-            const healSpellName = (fields[10] || "").replace(/"/g, "");
-            const healSchool    = parseInt(fields[11], 10) || 8;
-            const healKey = String(healSpellId || healSpellName || "unknown");
-            if (!this.currentSeg.playerHealingDoneByAbility[sourceGuid]) {
-              this.currentSeg.playerHealingDoneByAbility[sourceGuid] = {};
+            const healSpellId    = parseInt(fields[9], 10) || 0;
+            const healSpellName0 = (fields[10] || "").replace(/"/g, "");
+            const healSchool     = parseInt(fields[11], 10) || 8;
+            const healSpellName  = isPetHeal ? `${healSpellName0 || "Heal"} (Pet)` : healSpellName0;
+            const healKey = isPetHeal ? `pet:${healSpellId || healSpellName0 || "unknown"}` : String(healSpellId || healSpellName0 || "unknown");
+            if (!this.currentSeg.playerHealingDoneByAbility[healOwner]) {
+              this.currentSeg.playerHealingDoneByAbility[healOwner] = {};
             }
-            const healAbil = this.currentSeg.playerHealingDoneByAbility[sourceGuid];
+            const healAbil = this.currentSeg.playerHealingDoneByAbility[healOwner];
             if (!healAbil[healKey]) {
-              healAbil[healKey] = { spellId: healSpellId, spellName: healSpellName || "Unknown", spellSchool: healSchool, amount: 0, overheal: 0, hits: 0 };
+              healAbil[healKey] = { spellId: healSpellId, spellName: healSpellName || "Unknown", spellSchool: healSchool, amount: 0, overheal: 0, hits: 0, isPet: isPetHeal };
             }
             healAbil[healKey].amount   += healAmt;
             healAbil[healKey].overheal += (overhealAmount > 0 ? overhealAmount : 0);
