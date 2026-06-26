@@ -696,6 +696,7 @@ const TRACKED_TRINKETS = new Map([
 
 const FEIGN_DEATH_SPELL_ID = 5384;
 const FEIGN_DEATH_LOOKAHEAD_MS = 15000; // 15 seconds — matches WCL's approach
+const FEIGN_DEATH_CAST_WINDOW_MS = 2000; // a hunter UNIT_DIED within this of a Feign Death cast (and with no lethal hit) is a feign, not a death
 
 // ── Consumables — healthstones, potions ───────────────────────────────────
 // Track SPELL_CAST_SUCCESS for these spells by players.
@@ -1651,53 +1652,20 @@ class CombatLogRunBuilder extends EventEmitter {
       const playerClass = this.guidToClass.get(destGuid) || "UNKNOWN";
 
       if (playerClass === "HUNTER") {
-        // Check lookback: did this hunter cast Feign Death within 2s?
+        // Feign Death (5384) fires a real UNIT_DIED for hunters. Discriminate
+        // deterministically: a Feign Death CAST immediately before the death AND no
+        // lethal (overkill) hit => feign (suppress). Otherwise it's a REAL death and
+        // falls through to immediate recording. (The old 15s activity-lookahead wrongly
+        // suppressed real deaths followed by a battle-rez or an in-flight shot/AoE the
+        // dead hunter was still the source of.)
         const feignTs = this._feignDeathCasts.get(destGuid) || 0;
-        const likelyFeign = (ts - feignTs) < 2000;
-
-        // Defer this death — collect all the data we'd normally record
-        if (!this.currentSeg) this._openSeg(ts);
-        const seg = this.currentSeg;
-        const buf = this._getDmgBuf(destGuid);
-        const cutoff = ts - PRE_DEATH_WINDOW_MS;
-        const window = buf.filter(h => h.ts >= cutoff);
-        const preDeathHits = window.slice(-PRE_DEATH_HIT_MAX).map(h => ({
-          normalizedTs: h.ts, offsetMs: h.ts - seg.startTs,
-          spellId: h.spellId, spellName: h.spellName, amount: h.amount, overkill: h.overkill,
-          sourceNpcId: h.sourceNpcId, sourceNpcName: h.sourceNpcName,
-        }));
-        const kb = [...window].reverse().find(h => h.overkill > 0) || window[window.length - 1] || null;
-        const isEnvDeath = kb && kb.isEnvironmental === true;
-        const envType = isEnvDeath ? (kb.envType || "Environmental") : null;
-
-        this._pendingHunterDeaths.push({
-          ts,
-          destGuid,
-          segmentId: seg.segmentId,
-          segStartTs: seg.startTs,
-          likelyFeign,
-          deathData: {
-            segmentId: seg.segmentId, deathTs: ts,
-            offsetMs: ts - seg.startTs,
-            name: this.guidToName.get(destGuid) || "Unknown",
-            class: playerClass,
-            role: this.guidToRole.get(destGuid) || "unknown",
-            firstDeathInPull: false, // will be set when finalized
-            mapX: (this.guidToPosition.get(destGuid) || {}).x ?? null,
-            mapY: (this.guidToPosition.get(destGuid) || {}).y ?? null,
-            mapId: (this.guidToPosition.get(destGuid) || {}).mapId ?? null,
-            killingBlow: kb ? { spellName: kb.spellName, amount: kb.amount } : null,
-            isEnvironmental: isEnvDeath || false,
-            environmentalType: envType,
-            preDeathHits: preDeathHits.map(h => ({
-              offsetMs: h.offsetMs, amount: h.amount,
-              spellName: h.spellName, sourceNpcName: h.sourceNpcName,
-            })),
-          },
-        });
-
-        console.log(`[RunBuilder] HUNTER DEATH DEFERRED: ${this.guidToName.get(destGuid) || "Unknown"} at ${ts} (likelyFeign=${likelyFeign})`);
-        return null;
+        const recentFeignCast = feignTs > 0 && (ts - feignTs) < FEIGN_DEATH_CAST_WINDOW_MS;
+        const tookLethal = this._getDmgBuf(destGuid).some(h => h.ts >= ts - 1500 && h.overkill > 0);
+        if (recentFeignCast && !tookLethal) {
+          console.log(`[RunBuilder] FEIGN DEATH suppressed (not a real death): ${this.guidToName.get(destGuid) || "Unknown"} (Feign cast +${ts - feignTs}ms before, no lethal hit)`);
+          return null;
+        }
+        // else: real hunter death → fall through to the immediate recording path below.
       }
 
       // ── Non-hunter: record death immediately (EXISTING LOGIC — DO NOT CHANGE) ──
