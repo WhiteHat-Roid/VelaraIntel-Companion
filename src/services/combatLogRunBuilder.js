@@ -1649,6 +1649,16 @@ class CombatLogRunBuilder extends EventEmitter {
     // For hunters: defer the death and look ahead for activity (WCL approach).
     // For non-hunters: record immediately as before.
     if (isDied && isPlayerGuid(destGuid)) {
+      // ── Feign Death / "unconscious" filter (Item 118) ──────────────────
+      // UNIT_DIED carries a trailing `unconsciousOnDeath` boolean: 1 = the unit
+      // is unconscious, not dead (Feign Death, etc.), 0 = a real death. This is
+      // Blizzard's intended discriminator and the ONLY reliable one — feign
+      // CASTS/AURAS (5384) are frequently absent from the log. Read the LAST
+      // field (robust to any optional recapID). Skip feigns entirely so death
+      // counts match the in-game addon. Replaces Item 117's 5384-cast heuristic.
+      const unconsciousOnDeath = (fields[fields.length - 1] || "").trim();
+      if (unconsciousOnDeath === "1") return null;
+
       const playerClass = this.guidToClass.get(destGuid) || "UNKNOWN";
 
       if (playerClass === "HUNTER") {
