@@ -991,6 +991,16 @@ const POSITION_SUFFIX_LEN = {
   SPELL_CAST_SUCCESS: 0,
 };
 
+// Base-prefix length BEFORE the advanced-info block, per event (item 136 — max-HP capture).
+// currentHP/maxHP sit at the FRONT of the advanced block, read by FORWARD offset from base —
+// the opposite end from position, which _extractPosition back-counts. SWING = event + 8 src/dst
+// fields = 9; SPELL/RANGE add spellId,spellName,spellSchool = 12. (Validated: item 132/D1.)
+const HP_BASE_IDX = {
+  SWING_DAMAGE: 9, SWING_DAMAGE_LANDED: 9,
+  SPELL_DAMAGE: 12, SPELL_PERIODIC_DAMAGE: 12, RANGE_DAMAGE: 12,
+  SPELL_HEAL: 12, SPELL_PERIODIC_HEAL: 12, SPELL_CAST_SUCCESS: 12,
+};
+
 function hasAdvancedInfo(fields, checkIndex) {
   const val = fields[checkIndex] || "";
   return val.includes("-") || val === "0000000000000000";
@@ -1038,6 +1048,7 @@ class CombatLogRunBuilder extends EventEmitter {
     this._positionsCaptured = 0;       // count of positions captured (drives telemetry flag)
     this.guidToTalents   = new Map();  // GUID → raw talent data from COMBATANT_INFO
     this.guidToStats     = new Map();  // GUID → parsed stats object from COMBATANT_INFO
+    this.guidToMaxHP     = new Map();  // GUID → max observed maxHP across run (item 136 — EHP input for Key Readiness)
     this.guidToRace      = new Map();  // GUID → race name (from auth characters or racial spell inference)
     this.guidToFaction   = new Map();  // GUID → "Alliance" or "Horde"
     this.petToOwner = new Map();  // pet/guardian GUID → summoner GUID (run-scoped, from SPELL_SUMMON). Resolves to a player via _resolveSourcePlayer().
@@ -1113,6 +1124,23 @@ class CombatLogRunBuilder extends EventEmitter {
     if (!(mapId > 0)) return null;
     if (x === 0 && y === 0) return null;
     return { x, y, mapId };
+  }
+
+  // ── Max-HP capture from the advanced-info block (item 136) ─────────────
+  // Sibling to _extractPosition, but FORWARD-counted: currentHP/maxHP sit right after
+  // infoGUID/ownerGUID at the front of the block (base+2 / base+3), before the
+  // variable-length power fields. fields[base] (infoGUID) names the unit the HP belongs
+  // to — attribute by that (for damage it's the destination, for casts the source).
+  _extractHP(fields, eventType) {
+    const base = HP_BASE_IDX[eventType];
+    if (base === undefined) return null;
+    const infoGuid = fields[base];
+    if (!infoGuid) return null;
+    if (!(infoGuid.includes("-") || infoGuid === "0000000000000000")) return null; // not an advanced line
+    const current = parseInt(fields[base + 2], 10);
+    const max     = parseInt(fields[base + 3], 10);
+    if (!Number.isFinite(current) || !Number.isFinite(max) || max <= 0) return null;
+    return { guid: infoGuid, current, max };
   }
 
   // ── Dynamic segment gap threshold (safety net only) ────────────────────
@@ -1559,6 +1587,11 @@ class CombatLogRunBuilder extends EventEmitter {
           this.guidToPosition.set(sourceGuid, { ...castPos, ts });
           this._positionsCaptured++;
         }
+        // Max-HP capture (item 136) — track the observed ceiling per player.
+        const castHP = this._extractHP(fields, event);
+        if (castHP && isPlayerGuid(castHP.guid)) {
+          this.guidToMaxHP.set(castHP.guid, Math.max(this.guidToMaxHP.get(castHP.guid) || 0, castHP.max));
+        }
       }
 
       // Track Feign Death casts for death suppression
@@ -1882,6 +1915,11 @@ class CombatLogRunBuilder extends EventEmitter {
         if (pos) {
           this.guidToPosition.set(destGuid, { ...pos, ts });
           this._positionsCaptured++;
+        }
+        // Max-HP capture (item 136) — advanced block here describes the victim; attribute by infoGUID.
+        const hitHP = this._extractHP(fields, event);
+        if (hitHP && isPlayerGuid(hitHP.guid)) {
+          this.guidToMaxHP.set(hitHP.guid, Math.max(this.guidToMaxHP.get(hitHP.guid) || 0, hitHP.max));
         }
       }
 
@@ -2706,6 +2744,7 @@ class CombatLogRunBuilder extends EventEmitter {
         specId: this.guidToSpecId.get(guid) || 0,
         talents: this.guidToTalents.get(guid) || null,
         stats: this.guidToStats.get(guid) || null,
+        maxHPObserved: this.guidToMaxHP.get(guid) || null,  // item 136 — max observed maxHP (EHP input); null if never seen
         race: this.guidToRace.get(guid) || null,
         faction: this.guidToFaction.get(guid) || null,
       });
