@@ -40,9 +40,16 @@ if (!fs.existsSync(logPath)) {
 }
 if (!fs.existsSync(outDir)) fs.mkdirSync(outDir, { recursive: true });
 
+// Count from combatSegments, NOT run.pulls. The builder emits combatSegments[]
+// with pulls: [] — pulls[] is only populated server-side by
+// normalize_segments_to_pulls() at ingest, so it is legitimately empty here.
+// Reading run.pulls would always report 0. (Matches main.js keyEnd counting.)
+function countSegments(run) {
+  return ((run && run.combatSegments) || []).length;
+}
 function countDeaths(run) {
-  const pulls = (run && run.pulls) || [];
-  return pulls.reduce((n, p) => n + ((p && p.deaths) ? p.deaths.length : 0), 0);
+  const segs = (run && run.combatSegments) || [];
+  return segs.reduce((n, s) => n + ((s && s.deaths) ? s.deaths.length : 0), 0);
 }
 
 async function collectPayloads() {
@@ -86,7 +93,7 @@ async function collectPayloads() {
       `  runId=${run.runId}\n` +
       `    dungeon=${run.dungeonName || "?"}  mapId=${run.mapId}  +${run.keyLevel}\n` +
       `    startTs=${run.startTs} (${startIso})\n` +
-      `    pulls=${(run.pulls || []).length}  deaths=${countDeaths(run)}\n` +
+      `    segments=${countSegments(run)}  deaths=${countDeaths(run)}  (pulls[] is populated server-side, empty here)\n` +
       `    → wrote ${outFile}\n`
     );
   }
