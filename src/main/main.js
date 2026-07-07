@@ -1236,16 +1236,11 @@ function startCombatLogWatcher() {
       broadcastStatus("Processed " + lineCounter + " combat log lines", "info");
     }
     try {
-      // WoW combat log header (always the first line of the file, no timestamp prefix).
-      // Format: COMBAT_LOG_VERSION,20,ADVANCED_LOG_ENABLED,1,BUILD_VERSION,X.Y.Z,...
-      if (line.startsWith("COMBAT_LOG_VERSION,")) {
-        const parts = line.split(",");
-        const bvIdx = parts.indexOf("BUILD_VERSION");
-        if (bvIdx >= 0 && parts[bvIdx + 1]) {
-          runBuilder.setWowVersion(parts[bvIdx + 1].trim(), null);
-        }
-        return;
-      }
+      // WoW combat log header capture (directive 164, parity twin of OW 156).
+      // Uses the builder's shared _captureHeaderVersion helper, which matches BOTH
+      // the legacy un-timestamped header AND the timestamped 12.0.7+ header (the old
+      // startsWith("COMBAT_LOG_VERSION,") gate never fired on real timestamped logs).
+      if (runBuilder._captureHeaderVersion(line)) return;
       runBuilder.processLine(line);
     } catch (err) {
       console.error("[RunBuilder] Line error:", err.message);

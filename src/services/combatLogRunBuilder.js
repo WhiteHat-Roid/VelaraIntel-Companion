@@ -1054,9 +1054,13 @@ class CombatLogRunBuilder extends EventEmitter {
     this.petToOwner = new Map();  // pet/guardian GUID → summoner GUID (run-scoped, from SPELL_SUMMON). Resolves to a player via _resolveSourcePlayer().
     this.lineCount       = 0;
     this.eventCount      = 0;
-    this._wowVersion     = null;  // e.g. "12.0.5"  — from combat log header
-    this._wowBuild       = null;  // e.g. "56713"   — from combat log header
-    this._wowToc         = null;  // e.g. "120005"  — derived from BUILD_VERSION
+    // PRESERVE an already-captured header version across per-run reset()
+    // (directive 164 / OW 156 Fix 2): the COMBAT_LOG_VERSION header appears only
+    // at file top, so CHALLENGE_MODE_START's reset() must NOT erase it or the run
+    // serializes NULL. First-call (constructor) leaves these null as before.
+    this._wowVersion     = this._wowVersion || null;  // e.g. "12.0.5" — from combat log header
+    this._wowBuild       = this._wowBuild   || null;  // e.g. "56713"  — from combat log header
+    this._wowToc         = this._wowToc     || null;  // e.g. "120005" — derived from BUILD_VERSION
     // setAuthCharacters — called from main.js with VelaraAuth character list
     // Enables combat log GUID matching for uploader identity
     // uploaderIdentity is set externally from SavedVariables — preserve across reset
@@ -1078,6 +1082,28 @@ class CombatLogRunBuilder extends EventEmitter {
       }
     }
     console.log(`[RunBuilder] WoW version: ${this._wowVersion} build: ${this._wowBuild} toc: ${this._wowToc}`);
+  }
+
+  /**
+   * Capture the WoW version from a COMBAT_LOG_VERSION header line (directive 164,
+   * parity twin of Overwolf 156's _captureHeaderVersion). Matches BOTH forms:
+   *   - legacy un-timestamped 12.0.5: "COMBAT_LOG_VERSION,20,...,BUILD_VERSION,12.0.5,..."
+   *   - timestamped 12.0.7+:  "3/27/2026 10:27:40.107-4  COMBAT_LOG_VERSION,22,...,BUILD_VERSION,12.0.1,..."
+   * by locating COMBAT_LOG_VERSION anywhere in the raw line (so a timestamp prefix
+   * is tolerated) rather than the old startsWith gate that never fired on real logs.
+   * Returns true if a version was captured (caller may skip further parsing).
+   */
+  _captureHeaderVersion(rawLine) {
+    if (typeof rawLine !== "string") return false;
+    const clv = rawLine.indexOf("COMBAT_LOG_VERSION,");
+    if (clv === -1) return false;
+    const parts = rawLine.slice(clv).split(",");
+    const bvIdx = parts.indexOf("BUILD_VERSION");
+    if (bvIdx >= 0 && parts[bvIdx + 1]) {
+      this.setWowVersion(parts[bvIdx + 1].trim(), null);
+      return true;
+    }
+    return false;
   }
 
   // Get player name for a GUID
@@ -1334,6 +1360,11 @@ class CombatLogRunBuilder extends EventEmitter {
   processLine(rawLine) {
     this.lineCount++;
     try {
+    // Header version capture (directive 164 / OW 156 parity). Must run BEFORE the
+    // double-space split below, which returns early on the legacy un-timestamped
+    // header. Makes the builder self-sufficient for any direct-processLine path.
+    if (this._captureHeaderVersion(rawLine)) return null;
+
     const spaceIdx = rawLine.indexOf("  ");
     if (spaceIdx < 0) return null;
 
