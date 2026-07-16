@@ -35,14 +35,18 @@
     "protocols": [
       {
         "name": "Velara Intelligence",
-        "schemes": ["velara"]
+        "schemes": [
+          "velara"
+        ]
       }
     ],
     "win": {
       "target": [
         {
           "target": "nsis",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         }
       ],
       "icon": "assets/icon.ico"
@@ -68,5 +72,8 @@
   },
   "author": "Velara Intelligence",
   "license": "UNLICENSED",
-  "private": true
+  "private": true,
+  "allowScripts": {
+    "electron@28.3.3": true
+  }
 }
