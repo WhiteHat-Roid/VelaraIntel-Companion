@@ -276,6 +276,55 @@ function getAccountNames(wowPath) {
   } catch { return []; }
 }
 
+/**
+ * Decide which WTF\Account folder is ours (Directive 10, autodetect v2).
+ *
+ * WHY THIS EXISTS: a blank accountName makes getSavedVarsPath() return null, which
+ * silently disables the ENTIRE SavedVariables pipeline — no mapBounds injection, no
+ * uploader identity, no talents. v1 only auto-set when exactly one account folder
+ * existed, so any user with two folders (a second WoW licence, an old account) landed
+ * in that dead state with no in-app way out. Observed on Brian's machine 2026-07-15;
+ * it cost a Pit of Saron run its map positions.
+ *
+ * Rules, in order:
+ *   0 folders  -> unset (nothing to pick)
+ *   1 folder   -> that one (v1 behaviour, unchanged)
+ *   2+ folders -> the single folder containing SavedVariables\VelaraIntel.lua.
+ *                 That file is the addon's own footprint, so exactly one qualifying
+ *                 folder is unambiguous evidence of the account actually being played.
+ *                 Zero or 2+ qualifying -> stay unset and let the UI say so; guessing
+ *                 wrong is worse than asking, because a wrong account looks identical
+ *                 to a broken one from the dashboard.
+ *
+ * Returns { account, reason } — reason is logged, never thrown away, so the decision
+ * path is visible in the log when a user reports "no map data".
+ */
+function resolveAccountName(wowPath) {
+  const fs = require("fs");
+  if (!wowPath) return { account: "", reason: "no wowPath configured" };
+
+  const accounts = getAccountNames(wowPath);
+  if (accounts.length === 0) return { account: "", reason: "no account folders under WTF\\Account" };
+  if (accounts.length === 1) return { account: accounts[0], reason: "single account folder" };
+
+  const qualifying = accounts.filter((name) => {
+    try {
+      return fs.existsSync(path.join(wowPath, "WTF", "Account", name, "SavedVariables", "VelaraIntel.lua"));
+    } catch { return false; }
+  });
+
+  if (qualifying.length === 1) {
+    return {
+      account: qualifying[0],
+      reason: `${accounts.length} account folders, exactly 1 with VelaraIntel.lua`,
+    };
+  }
+  return {
+    account: "",
+    reason: `${accounts.length} account folders, ${qualifying.length} with VelaraIntel.lua — cannot disambiguate`,
+  };
+}
+
 function getSavedVarsPath() {
   const wowPath = store.get("wowPath");
   const account = store.get("accountName");
@@ -1436,6 +1485,12 @@ function setupIPC() {
   ipcMain.handle("detect-wow-path", () => ({ path: detectWowPath() }));
   ipcMain.handle("get-accounts",    (_, wowPath) => ({ accounts: getAccountNames(wowPath || store.get("wowPath")) }));
 
+  // Is the SavedVariables pipeline actually live? (Directive 10)
+  // Answers with the REAL getSavedVarsPath() rather than letting the renderer re-derive
+  // "wowPath && accountName" — one source of truth, so the dashboard warning can never
+  // disagree with the watcher about whether we're in the dead state.
+  ipcMain.handle("get-sv-status", () => ({ resolved: !!getSavedVarsPath() }));
+
   ipcMain.handle("browse-wow-path", async () => {
     const result = await dialog.showOpenDialog(dashboardWindow, {
       properties: ["openDirectory"],
@@ -1584,10 +1639,24 @@ app.whenReady().then(async () => {
   console.log(`[Velara] Companion v${app.getVersion()} — build ${BUILD_TIMESTAMP}`);
   if (!store.get("wowPath")) {
     const detected = detectWowPath();
-    if (detected) {
-      store.set("wowPath", detected);
-      const accounts = getAccountNames(detected);
-      if (accounts.length === 1) store.set("accountName", accounts[0]);
+    if (detected) store.set("wowPath", detected);
+  }
+
+  // Account resolution runs on its OWN condition, deliberately NOT nested under the
+  // wowPath check above (Directive 10). Until 1.5.30 it lived inside that branch, so it
+  // only ever fired when wowPath was ALSO unset — i.e. on a first-ever boot. Every
+  // existing install that had a wowPath but a blank accountName (the exact failure this
+  // fixes, and the state Brian's machine was in) skipped it forever. Keyed on
+  // accountName alone, it now self-heals those installs on the next launch.
+  //
+  // Only ever FILLS a blank. A user's explicit choice is never overwritten.
+  if (!store.get("accountName")) {
+    const { account, reason } = resolveAccountName(store.get("wowPath"));
+    if (account) {
+      store.set("accountName", account);
+      console.log(`[Account] resolved to "${account}" — ${reason}`);
+    } else {
+      console.warn(`[Account] UNRESOLVED — ${reason}. SavedVariables pipeline is disabled until set in Settings.`);
     }
   }
   ensureClientId();

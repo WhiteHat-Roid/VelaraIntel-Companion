@@ -317,6 +317,21 @@
     .status-feed .line-err { color: #C0392B; }
     .status-feed .line-warn { color: #E8A030; }
     .status-feed .line-info { color: #8899AA; }
+    /* Directive 10 — persistent unresolved-account warning. Reuses the established warn
+       amber (#E8A030, same as .line-warn above); no new palette entries. */
+    .sv-warning {
+      background: rgba(232, 160, 48, 0.08); border: 1px solid #E8A030;
+      border-left-width: 3px; padding: 10px 14px; margin: 12px 0;
+    }
+    .sv-warning[hidden] { display: none; }
+    .sv-warning-title {
+      font-family: 'Barlow Condensed', sans-serif; font-weight: 700; font-size: 13px;
+      letter-spacing: 0.06em; text-transform: uppercase; color: #E8A030;
+    }
+    .sv-warning-body {
+      font-family: 'Barlow', sans-serif; font-size: 12px; line-height: 1.6;
+      color: #8899AA; margin-top: 3px;
+    }
 
     /* ── Gear icon (tab strip right side) ── */
     .tabs { position: relative; }
@@ -484,6 +499,15 @@
 
     <button class="go-btn disabled" id="liveGoBtn" disabled>GO!</button>
 
+    <!-- Directive 10: persistent unresolved-account warning. The status feed below is
+         append-only and scrolls away; this state is not an event, it is a standing
+         condition that silently disables the whole SavedVariables pipeline, so it needs
+         a surface that stays put until fixed. Hidden unless actually unresolved. -->
+    <div class="sv-warning" id="svWarning" hidden>
+      <div class="sv-warning-title">Account not set</div>
+      <div class="sv-warning-body">Map data, identity and talents will be missing from uploads. Fix in Settings.</div>
+    </div>
+
     <div class="field-label">Status</div>
     <div class="status-feed" id="liveStatusFeed"></div>
   </div>
@@ -591,6 +615,12 @@
         <div class="path-row">
           <input type="text" class="path-input" id="settingsWowPath" readonly placeholder="Select your WoW install folder" title="WoW installation path">
           <button type="button" class="btn-sm" id="btnSettingsBrowse">Browse</button>
+        </div>
+        <div class="field-label" style="margin-top:14px;">Account</div>
+        <div class="path-row">
+          <select class="path-input" id="settingsAccount" title="WTF\Account folder Velara reads SavedVariables from">
+            <option value="">Not set — map data, identity and talents will be missing</option>
+          </select>
         </div>
       </div>
 
@@ -1162,6 +1192,7 @@
     const tglStartMinimized  = document.getElementById('tglStartMinimized');
     const tglAutoUpload      = document.getElementById('tglAutoUpload');
     const settingsWowPath    = document.getElementById('settingsWowPath');
+    const settingsAccount    = document.getElementById('settingsAccount');
 
     function setToggle(el, on) {
       if (on) el.classList.add('on'); else el.classList.remove('on');
@@ -1186,10 +1217,52 @@
         // autoUpload defaults ON when unset so users get the expected behavior
         setToggle(tglAutoUpload, s.autoUpload === undefined ? true : !!s.autoUpload);
         settingsWowPath.value = s.wowPath || '';
+        await populateAccounts(s.accountName || '');
         settingsBackdrop.classList.add('open');
       });
     }
+
+    // Directive 10: list the WTF\Account folders so a user in the unresolved state can
+    // fix it here instead of hand-editing config.json (which they cannot be expected to
+    // find). Keeps the saved value selected even if the folder scan comes back empty —
+    // never silently drop a setting the user already has.
+    async function populateAccounts(current) {
+      let accounts = [];
+      try {
+        const res = await window.velara.getAccounts();
+        accounts = (res && res.accounts) || [];
+      } catch { accounts = []; }
+
+      settingsAccount.innerHTML = '';
+      const blank = document.createElement('option');
+      blank.value = '';
+      blank.textContent = accounts.length
+        ? 'Not set — map data, identity and talents will be missing'
+        : 'No account folders found — check the WoW path above';
+      settingsAccount.appendChild(blank);
+
+      if (current && !accounts.includes(current)) accounts = accounts.concat([current]);
+      for (const name of accounts) {
+        const opt = document.createElement('option');
+        opt.value = name;
+        opt.textContent = name;
+        settingsAccount.appendChild(opt);
+      }
+      settingsAccount.value = current || '';
+    }
     function closeSettings() { settingsBackdrop.classList.remove('open'); }
+
+    // Directive 10: show/hide the standing "Account not set" warning. Asks main for the
+    // real getSavedVarsPath() result (get-sv-status) instead of re-deriving the
+    // condition here, so this can never disagree with the watcher. On error, leave the
+    // banner as-is rather than claim a state we could not confirm.
+    async function refreshSvWarning() {
+      try {
+        const st = await window.velara.getSvStatus();
+        document.getElementById('svWarning').hidden = !!(st && st.resolved);
+      } catch { /* leave current state */ }
+    }
+    refreshSvWarning();
 
     btnOpenSettings.addEventListener('click', openSettings);
     btnCloseSettings.addEventListener('click', closeSettings);
@@ -1207,9 +1280,13 @@
         startMinimized : getToggle(tglStartMinimized),
         autoUpload     : getToggle(tglAutoUpload),
         wowPath        : settingsWowPath.value,
+        accountName    : settingsAccount.value,
       });
       addStatus('liveStatusFeed', 'Settings saved', 'ok');
       closeSettings();
+      // save-settings restarts both watchers when accountName changed, so the pipeline
+      // may have just come alive (or gone dead) — re-check rather than leave stale copy.
+      refreshSvWarning();
     });
 
     settingsBackdrop.addEventListener('click', (ev) => {

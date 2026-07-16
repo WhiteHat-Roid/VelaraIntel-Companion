@@ -10,6 +10,12 @@ contextBridge.exposeInMainWorld("velara", {
   getSettings:       () => ipcRenderer.invoke("get-settings"),
   saveSettings:      (s) => ipcRenderer.invoke("save-settings", s),
   detectWowPath:     () => ipcRenderer.invoke("detect-wow-path"),
+  // Directive 10: the get-accounts handler existed in main since long before, but was
+  // never bridged — the renderer had no way to call it, which is why there was no
+  // Account picker to fix a blank accountName with. get-sv-status backs the dashboard
+  // warning.
+  getAccounts:       (wowPath) => ipcRenderer.invoke("get-accounts", wowPath),
+  getSvStatus:       () => ipcRenderer.invoke("get-sv-status"),
   browseWowPath:     () => ipcRenderer.invoke("browse-wow-path"),
   browseCombatLog:   () => ipcRenderer.invoke("browse-combat-log"),
   getBuildInfo:      () => ipcRenderer.invoke("get-build-info"),
