@@ -1214,7 +1214,7 @@
     });
 
     function openSettings() {
-      window.velara.getSettings().then(s => {
+      window.velara.getSettings().then(async s => {
         setToggle(tglWowAutoShow,     !!s.wowAutoShow);
         setToggle(tglAutoStartOnBoot, !!s.autoStartOnBoot);
         setToggle(tglStartMinimized,  !!s.startMinimized);
