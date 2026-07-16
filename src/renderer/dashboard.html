@@ -439,7 +439,10 @@
     <div class="titlebar-left">
       <img class="titlebar-logo" src="assets/shield_gold_v2.png" alt="Velara">
       <div class="titlebar-title">
-        <span class="brand" id="brandTitle">Velara Companion &middot; v1.4.4</span>
+        <!-- Version-free fallback; getBuildInfo() fills in "· v<real>" at runtime
+             (see below). A hardcoded number here goes stale and lies on every
+             release between bumps — this was showing v1.4.4 at 1.5.30. -->
+        <span class="brand" id="brandTitle">Velara Companion</span>
       </div>
     </div>
     <div class="titlebar-btns">
@@ -564,7 +567,8 @@
         <img class="shield" src="assets/shield_gold_v2.png" alt="">
         <div class="titles">
           <div class="h1">Settings</div>
-          <div class="sub" id="settingsModalSub">Companion v1.4.4</div>
+          <!-- Version-free fallback; getBuildInfo() fills in "v<real>" at runtime. -->
+          <div class="sub" id="settingsModalSub">Companion</div>
         </div>
         <button type="button" class="close-x" id="btnSettingsClose" title="Close" aria-label="Close settings">&#10005;</button>
       </div>
