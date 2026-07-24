@@ -1090,7 +1090,22 @@
 
     function renderAuthState(status) {
       showAuthError('');
-      if (status && status.isLinked) {
+      if (status && status.isLinked && status.isExpired) {
+        // D57: the token still exists but the server rejected it (30-day expiry).
+        // Uploads keep working ANONYMOUSLY (main disarmed the dead Bearer); tell the
+        // user and offer Re-link through the EXISTING link flow (code input + button).
+        authDot.className = 'auth-dot unlinked';
+        const name = status.displayName || status.userId || 'your account';
+        authStatusText.textContent = 'Link to ' + name + ' expired — uploads continuing as anonymous. Re-link to restore verified status.';
+        authStatusText.classList.add('dim');
+        authCodeInput.style.display = 'inline-block';
+        authCodeInput.value = '';
+        authCodeInput.disabled = false;
+        authLinkBtn.style.display = 'inline-block';
+        authLinkBtn.disabled = false;
+        authLinkBtn.textContent = 'Re-link';
+        authUnlinkBtn.style.display = 'inline-block';
+      } else if (status && status.isLinked) {
         authDot.className = 'auth-dot linked';
         const name = status.displayName || status.userId || 'Linked account';
         const charNote = status.characterCount ? ' · ' + status.characterCount + ' char' + (status.characterCount === 1 ? '' : 's') : '';

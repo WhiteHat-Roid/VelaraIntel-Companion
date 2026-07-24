@@ -20,9 +20,15 @@ class VelaraAuth {
     this._userId      = saved.userId      || null;
     this._displayName = saved.displayName || null;
     this._characters  = Array.isArray(saved.characters) ? saved.characters : [];
+    // D57: persisted expiry flag. Companion tokens live 30 days; on expiry the
+    // backend treats the Bearer as anonymous and silently accepts uploads, so a
+    // linked user loses verified status with a healthy-looking UI. This flag lets
+    // the app disarm the dead token and prompt a re-link.
+    this._expired     = !!saved.expired;
   }
 
   get isLinked()    { return !!this._token; }
+  get isExpired()   { return this._expired; }
   get userId()      { return this._userId; }
   get displayName() { return this._displayName; }
   get characters()  { return this._characters || []; }
@@ -38,12 +44,22 @@ class VelaraAuth {
       if (data && Array.isArray(data.characters)) {
         this._characters = data.characters;
         if (data.userId) this._userId = data.userId;
+        this._expired = false;          // token works — clear any stale expiry flag
         this._persist();
       }
     } catch (err) {
-      // Network error or 401 — leave cached state as-is so we can still tag uploads.
-      // A 401 will surface to the user when they next try to upload.
-      console.warn(`[VelaraAuth] initialize() failed: ${err.message}`);
+      // D57: distinguish auth failure from network failure. Only a 401 means the
+      // token is actually dead — flag it (persisted) so the app disarms the dead
+      // Bearer and prompts a re-link, while KEEPING the cached characters/token so
+      // the user chooses re-link or unlink (never a silent clear). Network/timeout
+      // errors keep today's behavior: warn, keep state, no flag.
+      if (err && err.statusCode === 401) {
+        this._expired = true;
+        this._persist();
+        console.warn("[VelaraAuth] initialize(): token rejected (401) — link expired, flagged for re-link");
+      } else {
+        console.warn(`[VelaraAuth] initialize() failed: ${err.message}`);
+      }
     }
   }
 
@@ -59,6 +75,7 @@ class VelaraAuth {
     this._userId      = data.userId      || null;
     this._displayName = data.displayName || null;
     this._characters  = Array.isArray(data.characters) ? data.characters : [];
+    this._expired     = false;          // D57: a fresh token clears the expiry flag
     this._persist();
     return {
       displayName: this._displayName,
@@ -71,6 +88,7 @@ class VelaraAuth {
     this._userId      = null;
     this._displayName = null;
     this._characters  = [];
+    this._expired     = false;          // D57: no token → nothing to be expired
     this._persist();
   }
 
@@ -81,6 +99,7 @@ class VelaraAuth {
       userId      : this._userId,
       displayName : this._displayName,
       characters  : this._characters,
+      expired     : this._expired,      // D57
     });
   }
 
@@ -106,7 +125,11 @@ class VelaraAuth {
               resolve(parsed);
             } else {
               const detail = (parsed && typeof parsed === "object" && parsed.detail) || `HTTP ${res.statusCode}`;
-              reject(new Error(detail));
+              // D57: preserve the HTTP status so initialize() can tell an auth
+              // failure (401 → expired) from a network/timeout error.
+              const err = new Error(typeof detail === "string" ? detail : JSON.stringify(detail));
+              err.statusCode = res.statusCode;
+              reject(err);
             }
           });
         }

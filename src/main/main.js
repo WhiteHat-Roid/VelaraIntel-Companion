@@ -1360,8 +1360,17 @@ async function setupUploader() {
   // Wire auth token into uploader if companion is linked
   if (velaraAuth.isLinked) {
     await velaraAuth.initialize();
-    apiUploader.setAuthToken(velaraAuth.getAuthToken());
-    console.log(`[VelaraAuth] Companion linked as ${velaraAuth.displayName || velaraAuth.userId} (${velaraAuth.characters.length} chars)`);
+    // D57: if initialize() flagged the token expired (401), do NOT arm the
+    // uploader with the dead Bearer — the server would ignore it and silently
+    // accept the upload as anonymous, so uploads proceed anonymously and honestly
+    // until the user re-links. A live token arms as before.
+    if (velaraAuth.isExpired) {
+      apiUploader.setAuthToken(null);
+      console.warn(`[VelaraAuth] Companion link EXPIRED for ${velaraAuth.displayName || velaraAuth.userId} — uploader disarmed, uploads continue anonymously until re-link`);
+    } else {
+      apiUploader.setAuthToken(velaraAuth.getAuthToken());
+      console.log(`[VelaraAuth] Companion linked as ${velaraAuth.displayName || velaraAuth.userId} (${velaraAuth.characters.length} chars)`);
+    }
   }
   runAssembler   = new RunAssembler({
     onReady: async (payload) => {
@@ -1377,6 +1386,7 @@ function setupIPC() {
   // ── Velara Auth IPC handlers ──────────────────────────────────────
   ipcMain.handle("get-auth-status", () => ({
     isLinked: velaraAuth.isLinked,
+    isExpired: velaraAuth.isExpired,   // D57: renderer shows a re-link banner when true
     userId: velaraAuth.userId,
     displayName: velaraAuth.displayName,
     characterCount: velaraAuth.characters.length,
