@@ -50,13 +50,62 @@ const store = new Store({
 
 // ── Deep link handler (velara://) ─────────────────────────────────────────────
 // Handles velara://link?code=XXXX for one-click companion linking from the web.
-function handleDeepLink(url) {
+//
+// S8 (D60): a protocol URL is NOT user intent. Any web page can navigate to
+// velara://link?code=<attacker's code>, and this used to redeem it with zero
+// interaction — an unlinked Companion silently bound to the attacker's account
+// and every later upload landed there. Consent now precedes the credential
+// action: nothing is redeemed until the user confirms. All three protocol
+// entry points (this function, second-instance argv, cold-start argv) route
+// through here, so this is the single gate. The manual in-app Link box is
+// untouched — typing a code is user intent by definition.
+async function confirmDeepLinkPairing(code) {
+  // Surface the dashboard first: a consent prompt must not appear detached from
+  // (or behind) the app the user is being asked to trust.
+  createDashboard();
+  if (dashboardWindow) {
+    if (dashboardWindow.isMinimized()) dashboardWindow.restore();
+    dashboardWindow.show();
+    dashboardWindow.focus();
+  }
+
+  // Only the first 3 chars — enough for the user to match it against what the
+  // website showed them, without printing a live credential in full.
+  const masked = `${String(code).slice(0, 3)}···`;
+  const options = {
+    type: "warning",
+    title: "Link Companion?",
+    message: `Link this Companion to a Velara account? (code ${masked})`,
+    detail:
+      "A link request arrived from your browser.\n\n" +
+      "Only continue if YOU just generated this code on velaraintel.com. " +
+      "If you did not, press Cancel — linking would send your uploads to " +
+      "someone else's account.",
+    buttons: ["Cancel", "Link account"],
+    defaultId: 0,
+    cancelId: 0,
+    noLink: true,
+  };
+
+  const { response } = dashboardWindow
+    ? await dialog.showMessageBox(dashboardWindow, options)
+    : await dialog.showMessageBox(options);
+  return response === 1;
+}
+
+async function handleDeepLink(url) {
   try {
     const parsed = new URL(url);
     if (parsed.hostname === "link") {
       const code = parsed.searchParams.get("code");
       if (code && velaraAuth && !velaraAuth.isLinked) {
-        console.log("[DeepLink] Auto-linking with code from velara:// URL");
+        const approved = await confirmDeepLinkPairing(code);
+        if (!approved) {
+          console.log("[DeepLink] Pairing declined — code dropped, nothing redeemed.");
+          broadcastStatus("Deep link: pairing cancelled — nothing was linked.", "info");
+          return;
+        }
+        console.log("[DeepLink] User confirmed — linking with code from velara:// URL");
         velaraAuth.linkWithCode(code)
           .then(data => {
             if (apiUploader) apiUploader.setAuthToken(velaraAuth.getAuthToken());
