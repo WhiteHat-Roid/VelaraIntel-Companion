@@ -1,5 +1,8 @@
 node_modules/
 dist/
+## Moved-aside build output from a verification gate. Same class as the web
+## repo's dist.*/ -- a gate must not leave a built installer in the tree.
+dist_archive/
 *.log
 .env
 .env.*
