@@ -30,7 +30,7 @@ const { LuaParser }        = require("../services/luaParser");
 const { ApiUploader }      = require("../services/apiUploader");
 const { CombatLogWatcher } = require("../services/combatLogWatcher");
 const { CombatLogParser, parseCombatLog } = require("../services/combatLogParser");
-const { CombatLogRunBuilder } = require("../services/combatLogRunBuilder");
+const { CombatLogRunBuilder, wireBuilderIdentity } = require("../services/combatLogRunBuilder");
 const { RunAssembler }     = require("../services/runAssembler");
 const { VelaraAuth }      = require("../services/velaraAuth");
 const { CombatLogScanner } = require("../services/combatLogScanner");
@@ -1188,12 +1188,13 @@ function startCombatLogWatcher() {
   // PRIMARY path: CombatLogRunBuilder builds full payload from combat log alone
   // Upload ONLY happens when user presses GO in the dashboard — never automatically
   runBuilder = new CombatLogRunBuilder();
-  runBuilder.clientId = ensureClientId();
-  if (lastKnownUploaderIdentity) runBuilder.uploaderIdentity = lastKnownUploaderIdentity;
-  // Pass auth characters for GUID-based identity matching
-  if (velaraAuth.isLinked && velaraAuth.characters.length > 0) {
-    runBuilder._authCharacters = velaraAuth.characters;
-  }
+  // Wired through the shared helper so all three construction sites stay identical.
+  wireBuilderIdentity(runBuilder, {
+    clientId: ensureClientId(),
+    uploaderIdentity: lastKnownUploaderIdentity,
+    authCharacters: velaraAuth.isLinked ? velaraAuth.characters : [],
+    sourceTag: "main.js:live-monitor",
+  });
   let lastCompletedPayload = null;
 
   runBuilder.on("keyStart", async (run) => {
@@ -1406,6 +1407,10 @@ function startCombatLogWatcher() {
 async function setupUploader() {
   const clientId = ensureClientId();
   apiUploader    = new ApiUploader(clientId);
+  // Safety net for the log-rebuild upload paths, which never pass through
+  // injectMapBounds(). Fill-only — payloads that already carry bounds are
+  // untouched, so the two injectMapBounds() call sites are unaffected.
+  apiUploader.setMapBoundsProvider(() => cachedAddonMapBounds);
   // Wire auth token into uploader if companion is linked
   if (velaraAuth.isLinked) {
     await velaraAuth.initialize();
@@ -1469,6 +1474,8 @@ function setupIPC() {
       uploader: apiUploader,
       velaraAuth,
       uploadedRunIds: apiUploader ? apiUploader.uploadedKeys : new Set(),
+      clientId: ensureClientId(),
+      uploaderIdentity: lastKnownUploaderIdentity,
       lookbackDays: 7,  // default: last 7 days only
       onProgress: (msg, type) => {
         broadcast("scan-progress", { message: msg, type });
@@ -1487,6 +1494,8 @@ function setupIPC() {
       uploader: apiUploader,
       velaraAuth,
       uploadedRunIds: apiUploader ? apiUploader.uploadedKeys : new Set(),
+      clientId: ensureClientId(),
+      uploaderIdentity: lastKnownUploaderIdentity,
       lookbackDays: 0,  // scan everything
       onProgress: (msg, type) => {
         broadcast("scan-progress", { message: msg, type });
@@ -1605,9 +1614,15 @@ function setupIPC() {
       broadcastStatus("Parsing " + lines.length + " lines from " + path.basename(filePath) + "...", "info");
 
       const builder = new CombatLogRunBuilder();
-      if (velaraAuth.isLinked && velaraAuth.characters.length > 0) {
-        builder._authCharacters = velaraAuth.characters;
-      }
+      // ⛔ WAS: authCharacters only — no clientId, no uploaderIdentity. That is
+      // why "Upload A Log" produced clientId "unknown" and, whenever the GUID
+      // match missed, an unresolved identity that lands the run unowned.
+      wireBuilderIdentity(builder, {
+        clientId: ensureClientId(),
+        uploaderIdentity: lastKnownUploaderIdentity,
+        authCharacters: velaraAuth.isLinked ? velaraAuth.characters : [],
+        sourceTag: "main.js:upload-a-log",
+      });
       const runs = [];
 
       builder.on("keyEnd", (payload) => {
@@ -1747,6 +1762,8 @@ app.whenReady().then(async () => {
           uploader: apiUploader,
           velaraAuth,
           uploadedRunIds: apiUploader.uploadedKeys,
+          clientId: ensureClientId(),
+          uploaderIdentity: lastKnownUploaderIdentity,
           onProgress: (msg, type) => broadcastStatus(msg, type === "err" ? "err" : "info"),
         });
         const result = await scanner.scanFile(logPath);

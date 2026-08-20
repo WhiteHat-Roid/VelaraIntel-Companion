@@ -2873,7 +2873,12 @@ class CombatLogRunBuilder extends EventEmitter {
       playerObj.talentString = this.playerTalentString;
     }
 
+    // ⛔ LOCAL DIAGNOSTIC ONLY — apiUploader._doUpload strips `_builderSource`
+    // before JSON.stringify, so it never reaches the wire and cannot fail
+    // validate.py. It exists so a log line can name the construction site that
+    // produced an unresolved identity.
     return {
+      _builderSource: this.sourceTag || "unknown",
       addon: "VelaraIntel",
       v: COMPANION_VERSION,
       uploadTs: Date.now(),
@@ -2951,4 +2956,41 @@ class CombatLogRunBuilder extends EventEmitter {
   }
 }
 
-module.exports = { CombatLogRunBuilder };
+// ─────────────────────────────────────────────────────────────────────────────
+//  wireBuilderIdentity — the ONE place a builder gets its identity inputs.
+//
+//  ⛔ WHY THIS EXISTS. There were three construction sites and each wired a
+//  different subset:
+//    main.js:1190 (live)        clientId + uploaderIdentity + authCharacters
+//    main.js:1607 (Upload A Log)                              authCharacters only
+//    combatLogScanner.js:191    NONE — and it uploads
+//  The scanner even RECEIVES velaraAuth and uses it to arm the upload token; it
+//  just never forwarded it to the builder. Result: uploads with
+//  clientId "unknown", identitySource "unresolved", uploader_name "Unknown" —
+//  rows that land unowned and can never be claimed, because the adoption sweep
+//  matches on uploader_name and "Unknown" matches nothing.
+//
+//  Every construction site must call this. Do not hand-wire a builder.
+// ─────────────────────────────────────────────────────────────────────────────
+function wireBuilderIdentity(builder, { clientId, uploaderIdentity, authCharacters, sourceTag } = {}) {
+  if (!builder) return builder;
+  builder.sourceTag = sourceTag || "unknown";
+  if (clientId) builder.clientId = clientId;
+  if (uploaderIdentity) builder.uploaderIdentity = uploaderIdentity;
+  if (Array.isArray(authCharacters) && authCharacters.length > 0) {
+    builder._authCharacters = authCharacters;
+  }
+  // Recorded so a payload that still resolves to "unresolved" can be traced to
+  // the site that built it — previously impossible after the fact.
+  try {
+    require("./velaraLog").info("builder.wired", {
+      sourceTag: builder.sourceTag,
+      hasClientId: !!builder.clientId,
+      hasUploaderIdentity: !!builder.uploaderIdentity,
+      authCharacterCount: (builder._authCharacters || []).length,
+    });
+  } catch { /* logging must never break construction */ }
+  return builder;
+}
+
+module.exports = { CombatLogRunBuilder, wireBuilderIdentity };

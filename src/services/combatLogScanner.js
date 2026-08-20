@@ -11,12 +11,18 @@
 const fs = require("fs");
 const path = require("path");
 const readline = require("readline");
-const { CombatLogRunBuilder } = require("./combatLogRunBuilder");
+const { CombatLogRunBuilder, wireBuilderIdentity } = require("./combatLogRunBuilder");
 
 class CombatLogScanner {
-  constructor({ uploader, velaraAuth, uploadedRunIds, onProgress, lookbackDays } = {}) {
+  constructor({ uploader, velaraAuth, uploadedRunIds, onProgress, lookbackDays,
+                clientId, uploaderIdentity } = {}) {
     this.uploader       = uploader;
     this.velaraAuth     = velaraAuth;
+    // ⛔ These two were never accepted, so the builder below was constructed with
+    // NO identity inputs at all — while this same class used velaraAuth to arm the
+    // upload token. Every scanner upload therefore landed unowned and unclaimable.
+    this.clientId         = clientId || "";
+    this.uploaderIdentity = uploaderIdentity || null;
     this.uploadedRunIds = uploadedRunIds || new Set();
     this.onProgress     = onProgress || (() => {});
     this.lookbackDays   = lookbackDays ?? 7;  // default 7 days; 0 = scan all
@@ -189,6 +195,13 @@ class CombatLogScanner {
     return new Promise((resolve, reject) => {
       const payloads = [];
       const builder  = new CombatLogRunBuilder();
+      wireBuilderIdentity(builder, {
+        clientId: this.clientId,
+        uploaderIdentity: this.uploaderIdentity,
+        authCharacters: this.velaraAuth && this.velaraAuth.isLinked
+          ? this.velaraAuth.characters : [],
+        sourceTag: "combatLogScanner:auto-scan",
+      });
 
       builder.on("keyEnd", (payload) => {
         if (payload?.run?.runId) payloads.push(payload);
