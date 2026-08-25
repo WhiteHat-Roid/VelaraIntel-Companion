@@ -34,11 +34,38 @@ const vm = require("vm");
 
 // ── The fixture ────────────────────────────────────────────────────────────────
 // A REAL SavedVariables capture taken 2026-08-22, before Recipe C was applied to the
-// live file. It is the only artifact that reproduces the bug.
+// live file.
 //
 // ⛔ DELIBERATELY NOT COMMITTED. `_Build_Artifacts/` is gitignored, and this file
 // carries real player GUIDs, character names and equipment. The sha256 below is the
 // contract; the bytes stay out of history. See D156.
+//
+// ⛔ ══ IF THIS GATE CANNOT FIND ITS FIXTURE, THAT IS THE GATE WORKING. ══
+//
+//  DO NOT wrap the read below in a try/catch. DO NOT `return` early, skip, warn-and-
+//  continue, or substitute a synthetic file. Every one of those converts exit 2 into a
+//  green run, and a green run without this fixture certifies NOTHING — a hand-written
+//  fixture PASSES against the BROKEN parser, which is the entire reason this gate is
+//  shaped the way it is (see the header above). Turning the loud failure into a silent
+//  skip reintroduces the exact defect D156 exists to prevent: a branch that says
+//  nothing while the pipeline is dead.
+//
+//  The fixture is LOCAL-ONLY BY RULING, not by oversight — Brian, 2026-08-25, D176
+//  Option C. Rejected alternatives, so they are not re-proposed: committing the real
+//  bytes (git-LFS or a private repo) is permanent retention of OTHER PLAYERS' names
+//  and GUIDs; a redacted vendored fixture (Option A) stays open if this ever needs to
+//  run in CI, and would require re-measuring every EXPECT constant below.
+//
+//  ⚠ CORRECTION 2026-08-25: an earlier version of this comment called this file "the
+//  only artifact that reproduces the bug." That is FALSE and was falsified by
+//  measurement. The LIVE SavedVariables file carried 1 poisoned literal on 2026-08-25
+//  (vs 22 here) and the old stripper FAILS on it too — because D156 fixed the READER
+//  and nothing has yet fixed the WRITER, so the addon keeps re-poisoning the file.
+//  So the fixture IS replaceable by a fresh capture. It is not a drop-in: every
+//  EXPECT constant below was measured against the pinned bytes and would all move.
+//  ⛔ Re-measuring against a file you just captured is how a wrong constant gets
+//  blessed — if you re-capture, re-derive each expectation deliberately, not by
+//  reading it back off the new file.
 const FIXTURE = path.resolve(
   __dirname,
   "../../_Build_Artifacts/D156-sv-fixture/VelaraIntel.lua.pre-D156-20260822"
