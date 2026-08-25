@@ -2,11 +2,88 @@
 // Handles: strings, numbers, booleans, nil, nested tables, arrays, comments
 // Does NOT handle: metatables, functions, userdata — WoW SVs don't use these
 
+/**
+ * Strip Lua comments WITHOUT touching a `--` that lives inside a string literal.
+ *
+ * One left-to-right scan. Outside a string, `--[[ ... ]]` is a block comment and `--`
+ * runs to end of line. Inside a `"` or `'` literal nothing is a comment, and a
+ * backslash escapes the next character so an escaped quote cannot end the string early.
+ *
+ * A line comment stops AT the newline and does not consume it, matching the regex this
+ * replaces, so offsets in parse errors stay meaningful and the rest of the parser is
+ * unchanged.
+ *
+ * NOTE: long-bracket STRINGS (`x = [[ ... ]]`) are deliberately NOT handled.
+ * `_parseValue` has never accepted them (it throws on `[`), and WoW's SavedVariables
+ * writer does not emit them - measured 0 occurrences in an 838 KB real file. Behaviour
+ * is preserved here, not extended.
+ */
+function stripComments(src) {
+  let out = "";
+  let i = 0;
+  const n = src.length;
+
+  while (i < n) {
+    const c = src[i];
+
+    // string literal: copied verbatim. A comment token in here is DATA.
+    if (c === '"' || c === "'") {
+      const quote = c;
+      out += c;
+      i++;
+      while (i < n) {
+        if (src[i] === "\\") { out += src[i] + (src[i + 1] || ""); i += 2; continue; }
+        out += src[i];
+        if (src[i] === quote) { i++; break; }
+        i++;
+      }
+      continue;
+    }
+
+    if (c === "-" && src[i + 1] === "-") {
+      // block comment --[[ ... ]]
+      if (src[i + 2] === "[" && src[i + 3] === "[") {
+        const end = src.indexOf("]]", i + 4);
+        i = end === -1 ? n : end + 2;
+        continue;
+      }
+      // line comment: stop AT the newline, do not consume it
+      while (i < n && src[i] !== "\n") i++;
+      continue;
+    }
+
+    out += c;
+    i++;
+  }
+
+  return out;
+}
+
 class LuaParser {
   parse(luaSource) {
-    // Remove Lua comments
-    let src = luaSource.replace(/--\[\[[\s\S]*?\]\]/g, ""); // block comments
-    src = src.replace(/--[^\n]*/g, ""); // line comments
+    // [STOP] THE COMMENT STRIPPER MUST BE STRING-AWARE. Until 2026-08-22 this was a
+    // regex that deleted from ANY comment token to end of line - INCLUDING one inside a
+    // string literal, taking the closing quote and the comma with it. Every quote after
+    // that point is then off by one and the enclosing table fails to parse.
+    //
+    // Measured on a live SavedVariables file: `VelaraIntelDB` died 388 bytes into 838 KB,
+    // on a line our OWN D107 inspect probe wrote, and again on the one
+    // Tracker_Equipment.lua:592 writes PER RUN, PER PLAYER on the routine 12.0.5
+    // degraded-aura path ("expirationTime secret ... durationLeft omitted, not zero").
+    //
+    // parse() catches per-variable, so the whole table was dropped SILENTLY: the
+    // Companion ran for over a month with no mapBounds, no races, no uploaderIdentity
+    // and no talents, while every upload succeeded and nothing logged a reason.
+    //
+    // [STOP] DO NOT "fix" this back into a regex. A regex that tries to skip strings is
+    // the same bug with more steps. 22 string literals in that one file carried the
+    // token, and the addon emits them from a dozen sites - sanitising the addon is
+    // whack-a-mole and does not repair files already on disk.
+    //
+    // GATE: VelaraIntel-Companion/QA/d156-luaparser-gate.js - it runs the CURRENT parser
+    // against a real poisoned capture and REQUIRES it to fail before accepting the fix.
+    // A synthetic fixture passes with the bug still in place; do not gate on one.
+    const src = stripComments(luaSource);
 
     const result = {};
     // Match top-level assignments: VarName = { ... }

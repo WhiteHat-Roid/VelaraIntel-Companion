@@ -34,6 +34,7 @@ const { CombatLogRunBuilder, wireBuilderIdentity } = require("../services/combat
 const { RunAssembler }     = require("../services/runAssembler");
 const { VelaraAuth }      = require("../services/velaraAuth");
 const { CombatLogScanner } = require("../services/combatLogScanner");
+const vlog = require("../services/velaraLog");
 const fs = require("fs");
 
 const store = new Store({
@@ -896,7 +897,18 @@ function openRunInBrowser(uploadResult, playerName) {
 function startSVWatcher() {
   if (svWatcher) svWatcher.stop();
   const svPath = getSavedVarsPath();
-  if (!svPath) { console.warn("[SV] No SavedVariables path configured — skipping"); return; }
+  if (!svPath) {
+    // D156: this branch silently disabled the ENTIRE SavedVariables pipeline on
+    // 2026-07-15 (blank accountName, two WTF account folders) and cost a Pit of Saron
+    // run its map positions. console.warn does not reach velara.log, which is the
+    // artifact anyone actually reads, so it goes to vlog too.
+    console.warn("[SV] No SavedVariables path configured — skipping");
+    vlog.warn("sv.path.unresolved", {
+      wowPath: store.get("wowPath") || null,
+      accountName: store.get("accountName") || null,
+    });
+    return;
+  }
 
   const parser = new LuaParser();
   svWatcher    = new FileWatcher(svPath, 10000);
@@ -904,8 +916,31 @@ function startSVWatcher() {
   svWatcher.on("change", (content) => {
     try {
       const parsed = parser.parse(content);
-      if (!parsed || !parsed.VelaraIntelDB) return;
+      if (!parsed || !parsed.VelaraIntelDB) {
+        // [STOP] D156 — THIS IS THE BRANCH THAT SAID NOTHING FOR OVER A MONTH.
+        // A poisoned string literal (a comment token inside a quoted value) made
+        // LuaParser drop VelaraIntelDB whole, so mapBounds, races, uploaderIdentity
+        // and talents all died together while every upload succeeded. The bare
+        // `return` here is why velara.log showed a healthy app with no bounds and no
+        // reason. Diagnosing it cost a session; this line would have cost nothing.
+        vlog.warn("sv.parse.failed", {
+          path: svPath,
+          bytes: content ? content.length : 0,
+          topLevelKeys: parsed ? Object.keys(parsed).length : 0,
+          reason: parsed ? "VelaraIntelDB absent from parse result" : "parser returned nothing",
+        });
+        return;
+      }
       const db = parsed.VelaraIntelDB;
+      // D156: the positive counterpart. Without it, "no warning" is indistinguishable
+      // from "never ran" — the watcher only fires on an mtime/size change.
+      vlog.info("sv.parsed", {
+        bytes: content.length,
+        uiMapIds: db.mapBounds && typeof db.mapBounds === "object" ? Object.keys(db.mapBounds).length : 0,
+        races: db.races && typeof db.races === "object" ? Object.keys(db.races).length : 0,
+        hasUploaderIdentity: !!db.uploaderIdentity,
+        hasTalents: !!db.playerTalentString,
+      });
 
       // Cache the addon's name→race map so upload-time injection can fill
       // race on every party member, not just those whose racial fired.
