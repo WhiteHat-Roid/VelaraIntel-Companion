@@ -35,6 +35,9 @@ const { RunAssembler }     = require("../services/runAssembler");
 const { VelaraAuth }      = require("../services/velaraAuth");
 const { CombatLogScanner } = require("../services/combatLogScanner");
 const vlog = require("../services/velaraLog");
+// D206 late subZone enrichment. ⛔ The SAME module exists as
+// VelaraIntel-Overwolf/shared/subZoneEnrichment.js — change both together.
+const { createSubZoneEnricher } = require("../services/subZoneEnrichment");
 const fs = require("fs");
 
 const store = new Store({
@@ -266,6 +269,17 @@ let lastKnownRunId   = null;
 let lastKnownUploaderIdentity = null;
 let lastActiveRunId  = null;
 let cachedActiveRun  = null;  // In-memory copy of _activeRun for key-end upload
+
+// Transport and logging are injected so the module stays identical to the
+// Overwolf copy, which has neither node's https nor velaraLog.
+const subZoneEnricher = createSubZoneEnricher({
+  post: (path, body) => apiUploader.postJson(path, body),
+  log:  (level, event, data) => {
+    if (level === "error") vlog.error(event, data);
+    else if (level === "warn") vlog.warn(event, data);
+    else vlog.info(event, data);
+  },
+});
 let cachedAddonRaces = {};    // name→race from VelaraIntelDB.races — used to fill partyMember race on upload
 let cachedAddonMapBounds = {}; // uiMapID→{x0,y0,x1,y1,continentID} from VelaraIntelDB.mapBounds — world→pixel transform data
 
@@ -942,6 +956,18 @@ function startSVWatcher() {
         hasTalents: !!db.playerTalentString,
       });
 
+      // ── D206 LATE ENRICHMENT ────────────────────────────────────────────
+      // THIS is the moment the addon's deaths finally exist on disk. WoW
+      // flushes SavedVariables only on /reload or logout, so the run that was
+      // uploaded minutes ago is only now readable. Send any subZone we owe.
+      //
+      // Fire-and-forget: a failure here must never break the SV pipeline,
+      // which also feeds mapBounds, races, identity and talents. Every branch
+      // inside reports through vlog, so "nothing happened" is never silent.
+      Promise.resolve()
+        .then(() => subZoneEnricher.onSvParsed(db))
+        .catch((e) => vlog.error("subzone.enrich.threw", { error: e && e.message }));
+
       // Cache the addon's name→race map so upload-time injection can fill
       // race on every party member, not just those whose racial fired.
       if (db.races && typeof db.races === "object") {
@@ -1303,14 +1329,22 @@ function startCombatLogWatcher() {
         }
         if (stamped > 0) {
           console.log(`[RunBuilder] subZone stamped on ${stamped} death(s) from cachedActiveRun`);
+          vlog.info("subzone.stamp.matched", { stamped, addonDeaths: addonDeathsMs.length });
         } else {
           console.warn(`[RunBuilder] subZone: ${addonDeathsMs.length} addon deaths found but none matched within ±2000ms`);
+          vlog.warn("subzone.stamp.no_match", { addonDeaths: addonDeathsMs.length, windowMs: 2000 });
         }
       } else {
         console.warn(`[RunBuilder] subZone: cachedActiveRun present but no addon deaths with subZone`);
+        vlog.warn("subzone.stamp.no_addon_deaths", { reason: "cachedActiveRun present but carries no death with subZone" });
       }
     } else {
       console.warn(`[RunBuilder] subZone: cachedActiveRun is null — subZone will be absent`);
+      // ⛔ D206: this is the EXPECTED branch, not an anomaly. WoW flushes
+      // SavedVariables only on /reload or logout, so at key-end the addon's
+      // record of the run that just ended is not on disk. The late
+      // enrichment below is what closes it.
+      vlog.warn("subzone.stamp.no_cached_run", { reason: "cachedActiveRun is null at key-end (expected: SV not flushed yet)" });
     }
     // ── end subZone copy ──
 
@@ -1627,6 +1661,10 @@ function setupIPC() {
 
       if (result.ok) {
         broadcastStatus("Upload complete!", "ok");
+        // D206: remember any deaths that went up WITHOUT subZone, so a later
+        // SavedVariables flush can send them. No-op when they all have one.
+        try { subZoneEnricher.recordUpload(result?.body?.runToken, payload); }
+        catch (e) { vlog.error("subzone.record.threw", { error: e.message }); }
         openRunInBrowser(result, payload.run?.player?.name || null);
       } else {
         broadcastStatus("Upload failed: " + (result.error || result.status || "unknown"), "err");

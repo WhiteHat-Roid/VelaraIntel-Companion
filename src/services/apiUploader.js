@@ -21,6 +21,46 @@ class ApiUploader {
     this.authToken = token || null;
   }
 
+  // Generic authenticated JSON POST. D206's late subZone enrichment needs to
+  // reach an owner-only endpoint, and it must carry the SAME Authorization and
+  // X-Client-Id headers as upload() — reproducing that header block in a second
+  // place is how the two drift apart.
+  postJson(path, obj) {
+    const body = JSON.stringify(obj);
+    const headers = {
+      "Content-Type"  : "application/json",
+      "Content-Length": Buffer.byteLength(body),
+    };
+    if (this.clientId)  headers["X-Client-Id"]   = this.clientId;
+    if (this.authToken) headers["Authorization"] = `Bearer ${this.authToken}`;
+
+    return new Promise((resolve) => {
+      const req = https.request(
+        {
+          hostname: "api.velaraintel.com",
+          port    : 443,
+          path,
+          method  : "POST",
+          headers,
+          timeout : 15000,
+        },
+        (res) => {
+          let data = "";
+          res.on("data", (chunk) => (data += chunk));
+          res.on("end", () => {
+            const ok = res.statusCode >= 200 && res.statusCode < 300;
+            try { resolve({ ok, status: res.statusCode, body: JSON.parse(data) }); }
+            catch { resolve({ ok, status: res.statusCode, body: data }); }
+          });
+        }
+      );
+      req.on("error",   (err) => resolve({ ok: false, error: err.message }));
+      req.on("timeout", ()    => { req.destroy(); resolve({ ok: false, error: "Request timed out (15s)" }); });
+      req.write(body);
+      req.end();
+    });
+  }
+
   // ⛔ mapBounds SAFETY NET. injectMapBounds() is called at exactly two sites in
   // main.js — the live auto-upload and the GO button. The log-rebuild paths
   // ("Upload A Log", combatLogScanner) reach upload() without passing either, so
