@@ -266,13 +266,22 @@ function createSubZoneEnricher(deps) {
   };
 }
 
-// CommonJS for Electron; plain global for the Overwolf browser context.
+// CommonJS for Electron; plain window global for the Overwolf browser context,
+// which loads shared/ modules with <script src> and has no module system.
+// ⚠ Both branches are required — the Overwolf copy is the SAME file, and a
+// CommonJS-only export would leave it defining nothing there while still
+// loading without error.
+const _subZoneExports = {
+  createSubZoneEnricher,
+  collectPayloadDeaths,
+  collectAddonSubZoneDeaths,
+  matchSubZone,
+  MATCH_WINDOW_MS,
+};
 if (typeof module !== "undefined" && module.exports) {
-  module.exports = {
-    createSubZoneEnricher,
-    collectPayloadDeaths,
-    collectAddonSubZoneDeaths,
-    matchSubZone,
-    MATCH_WINDOW_MS,
-  };
+  module.exports = _subZoneExports;
+}
+if (typeof window !== "undefined") {
+  window.createSubZoneEnricher = createSubZoneEnricher;
+  window.VelaraSubZoneEnrichment = _subZoneExports;
 }
