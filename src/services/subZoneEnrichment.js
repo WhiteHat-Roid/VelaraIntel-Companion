@@ -78,6 +78,32 @@ function collectPayloadDeaths(payload) {
   return out;
 }
 
+// ⛔ A Lua table reaches us as an ARRAY when it holds contiguous integer keys and
+// as an OBJECT when it is EMPTY or sparse. `{}` is truthy, so the usual
+// `(x || [])` guard does not catch it and `for...of {}` throws
+// "object is not iterable".
+//
+// Measured against Brian's live SavedVariables, 2026-09-03: db.runs and
+// run.combatSegments came back as arrays; a segment WITH a death came back as an
+// array; a segment with an EMPTY deaths table came back as {} — 13 of the 15
+// segments in that run. collectAddonSubZoneDeaths threw on the first one.
+//
+// It was invisible until registration was fixed, because onSvParsed returns at
+// the empty-queue guard before ever reaching here — so the bug sat behind
+// another bug.
+//
+// ⚠ An `if (!Array.isArray(x)) continue` guard is NOT the fix. It converts the
+// throw into a silent skip, which is the worse failure: zero enrichable deaths
+// and no error. Normalise the shape instead.
+//
+// Only the ADDON side needs this. collectPayloadDeaths reads our own uploaded
+// payload, which is built in JS and is always real arrays.
+function asList(v) {
+  if (Array.isArray(v)) return v;
+  if (v && typeof v === "object") return Object.values(v);
+  return [];
+}
+
 // Every addon-side death that carries a subZone, from the whole SavedVariables
 // DB. ⚠ Deliberately NOT limited to _activeRun: by the time a snapshot reaches
 // disk the run has ended and the addon has moved it into `runs`, so reading
@@ -87,18 +113,15 @@ function collectAddonSubZoneDeaths(db) {
   const containers = [];
 
   if (db && db._activeRun) containers.push(db._activeRun);
-  const runs = (db && db.runs) || null;
-  if (Array.isArray(runs)) {
-    for (const r of runs) if (r) containers.push(r);
-  } else if (runs && typeof runs === "object") {
-    for (const k of Object.keys(runs)) if (runs[k]) containers.push(runs[k]);
-  }
+  for (const r of asList(db && db.runs)) if (r) containers.push(r);
 
   for (const r of containers) {
-    const segs = r.segments || r.combatSegments || [];
-    if (!Array.isArray(segs)) continue;
+    // Prefer whichever key actually yields segments. `r.segments || r.combatSegments`
+    // would short-circuit on an EMPTY `segments` table, because {} is truthy.
+    let segs = asList(r.segments);
+    if (segs.length === 0) segs = asList(r.combatSegments);
     for (const seg of segs) {
-      for (const ad of ((seg && seg.deaths) || [])) {
+      for (const ad of asList(seg && seg.deaths)) {
         if (!ad || typeof ad !== "object") continue;
         if (!isNonEmptyString(ad.subZone)) continue;
         if (typeof ad.deathSec !== "number") continue;
@@ -186,14 +209,12 @@ function createSubZoneEnricher(deps) {
   // Call on EVERY successful SavedVariables parse.
   async function onSvParsed(db) {
     if (pending.size === 0) {
-      // `queued` is 0 by construction in this branch; it is here because the
-      // queue size belongs on the event that reports the queue. The field that
-      // actually discriminates is recordedSinceStart — 0 means nothing ever
-      // reached recordUpload (the 2026-09-03 bug), >0 means runs were queued
-      // and have already drained.
+      // recordedSinceStart is the field that discriminates: 0 means nothing ever
+      // reached recordUpload (the 2026-09-03 bug), >0 means runs were queued and
+      // have already drained. A queue-size field was dropped from here — it is 0
+      // by construction in this branch, so it reads as a measurement and is not one.
       log("info", "subzone.enrich.idle", {
         reason: "no uploaded runs awaiting subZone",
-        queued: pending.size,
         recordedSinceStart: recordCalls,
       });
       return { attempted: 0, written: 0 };
