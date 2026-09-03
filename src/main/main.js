@@ -1784,6 +1784,18 @@ app.on("second-instance", (_event, argv) => {
 
 app.whenReady().then(async () => {
   console.log(`[Velara] Companion v${app.getVersion()} — build ${BUILD_TIMESTAMP}`);
+
+  // D206 GATE: velara.log carries no version marker of its own — the console.log
+  // above never reaches the file (see the header note in velaraLog.js). Both an
+  // installed Companion and a run-from-source one resolve the same app name and
+  // so append to the SAME %APPDATA%\velara-companion\logs\velara.log, which makes
+  // an entry unattributable without this line. `packaged` is what will separate a
+  // run-from-source 1.5.33 from an installed 1.5.33 once the release build exists.
+  vlog.info("app.start", {
+    appVersion: app.getVersion(),
+    electron: process.versions.electron,
+    packaged: app.isPackaged,
+  });
   if (!store.get("wowPath")) {
     const detected = detectWowPath();
     if (detected) store.set("wowPath", detected);
