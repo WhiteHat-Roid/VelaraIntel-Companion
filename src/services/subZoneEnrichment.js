@@ -135,8 +135,24 @@ function createSubZoneEnricher(deps) {
 
   // runToken -> [{name, deathTs}] still missing subZone.
   const pending = new Map();
+  // How many times recordUpload has been reached this process. This is the
+  // field that separates "the queue drained" from "nobody ever called me".
+  let recordCalls = 0;
 
   function recordUpload(runToken, payload) {
+    // ⛔ Emitted on ENTRY, before any branch, and deliberately NOT conditional
+    // on the outcome. The D206 failure was that nothing ever CALLED this on two
+    // of the three upload paths. The only trace was subzone.enrich.idle later
+    // reporting an empty queue — truthful, and it read as "nothing to do" when
+    // it meant "nobody told me". An upload.result with no `registered` after it
+    // names that in a single read.
+    recordCalls += 1;
+    log("info", "subzone.enrich.registered", {
+      runToken: isNonEmptyString(runToken) ? runToken : null,
+      builderSource: (payload && payload._builderSource)
+        || (payload && payload.run && payload.run._builderSource) || "unknown",
+      queuedBefore: pending.size,
+    });
     if (!isNonEmptyString(runToken) || runToken.indexOf("vr_") !== 0) {
       log("warn", "subzone.record.skipped", { reason: "no usable runToken", runToken: runToken || null });
       return 0;
@@ -170,7 +186,16 @@ function createSubZoneEnricher(deps) {
   // Call on EVERY successful SavedVariables parse.
   async function onSvParsed(db) {
     if (pending.size === 0) {
-      log("info", "subzone.enrich.idle", { reason: "no uploaded runs awaiting subZone" });
+      // `queued` is 0 by construction in this branch; it is here because the
+      // queue size belongs on the event that reports the queue. The field that
+      // actually discriminates is recordedSinceStart — 0 means nothing ever
+      // reached recordUpload (the 2026-09-03 bug), >0 means runs were queued
+      // and have already drained.
+      log("info", "subzone.enrich.idle", {
+        reason: "no uploaded runs awaiting subZone",
+        queued: pending.size,
+        recordedSinceStart: recordCalls,
+      });
       return { attempted: 0, written: 0 };
     }
 

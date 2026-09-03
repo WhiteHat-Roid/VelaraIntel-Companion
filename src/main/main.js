@@ -1480,6 +1480,10 @@ async function setupUploader() {
   // injectMapBounds(). Fill-only — payloads that already carry bounds are
   // untouched, so the two injectMapBounds() call sites are unaffected.
   apiUploader.setMapBoundsProvider(() => cachedAddonMapBounds);
+  // D206: the same choke-point treatment for subZone registration. Every
+  // successful upload — live-monitor, combatLogScanner, GO button — queues its
+  // subZone-less deaths from inside upload(), so no upload path can skip it.
+  apiUploader.setSubZoneRecorder((runToken, payload) => subZoneEnricher.recordUpload(runToken, payload));
   // Wire auth token into uploader if companion is linked
   if (velaraAuth.isLinked) {
     await velaraAuth.initialize();
@@ -1661,10 +1665,9 @@ function setupIPC() {
 
       if (result.ok) {
         broadcastStatus("Upload complete!", "ok");
-        // D206: remember any deaths that went up WITHOUT subZone, so a later
-        // SavedVariables flush can send them. No-op when they all have one.
-        try { subZoneEnricher.recordUpload(result?.body?.runToken, payload); }
-        catch (e) { vlog.error("subzone.record.threw", { error: e.message }); }
+        // D206: registration moved into apiUploader._markUploaded(), the one
+        // choke point all three upload paths share. Calling it here as well
+        // would queue the GO button's runs twice.
         openRunInBrowser(result, payload.run?.player?.name || null);
       } else {
         broadcastStatus("Upload failed: " + (result.error || result.status || "unknown"), "err");

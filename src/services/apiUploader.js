@@ -11,6 +11,7 @@ class ApiUploader {
     this.clientId = clientId || "";
     this.authToken = null;
     this.uploadedKeys = new Set(); // Only stores SUCCESSFULLY uploaded runIds
+    this.subZoneRecorder = null;   // D206 — set by main.js, called on success only
   }
 
   setClientId(id) {
@@ -77,6 +78,12 @@ class ApiUploader {
     this.mapBoundsProvider = typeof fn === "function" ? fn : null;
   }
 
+  // D206 late subZone enrichment. Wired once in setupUploader(); upload() calls
+  // it on success so EVERY upload path registers, not just the GO button.
+  setSubZoneRecorder(fn) {
+    this.subZoneRecorder = typeof fn === "function" ? fn : null;
+  }
+
   _fillMapBounds(payload) {
     if (!payload || !payload.run || !this.mapBoundsProvider) return 0;
     const existing = payload.run.mapBounds;
@@ -86,6 +93,27 @@ class ApiUploader {
     if (!bounds || Object.keys(bounds).length === 0) return 0;
     payload.run.mapBounds = bounds;
     return Object.keys(bounds).length;
+  }
+
+  // ⛔ THE one place an upload is declared successful. Both the first-attempt
+  // and the 422-retry exits pass through here, so anything that must happen on
+  // success happens ONCE, on every upload path, or not at all.
+  //
+  // recordUpload lives here and not at the call sites for exactly the reason
+  // injectMapBounds moved into upload() (see the note above). D206 shipped it
+  // in the "upload-run" IPC handler alone, so the live-monitor and
+  // combatLogScanner paths uploaded without ever queueing the run. The enricher
+  // then reported an empty queue on every /reload — truthfully, and uselessly.
+  // Measured on Brian's 2026-09-03 gate key: the stamp fired, the upload
+  // returned 200, nothing was queued, and the reload found nothing to send.
+  //
+  // A failed upload never reaches here, so a run the backend rejected is never
+  // queued — there is nothing to enrich on a run that was not stored.
+  _markUploaded(runId, res, payload) {
+    if (runId) this.uploadedKeys.add(runId);
+    if (!this.subZoneRecorder) return;
+    try { this.subZoneRecorder(res && res.body && res.body.runToken, payload); }
+    catch (e) { vlog.error("subzone.record.threw", { error: e && e.message }); }
   }
 
   async upload(payload) {
@@ -178,15 +206,16 @@ class ApiUploader {
           return retry; // Don't cache — allow future retries
         }
         // Retry succeeded
-        if (runId) this.uploadedKeys.add(runId);
+        this._markUploaded(runId, retry, payload);
         return retry;
       }
 
       return result; // Don't cache failures — allow future retries
     }
 
-    // SUCCESS — cache to prevent duplicate uploads
-    if (runId) this.uploadedKeys.add(runId);
+    // SUCCESS — cache to prevent duplicate uploads, and queue any subZone-less
+    // deaths for the next SavedVariables flush.
+    this._markUploaded(runId, result, payload);
     return result;
   }
 
