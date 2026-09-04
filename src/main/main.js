@@ -196,16 +196,45 @@ let wowDetected      = false;
 let wowPollTimer     = null;
 let watchersStarted  = false;
 
+// Dedupes the 10s poll: a detection failure is logged on first occurrence and
+// whenever the message CHANGES, never once per tick. Cleared on recovery so a
+// later failure is reported again rather than swallowed as already-seen.
+let _wowDetectLastErr = null;
+
 function isRetailWowRunning() {
   try {
-    // wmic is reliable on Windows and returns the full exe path
+    // wmic was REMOVED in Windows 11 24H2+ (verified absent on build 26200). It was
+    // the sole detection mechanism, so on every current Windows install this execSync
+    // threw on EVERY 10s poll and the catch below returned false forever.
+    // startSVWatcher() and startCombatLogWatcher() are both gated on this function,
+    // so the entire live pipeline silently disarmed. Get-Process reports the same
+    // full exe path and is present on every supported Windows.
     const output = execSync(
-      'wmic process where "name=\'Wow.exe\'" get ExecutablePath /format:list',
+      'powershell -NoProfile -NonInteractive -Command "(Get-Process Wow -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Path)"',
       { windowsHide: true, encoding: "utf-8", timeout: 5000 }
     );
-    // Must contain _retail_ in the path — excludes Classic, PTR, Beta
+    if (_wowDetectLastErr) {
+      vlog.info("wow.detect.recovered", { previousError: _wowDetectLastErr });
+      _wowDetectLastErr = null;
+    }
+    // Must contain _retail_ in the path - excludes Classic, PTR, Beta
     return output.includes("_retail_");
-  } catch {
+  } catch (err) {
+    // The bare `catch { return false }` was the REAL defect here, not wmic itself.
+    // "detection threw" and "WoW is closed" both returned false, so the removal of a
+    // system binary looked exactly like a player not being in game: no error, no
+    // warning, nothing in velara.log, watchers never arming. wmic is only the binary
+    // that got removed first. The next one fails the same way unless the failure can
+    // announce itself - a detection that cannot say "I failed" will fail silently.
+    const msg = err && err.message ? String(err.message).split(String.fromCharCode(10))[0] : String(err);
+    if (msg !== _wowDetectLastErr) {
+      _wowDetectLastErr = msg;
+      console.error("[WoW] Detection FAILED (NOT the same as WoW being closed):", msg);
+      vlog.error("wow.detect.failed", {
+        error: msg,
+        impact: "watchers cannot arm - this is NOT 'WoW closed'",
+      });
+    }
     return false;
   }
 }
